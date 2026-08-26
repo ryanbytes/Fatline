@@ -1,0 +1,3 @@
+VALIDATION PASSED
+Kotlin source files: 13
+Features: multi-server / relay crypto / persistent selections+favorites / LCL history / hold-skip-avoid / alerts / Media3 Auto
