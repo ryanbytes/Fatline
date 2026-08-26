@@ -37,14 +37,15 @@ vault = (ROOT / 'app/src/main/java/dev/scanrelay/app/data/PinVault.kt').read_tex
 repo = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/ScannerRepository.kt').read_text()
 crypto = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/AudioCrypto.kt').read_text()
 
-require('compileSdk = 37' in app_gradle, 'compileSdk must be 37')
-require('targetSdk = 37' in app_gradle, 'targetSdk must be 37')
+require('compileSdk = 36' in app_gradle, 'compileSdk must be 36')
+require('targetSdk = 36' in app_gradle, 'targetSdk must be 36')
 require('version "9.2.1"' in root_gradle, 'AGP 9.2.1 not pinned')
 require('org.jetbrains.kotlin.android' not in root_gradle + app_gradle, 'AGP 9 built-in Kotlin must not apply org.jetbrains.kotlin.android')
 require('kotlin-gradle-plugin:2.3.21' in root_gradle, 'Kotlin Gradle Plugin 2.3.21 not pinned')
 require('org.jetbrains.kotlin.plugin.compose' in root_gradle + app_gradle, 'Compose compiler plugin missing')
 require('compose-bom:2026.08.00' in app_gradle, 'Compose BOM not pinned')
 require('okhttp-bom:5.3.0' in app_gradle, 'OkHttp BOM not pinned')
+require('lifecycle-runtime-compose:2.10.0' in app_gradle, 'Lifecycle Compose dependency missing')
 require('media3-session:1.11.0' in app_gradle and 'media3-exoplayer:1.11.0' in app_gradle, 'Media3 1.11.0 dependencies missing')
 
 for cmd in ['ALT','CAL','CFG','ERR','XPR','LCL','LSC','LFM','MAX','PIN','PNS','PNG','VER']:
