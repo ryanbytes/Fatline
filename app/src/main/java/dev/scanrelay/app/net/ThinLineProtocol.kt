@@ -74,7 +74,9 @@ object ThinLineProtocol {
             .put("sort", if (sort < 0) -1 else 1)
         if (systemRef != null && systemRef > 0) payload.put("system", systemRef)
         if (talkgroupRefs.isNotEmpty()) {
-            payload.put("talkgroups", JSONArray().apply { talkgroupRefs.filter { it > 0 }.forEach(::put) })
+            payload.put("talkgroups", JSONArray().apply {
+                talkgroupRefs.filter { it > 0 }.forEach { ref -> put(ref) }
+            })
         }
         return command(LIST_CALL, payload)
     }
