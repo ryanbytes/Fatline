@@ -12,6 +12,7 @@ import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.playback.ScannerService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,10 +47,12 @@ object ScannerRepository {
         var historyOffset = 0
         val pendingEncrypted = ArrayDeque<JSONObject>()
         val pendingReplay = mutableSetOf<Long>()
+        val callMutex = Mutex()
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, Session>()
+    private val keyHttpClient = OkHttpClient()
     private val _state = MutableStateFlow(ScannerState())
     val state: StateFlow<ScannerState> = _state.asStateFlow()
 
@@ -77,8 +82,6 @@ object ScannerRepository {
     @Synchronized
     fun disconnect(profileId: String) {
         sessions.remove(profileId)?.let(::stopSession)
-        val context = appContext
-        if (context != null) ScannerService.removeProfile(context, profileId)
         publish()
     }
 
@@ -87,7 +90,6 @@ object ScannerRepository {
         val old = sessions.values.toList()
         sessions.clear()
         old.forEach(::stopSession)
-        appContext?.let(ScannerService::stopAudio)
         publish()
     }
 
@@ -207,6 +209,9 @@ object ScannerRepository {
             session.pendingReplay.clear()
             session.masterKey?.fill(0)
             session.masterKey = null
+            session.keyJob = null
+            session.relayUrl = null
+            session.clientToken = null
         }
     }
 
@@ -293,7 +298,9 @@ object ScannerRepository {
                 publish()
             }
             ThinLineProtocol.CONFIG -> handleConfig(session, envelope.payload as? JSONObject ?: return)
-            ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload -> scope.launch { processCall(session, payload) } }
+            ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
+                scope.launch { session.callMutex.withLock { processCall(session, payload) } }
+            }
             ThinLineProtocol.LIST_CALL -> handleHistory(session, envelope.payload as? JSONObject ?: return)
             ThinLineProtocol.ALERT -> handleAlert(session, envelope.payload)
             ThinLineProtocol.ERROR -> {
@@ -322,54 +329,86 @@ object ScannerRepository {
         val encrypted = options?.optBoolean("audioEncryptionEnabled", false) == true
         val relayUrl = options?.optString("relayServerURL")?.takeIf { it.isNotBlank() }
         val token = options?.optString("audioClientToken")?.takeIf { it.isNotBlank() }
+        var needsKeyExchange = false
+
         synchronized(session) {
+            val detailsChanged = session.relayUrl != relayUrl || session.clientToken != token
+            if (!encrypted || detailsChanged) {
+                session.keyJob?.cancel()
+                session.keyJob = null
+                session.masterKey?.fill(0)
+                session.masterKey = null
+            }
+            if (!encrypted) session.pendingEncrypted.clear()
+
             session.relayUrl = relayUrl
             session.clientToken = token
+            needsKeyExchange = encrypted && session.masterKey == null
             session.state = session.state.copy(
                 status = ConnectionStatus.CONNECTED,
-                statusText = if (encrypted) "Connected — securing audio" else "Connected",
+                statusText = if (needsKeyExchange) "Connected — securing audio" else "Connected",
                 systems = systems,
                 audioEncryptionEnabled = encrypted,
-                encryptionReady = !encrypted,
+                encryptionReady = !encrypted || session.masterKey != null,
                 error = null
             )
             session.socket?.sendLivefeed(systems)
         }
         publish()
-        if (encrypted) startKeyExchange(session)
+        if (needsKeyExchange) startKeyExchange(session)
     }
 
     private fun startKeyExchange(session: Session) {
+        val relay: String
+        val token: String
         synchronized(session) {
             if (session.keyJob?.isActive == true || session.masterKey != null) return
-            val relay = session.relayUrl
-            val token = session.clientToken
-            if (relay.isNullOrBlank() || token.isNullOrBlank()) {
-                session.state = session.state.copy(statusText = "Connected — encrypted audio unavailable", error = "Server did not provide relay key-exchange details")
+            val currentRelay = session.relayUrl
+            val currentToken = session.clientToken
+            if (currentRelay.isNullOrBlank() || currentToken.isNullOrBlank()) {
+                session.state = session.state.copy(
+                    statusText = "Connected — encrypted audio unavailable",
+                    encryptionReady = false,
+                    error = "Server did not provide relay key-exchange details"
+                )
                 publish()
                 return
             }
+            relay = currentRelay
+            token = currentToken
             session.keyJob = scope.launch {
-                val result = runCatching { AudioCrypto(OkHttpClient()).fetchMasterKey(relay, token) }
-                result.onSuccess { key ->
-                    if (!isCurrent(session)) {
+                try {
+                    val key = AudioCrypto(keyHttpClient).fetchMasterKey(relay, token)
+                    if (!isCurrent(session) || session.relayUrl != relay || session.clientToken != token) {
                         key.fill(0)
-                        return@onSuccess
+                        return@launch
                     }
-                    val buffered: List<JSONObject>
-                    synchronized(session) {
-                        session.masterKey = key
-                        session.state = session.state.copy(statusText = "Connected", encryptionReady = true, error = null)
-                        buffered = session.pendingEncrypted.toList()
-                        session.pendingEncrypted.clear()
-                        session.keyJob = null
+
+                    session.callMutex.withLock {
+                        if (!isCurrent(session) || session.relayUrl != relay || session.clientToken != token) {
+                            key.fill(0)
+                            return@withLock
+                        }
+                        val buffered: List<JSONObject>
+                        synchronized(session) {
+                            session.masterKey = key
+                            session.state = session.state.copy(statusText = "Connected", encryptionReady = true, error = null)
+                            buffered = session.pendingEncrypted.toList()
+                            session.pendingEncrypted.clear()
+                            session.keyJob = null
+                        }
+                        publish()
+                        buffered.forEach { processCall(session, it) }
                     }
-                    publish()
-                    buffered.forEach { processCall(session, it) }
-                }.onFailure { error ->
-                    if (!isCurrent(session)) return@onFailure
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session) || session.relayUrl != relay || session.clientToken != token) return@launch
                     synchronized(session) {
-                        session.state = session.state.copy(statusText = "Connected — encrypted audio unavailable", error = error.message ?: "Audio key exchange failed")
+                        session.state = session.state.copy(
+                            statusText = "Connected — encrypted audio unavailable",
+                            encryptionReady = false,
+                            error = error.message ?: "Audio key exchange failed"
+                        )
                         session.keyJob = null
                     }
                     publish()
@@ -422,25 +461,48 @@ object ScannerRepository {
         val key = ChannelKey(systemRef, talkgroupRef)
         val audio = payload.optJSONObject("audio")
         val encrypted = audio?.optString("type") == "EncryptedBuffer" || payload.optString("audioType") == "EncryptedAES256GCM"
-        val audioBytes = when {
-            encrypted -> {
+
+        val audioBytes = if (encrypted) {
+            val data = audio?.optString("data").orEmpty()
+            if (data.isBlank()) {
+                synchronized(session) { session.state = session.state.copy(error = "Encrypted audio payload is missing ciphertext") }
+                publish()
+                return
+            }
+
+            var decrypted: ByteArray? = null
+            var needsKeyExchange = false
+            synchronized(session) {
                 val master = session.masterKey
-                val data = audio?.optString("data").orEmpty()
                 if (master == null) {
-                    synchronized(session) {
-                        if (session.pendingEncrypted.size >= 20) session.pendingEncrypted.removeFirst()
-                        session.pendingEncrypted.addLast(JSONObject(payload.toString()))
+                    bufferEncryptedCallLocked(session, payload)
+                    needsKeyExchange = true
+                } else {
+                    try {
+                        decrypted = AudioCrypto().decryptCall(master, data)
+                    } catch (error: Throwable) {
+                        if (session.masterKey === master) {
+                            session.masterKey = null
+                            master.fill(0)
+                        }
+                        session.state = session.state.copy(
+                            statusText = "Connected — refreshing audio key",
+                            encryptionReady = false,
+                            error = "Audio decrypt failed; refreshing key: ${error.message ?: "authentication failed"}"
+                        )
+                        bufferEncryptedCallLocked(session, payload)
+                        needsKeyExchange = true
                     }
-                    startKeyExchange(session)
-                    return
-                }
-                runCatching { AudioCrypto().decryptCall(master, data) }.getOrElse {
-                    synchronized(session) { session.state = session.state.copy(error = "Audio decrypt failed: ${it.message}") }
-                    publish()
-                    return
                 }
             }
-            else -> decodeBuffer(audio?.opt("data"))
+            if (needsKeyExchange) {
+                publish()
+                startKeyExchange(session)
+                return
+            }
+            decrypted ?: return
+        } else {
+            decodeBuffer(audio?.opt("data"))
         }
 
         val mime = payload.optString("audioType").takeIf { it.isNotBlank() && it != "EncryptedAES256GCM" }
@@ -479,6 +541,11 @@ object ScannerRepository {
         if (shouldPlay && path != null) ScannerService.enqueue(context, call)
     }
 
+    private fun bufferEncryptedCallLocked(session: Session, payload: JSONObject) {
+        if (session.pendingEncrypted.size >= 20) session.pendingEncrypted.removeFirst()
+        session.pendingEncrypted.addLast(JSONObject(payload.toString()))
+    }
+
     private fun handleAlert(session: Session, raw: Any?) {
         val payload = raw as? JSONObject
         val title = payload?.optString("title")?.takeIf { it.isNotBlank() }
@@ -508,16 +575,17 @@ object ScannerRepository {
         val extension = audioName?.substringAfterLast('.', "")?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) }
             ?: when (mime?.lowercase()) {
                 "audio/mpeg", "audio/mp3" -> "mp3"
-                "audio/mp4", "audio/m4a", "audio/aac" -> "m4a"
+                "audio/mp4", "audio/m4a" -> "m4a"
+                "audio/aac" -> "aac"
                 "audio/wav", "audio/x-wav" -> "wav"
                 "audio/ogg" -> "ogg"
                 else -> "bin"
             }
         val safeProfile = profileId.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val dir = File(context.cacheDir, "fatline_audio/$safeProfile").apply { mkdirs() }
-        pruneCache(dir)
         val file = File(dir, "$callId-${System.nanoTime()}.$extension")
         file.writeBytes(bytes)
+        pruneCache(dir)
         return file.absolutePath
     }
 
