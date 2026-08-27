@@ -6,6 +6,7 @@ import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ServerProfile
+import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.net.ScannerRepository
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +45,13 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun disconnectAll() = ScannerService.disconnectAll(getApplication())
     fun setTalkgroup(profileId: String, systemRef: Long, talkgroupRef: Long, enabled: Boolean) = ScannerRepository.setTalkgroupEnabled(profileId, systemRef, talkgroupRef, enabled)
     fun setAllTalkgroups(profileId: String, enabled: Boolean) = ScannerRepository.setAllEnabled(profileId, enabled)
+
+    fun setSystemTalkgroups(profileId: String, system: SystemConfig, enabled: Boolean) {
+        system.talkgroups.asSequence()
+            .filter { it.enabled != enabled }
+            .forEach { ScannerRepository.setTalkgroupEnabled(profileId, it.systemRef, it.talkgroupRef, enabled) }
+    }
+
     fun setFavorite(profileId: String, systemRef: Long, talkgroupRef: Long, favorite: Boolean) = ScannerRepository.setFavorite(profileId, systemRef, talkgroupRef, favorite)
     fun setHold(profileId: String, systemRef: Long, talkgroupRef: Long) = ScannerRepository.setHold(profileId, ChannelKey(systemRef, talkgroupRef))
     fun clearHold(profileId: String) = ScannerRepository.setHold(profileId, null)
