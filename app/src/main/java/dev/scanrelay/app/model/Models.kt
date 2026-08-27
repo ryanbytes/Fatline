@@ -95,6 +95,8 @@ data class ServerScannerState(
     val lastCall: RadioCall? = null,
     val alerts: List<ScannerAlert> = emptyList(),
     val hold: ChannelKey? = null,
+    val holdSystemRef: Long? = null,
+    val paused: Boolean = false,
     val avoided: Set<ChannelKey> = emptySet(),
     val audioEncryptionEnabled: Boolean = false,
     val encryptionReady: Boolean = false,
