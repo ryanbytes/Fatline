@@ -133,10 +133,20 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                         )
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
+                                            enabled = server.status == ConnectionStatus.CONNECTED
+                                        ) { Text(if (server.paused) "Resume live" else "Pause live") }
                                         OutlinedButton(onClick = { viewModel.setAllTalkgroups(server.profile.id, true) }) { Text("All") }
                                         OutlinedButton(onClick = { viewModel.setAllTalkgroups(server.profile.id, false) }) { Text("None") }
-                                        OutlinedButton(onClick = { viewModel.clearHold(server.profile.id) }, enabled = server.hold != null) { Text("Clear hold") }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = { viewModel.clearHold(server.profile.id) },
+                                            enabled = server.hold != null || server.holdSystemRef != null
+                                        ) { Text("Clear hold") }
                                         OutlinedButton(onClick = { viewModel.clearAvoids(server.profile.id) }, enabled = server.avoided.isNotEmpty()) { Text("Clear avoids") }
+                                        OutlinedButton(onClick = viewModel::skip) { Text("Skip audio") }
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(
@@ -149,7 +159,6 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                                 enabled = server.status == ConnectionStatus.CONNECTED
                                             ) { Text("More") }
                                         }
-                                        OutlinedButton(onClick = viewModel::skip) { Text("Skip audio") }
                                     }
                                 }
                             }
@@ -176,11 +185,19 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                         OutlinedButton(
-                                            onClick = { viewModel.setSystemTalkgroups(server.profile.id, system, true) },
+                                            onClick = {
+                                                viewModel.setSystemHold(
+                                                    server.profile.id,
+                                                    if (server.holdSystemRef == system.systemRef) null else system.systemRef
+                                                )
+                                            }
+                                        ) { Text(if (server.holdSystemRef == system.systemRef) "Held system" else "Hold system") }
+                                        OutlinedButton(
+                                            onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, true) },
                                             enabled = system.talkgroups.any { !it.enabled }
                                         ) { Text("All") }
                                         OutlinedButton(
-                                            onClick = { viewModel.setSystemTalkgroups(server.profile.id, system, false) },
+                                            onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, false) },
                                             enabled = system.talkgroups.any { it.enabled }
                                         ) { Text("None") }
                                     }
