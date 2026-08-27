@@ -83,6 +83,10 @@ require('requestHistory' in repo and 'LIST_CALL' in protocol, 'server history su
 require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'hold/avoid/skip support missing')
 require('MediaLibraryService' in service and 'MediaLibrarySession' in service and 'ExoPlayer' in service, 'Media3 Android Auto/media service missing')
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
+require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
+require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
+require('MAX_QUEUE_ITEMS = 30' in service and 'trimQueueForIncomingCall' in service, 'bounded playback queue handling missing')
+require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
 require('30_000L' in repo, 'bounded reconnect backoff missing')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
@@ -107,4 +111,4 @@ if errors:
 
 print('VALIDATION PASSED')
 print(f'Kotlin source files: {len(list(ROOT.glob("app/src/main/java/**/*.kt")))}')
-print('Features: multi-server / relay crypto / persistent selections+favorites / LCL history / hold-skip-avoid / alerts / Media3 Auto')
+print('Features: multi-server / relay crypto / persistent selections+favorites / LCL history / hold-skip-avoid / alerts / Media3 Auto / lifecycle hardening')
