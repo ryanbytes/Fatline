@@ -81,6 +81,10 @@ require('CallKey' in (ROOT / 'app/src/main/java/dev/scanrelay/app/model/Models.k
 require('pendingEncrypted' in repo and '20' in repo, 'bounded encrypted-call buffering missing')
 require('requestHistory' in repo and 'LIST_CALL' in protocol, 'server history support missing')
 require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'hold/avoid/skip support missing')
+require('callMutex = Mutex()' in repo and 'callMutex.withLock' in repo, 'per-server call ordering mutex missing')
+require('keyHttpClient = OkHttpClient()' in repo, 'shared encrypted-audio key exchange client missing')
+require('refreshing audio key' in repo and 'bufferEncryptedCallLocked' in repo, 'encrypted-audio key rotation recovery missing')
+require('ScannerService.removeProfile' not in repo and 'ScannerService::stopAudio' not in repo, 'repository must not control service disconnect lifecycle')
 require('MediaLibraryService' in service and 'MediaLibrarySession' in service and 'ExoPlayer' in service, 'Media3 Android Auto/media service missing')
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
@@ -111,4 +115,4 @@ if errors:
 
 print('VALIDATION PASSED')
 print(f'Kotlin source files: {len(list(ROOT.glob("app/src/main/java/**/*.kt")))}')
-print('Features: multi-server / relay crypto / persistent selections+favorites / LCL history / hold-skip-avoid / alerts / Media3 Auto / lifecycle hardening')
+print('Features: multi-server / relay crypto+rotation / ordered calls / persistent selections+favorites / LCL history / hold-skip-avoid / alerts / Media3 Auto / lifecycle hardening')
