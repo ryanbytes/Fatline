@@ -118,11 +118,16 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Column {
+                                        Column(Modifier.weight(1f)) {
                                             Text(server.profile.name, style = MaterialTheme.typography.titleLarge)
                                             Text(server.statusText)
                                         }
-                                        OutlinedButton(onClick = { viewModel.disconnect(server.profile.id) }) { Text("Disconnect") }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            if (server.status != ConnectionStatus.CONNECTED) {
+                                                OutlinedButton(onClick = { viewModel.connect(server.profile) }) { Text("Reconnect") }
+                                            }
+                                            OutlinedButton(onClick = { viewModel.disconnect(server.profile.id) }) { Text("Disconnect") }
+                                        }
                                     }
                                     server.serverVersion?.let { Text("Server $it", style = MaterialTheme.typography.bodySmall) }
                                     server.error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -158,6 +163,44 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                                 onClick = { viewModel.requestHistory(server.profile.id, false) },
                                                 enabled = server.status == ConnectionStatus.CONNECTED
                                             ) { Text("More") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        server.lastCall?.let { call ->
+                            item(key = "latest-${server.profile.id}-${call.id}") {
+                                Card(Modifier.padding(horizontal = 16.dp)) {
+                                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("Latest transmission", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                        Text(call.talkgroupLabel, style = MaterialTheme.typography.titleLarge)
+                                        Text("${call.systemLabel} · TG ${call.talkgroupRef}", style = MaterialTheme.typography.bodySmall)
+                                        if (call.dateTime.isNotBlank()) Text(call.dateTime, style = MaterialTheme.typography.bodySmall)
+                                        call.transcript?.let { Text(it) }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            OutlinedButton(onClick = {
+                                                if (server.hold == call.key) viewModel.clearHold(server.profile.id)
+                                                else viewModel.setHold(server.profile.id, call.systemRef, call.talkgroupRef)
+                                            }) { Text(if (server.hold == call.key) "Release TG" else "Hold TG") }
+                                            OutlinedButton(onClick = {
+                                                viewModel.setSystemHold(
+                                                    server.profile.id,
+                                                    if (server.holdSystemRef == call.systemRef) null else call.systemRef
+                                                )
+                                            }) { Text(if (server.holdSystemRef == call.systemRef) "Release system" else "Hold system") }
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            OutlinedButton(onClick = {
+                                                viewModel.avoid(
+                                                    server.profile.id,
+                                                    call.systemRef,
+                                                    call.talkgroupRef,
+                                                    call.key !in server.avoided
+                                                )
+                                            }) { Text(if (call.key in server.avoided) "Unavoid" else "Avoid") }
+                                            OutlinedButton(onClick = viewModel::skip) { Text("Skip") }
+                                            OutlinedButton(onClick = { viewModel.replay(call.profileId, call.id) }) { Text("Replay") }
                                         }
                                     }
                                 }
@@ -219,7 +262,10 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                     OutlinedButton(onClick = { viewModel.setFavorite(server.profile.id, tg.systemRef, tg.talkgroupRef, !tg.favorite) }) {
                                         Text(if (tg.favorite) "★" else "☆")
                                     }
-                                    OutlinedButton(onClick = { viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef) }) {
+                                    OutlinedButton(onClick = {
+                                        if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
+                                        else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
+                                    }) {
                                         Text(if (server.hold == tg.key) "Held" else "Hold")
                                     }
                                     OutlinedButton(onClick = { viewModel.avoid(server.profile.id, tg.systemRef, tg.talkgroupRef, tg.key !in server.avoided) }) {
@@ -227,6 +273,26 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                     }
                                 }
                                 HorizontalDivider(Modifier.padding(start = 64.dp))
+                            }
+                        }
+                    }
+
+                    if (scanner.alerts.isNotEmpty()) {
+                        item {
+                            Text(
+                                "Alerts",
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                        }
+                        items(scanner.alerts.take(100)) { alert ->
+                            Card(Modifier.padding(horizontal = 16.dp)) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(alert.title, fontWeight = FontWeight.SemiBold)
+                                    Text(alert.serverName, style = MaterialTheme.typography.bodySmall)
+                                    Text(alert.body)
+                                    alert.dateTime?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                }
                             }
                         }
                     }
