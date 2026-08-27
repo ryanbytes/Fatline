@@ -17,17 +17,20 @@ class ThinLineSocket(
 ) {
     interface Listener {
         fun onOpen()
+        fun onSavedPinSubmitted() {}
         fun onEnvelope(envelope: ThinLineProtocol.Envelope)
         fun onFailure(message: String, cause: Throwable? = null)
         fun onClosed(reason: String)
     }
 
     private val client = OkHttpClient.Builder()
-        .pingInterval(25, TimeUnit.SECONDS)
+        // A dead path should be detected quickly even when Android misses a network callback.
+        .pingInterval(15, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
     private var socket: WebSocket? = null
     private val shutdown = AtomicBoolean(false)
+    private val terminalDelivered = AtomicBoolean(false)
     private val savedPinAttempted = AtomicBoolean(false)
 
     fun connect() {
@@ -38,8 +41,12 @@ class ThinLineSocket(
                 listener.onOpen()
                 // Match ThinLine's public client: negotiate version, then request config.
                 // Protected servers answer CFG with PIN; only then do we submit a saved PIN.
-                webSocket.send(ThinLineProtocol.command(ThinLineProtocol.VERSION))
-                webSocket.send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
+                val versionSent = webSocket.send(ThinLineProtocol.command(ThinLineProtocol.VERSION))
+                val configSent = webSocket.send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
+                if (!versionSent || !configSent) {
+                    failOnce("Failed to start ThinLine negotiation")
+                    webSocket.cancel()
+                }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -50,32 +57,36 @@ class ThinLineSocket(
                             profile.pin.isNotBlank() &&
                             savedPinAttempted.compareAndSet(false, true)
                         ) {
-                            if (!webSocket.send(ThinLineProtocol.pin(profile.pin))) {
-                                listener.onFailure("Failed to submit saved PIN")
+                            if (webSocket.send(ThinLineProtocol.pin(profile.pin))) {
+                                listener.onSavedPinSubmitted()
+                            } else {
+                                failOnce("Failed to submit saved PIN")
+                                webSocket.cancel()
                             }
                         } else {
                             listener.onEnvelope(envelope)
                         }
                     }
                     .onFailure {
-                        listener.onFailure("Invalid server message", it)
+                        failOnce("Invalid server message", it)
                         webSocket.close(1002, "Invalid protocol message")
                     }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                listener.onFailure(response?.let { "WebSocket HTTP ${it.code}" } ?: t.message ?: "WebSocket failure", t)
+                failOnce(response?.let { "WebSocket HTTP ${it.code}" } ?: t.message ?: "WebSocket failure", t)
                 shutdownClient()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                listener.onClosed(if (reason.isBlank()) "Closed ($code)" else reason)
+                closeOnce(if (reason.isBlank()) "Closed ($code)" else reason)
                 shutdownClient()
             }
         })
     }
 
     fun sendLivefeed(systems: List<SystemConfig>): Boolean = send(ThinLineProtocol.livefeed(systems))
+    fun stopLivefeed(): Boolean = send(ThinLineProtocol.command(ThinLineProtocol.LIVEFEED_MAP, null))
     fun requestConfig(): Boolean = send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
     fun requestHistory(limit: Int, offset: Int, systemRef: Long?, talkgroups: Collection<Long>): Boolean =
         send(ThinLineProtocol.listCalls(limit, offset, -1, systemRef, talkgroups))
@@ -86,6 +97,21 @@ class ThinLineSocket(
         socket?.close(1000, "Client disconnect")
         socket = null
         shutdownClient()
+    }
+
+    /** Immediately tears down a socket whose route is no longer trustworthy. */
+    fun abort() {
+        socket?.cancel()
+        socket = null
+        shutdownClient()
+    }
+
+    private fun failOnce(message: String, cause: Throwable? = null) {
+        if (terminalDelivered.compareAndSet(false, true)) listener.onFailure(message, cause)
+    }
+
+    private fun closeOnce(reason: String) {
+        if (terminalDelivered.compareAndSet(false, true)) listener.onClosed(reason)
     }
 
     private fun shutdownClient() {
