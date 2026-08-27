@@ -34,6 +34,10 @@ class ThinLineProtocolTest {
         assertFalse(talkgroups.getBoolean(disabledRef.toString()))
     }
 
+    @Test fun bareLivefeedCommandMatchesThinLinePauseWireType() {
+        assertEquals("[\"LFM\"]", ThinLineProtocol.command(ThinLineProtocol.LIVEFEED_MAP))
+    }
+
     @Test fun listCallUsesDocumentedFields() {
         val parsed = ThinLineProtocol.parseEnvelope(ThinLineProtocol.listCalls(100, 200, -1, 1, listOf(101, 102)))
         val payload = parsed.payload as JSONObject
