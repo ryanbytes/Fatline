@@ -28,20 +28,35 @@ class ThinLineSocket(
         .build()
     private var socket: WebSocket? = null
     private val shutdown = AtomicBoolean(false)
+    private val savedPinAttempted = AtomicBoolean(false)
 
     fun connect() {
         val request = Request.Builder().url(webSocketUrl(profile.baseUrl)).build()
         socket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                savedPinAttempted.set(false)
                 listener.onOpen()
+                // Match ThinLine's public client: negotiate version, then request config.
+                // Protected servers answer CFG with PIN; only then do we submit a saved PIN.
                 webSocket.send(ThinLineProtocol.command(ThinLineProtocol.VERSION))
-                if (profile.pin.isNotBlank()) webSocket.send(ThinLineProtocol.pin(profile.pin))
-                else webSocket.send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
+                webSocket.send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 runCatching { ThinLineProtocol.parseEnvelope(text) }
-                    .onSuccess(listener::onEnvelope)
+                    .onSuccess { envelope ->
+                        if (
+                            envelope.command == ThinLineProtocol.PIN &&
+                            profile.pin.isNotBlank() &&
+                            savedPinAttempted.compareAndSet(false, true)
+                        ) {
+                            if (!webSocket.send(ThinLineProtocol.pin(profile.pin))) {
+                                listener.onFailure("Failed to submit saved PIN")
+                            }
+                        } else {
+                            listener.onEnvelope(envelope)
+                        }
+                    }
                     .onFailure {
                         listener.onFailure("Invalid server message", it)
                         webSocket.close(1002, "Invalid protocol message")
@@ -79,19 +94,22 @@ class ThinLineSocket(
         client.connectionPool.evictAll()
     }
 
-    private fun webSocketUrl(baseUrl: String): String {
-        val normalized = baseUrl.trim().let {
-            if (it.startsWith("http://") || it.startsWith("https://") || it.startsWith("ws://") || it.startsWith("wss://")) it
-            else "https://$it"
+    companion object {
+        /** ThinLine's listener WebSocket is served at the server origin/root. */
+        internal fun webSocketUrl(baseUrl: String): String {
+            val normalized = baseUrl.trim().let {
+                if (it.startsWith("http://") || it.startsWith("https://") || it.startsWith("ws://") || it.startsWith("wss://")) it
+                else "https://$it"
+            }
+            val uri = URI(normalized)
+            val scheme = when (uri.scheme?.lowercase()) {
+                "http" -> "ws"
+                "https" -> "wss"
+                "ws", "wss" -> uri.scheme.lowercase()
+                else -> error("Unsupported server URL scheme: ${uri.scheme}")
+            }
+            require(!uri.host.isNullOrBlank()) { "Server URL must include a host" }
+            return URI(scheme, uri.userInfo, uri.host, uri.port, "/", null, null).toString()
         }
-        val uri = URI(normalized)
-        val scheme = when (uri.scheme?.lowercase()) {
-            "http" -> "ws"
-            "https" -> "wss"
-            "ws", "wss" -> uri.scheme.lowercase()
-            else -> error("Unsupported server URL scheme: ${uri.scheme}")
-        }
-        val path = uri.rawPath?.takeIf { it.isNotBlank() } ?: "/"
-        return URI(scheme, uri.userInfo, uri.host, uri.port, path, uri.rawQuery, null).toString()
     }
 }
