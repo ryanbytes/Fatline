@@ -32,9 +32,13 @@ class ChannelStore(context: Context) {
         }
     }
 
-    fun setEnabled(profileId: String, key: ChannelKey, enabled: Boolean) {
+    fun setEnabled(profileId: String, key: ChannelKey, enabled: Boolean) =
+        setMany(profileId, setOf(key), enabled)
+
+    fun setMany(profileId: String, keys: Collection<ChannelKey>, enabled: Boolean) {
+        if (keys.isEmpty()) return
         val selected = readKeys(selectedKey(profileId)).toMutableSet()
-        if (enabled) selected += key else selected -= key
+        if (enabled) selected.addAll(keys) else selected.removeAll(keys.toSet())
         writeKeys(selectedKey(profileId), selected)
         prefs.edit().putBoolean(initializedKey(profileId), true).apply()
     }
