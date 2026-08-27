@@ -49,12 +49,17 @@ object ThinLineProtocol {
         Base64.getEncoder().encodeToString(pin.toByteArray(Charsets.UTF_8))
     )
 
+    /**
+     * ThinLine's public web client sends the complete subscription map, including
+     * explicit false values. Keep that wire shape so removing a channel is never
+     * ambiguous to the server.
+     */
     fun livefeed(systems: List<SystemConfig>): String {
         val map = JSONObject()
         systems.forEach { system ->
             val talkgroups = JSONObject()
-            system.talkgroups.filter { it.enabled }.forEach {
-                talkgroups.put(it.talkgroupRef.toString(), true)
+            system.talkgroups.forEach { talkgroup ->
+                talkgroups.put(talkgroup.talkgroupRef.toString(), talkgroup.enabled)
             }
             if (talkgroups.length() > 0) map.put(system.systemRef.toString(), talkgroups)
         }
@@ -81,8 +86,9 @@ object ThinLineProtocol {
         return command(LIST_CALL, payload)
     }
 
+    /** ThinLine's public web client serializes CAL ids as decimal strings. */
     fun call(callId: Long, download: Boolean = false): String =
-        command(CALL, callId, if (download) DOWNLOAD_FLAG else null)
+        command(CALL, callId.toString(), if (download) DOWNLOAD_FLAG else null)
 
     fun parseSystems(configPayload: JSONObject): List<SystemConfig> {
         val raw = configPayload.opt("systems") ?: return emptyList()
