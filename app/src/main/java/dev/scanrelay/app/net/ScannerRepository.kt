@@ -37,7 +37,9 @@ object ScannerRepository {
     private class Session(val profile: ServerProfile) {
         @Volatile var state = ServerScannerState(profile = profile, status = ConnectionStatus.CONNECTING, statusText = "Connecting")
         @Volatile var socket: ThinLineSocket? = null
+        @Volatile var socketGeneration = 0L
         @Volatile var reconnectJob: Job? = null
+        @Volatile var handshakeJob: Job? = null
         @Volatile var reconnectAttempt = 0
         @Volatile var stopped = false
         @Volatile var masterKey: ByteArray? = null
@@ -58,6 +60,7 @@ object ScannerRepository {
 
     @Volatile private var appContext: Context? = null
     @Volatile private var channelStore: ChannelStore? = null
+    @Volatile private var networkAvailable = true
 
     fun initialize(context: Context) {
         if (appContext != null) return
@@ -105,7 +108,23 @@ object ScannerRepository {
                 })
             }
             session.state = session.state.copy(systems = systems)
-            session.socket?.sendLivefeed(systems)
+            if (!session.state.paused) session.socket?.sendLivefeed(systems)
+        }
+        publish()
+    }
+
+    fun setSystemEnabled(profileId: String, systemRef: Long, enabled: Boolean) {
+        val session = sessions[profileId] ?: return
+        synchronized(session) {
+            val target = session.state.systems.firstOrNull { it.systemRef == systemRef } ?: return
+            val keys = target.talkgroups.map { it.key }
+            channelStore?.setMany(profileId, keys, enabled)
+            val systems = session.state.systems.map { system ->
+                if (system.systemRef != systemRef) system
+                else system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = enabled) })
+            }
+            session.state = session.state.copy(systems = systems)
+            if (!session.state.paused) session.socket?.sendLivefeed(systems)
         }
         publish()
     }
@@ -119,7 +138,27 @@ object ScannerRepository {
                 system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = enabled) })
             }
             session.state = session.state.copy(systems = systems)
-            session.socket?.sendLivefeed(systems)
+            if (!session.state.paused) session.socket?.sendLivefeed(systems)
+        }
+        publish()
+    }
+
+    fun setPaused(profileId: String, paused: Boolean) {
+        val session = sessions[profileId] ?: return
+        synchronized(session) {
+            if (session.state.paused == paused) return
+            session.state = session.state.copy(
+                paused = paused,
+                statusText = when {
+                    session.state.status != ConnectionStatus.CONNECTED -> session.state.statusText
+                    paused -> "Connected — paused"
+                    else -> "Connected"
+                }
+            )
+            if (session.state.status == ConnectionStatus.CONNECTED) {
+                if (paused) session.socket?.stopLivefeed()
+                else session.socket?.sendLivefeed(session.state.systems)
+            }
         }
         publish()
     }
@@ -143,7 +182,29 @@ object ScannerRepository {
 
     fun setHold(profileId: String, key: ChannelKey?) {
         val session = sessions[profileId] ?: return
-        synchronized(session) { session.state = session.state.copy(hold = key) }
+        synchronized(session) {
+            session.state = session.state.copy(
+                hold = key,
+                holdSystemRef = if (key != null) null else session.state.holdSystemRef
+            )
+        }
+        publish()
+    }
+
+    fun setSystemHold(profileId: String, systemRef: Long?) {
+        val session = sessions[profileId] ?: return
+        synchronized(session) {
+            session.state = session.state.copy(
+                holdSystemRef = systemRef,
+                hold = if (systemRef != null) null else session.state.hold
+            )
+        }
+        publish()
+    }
+
+    fun clearHold(profileId: String) {
+        val session = sessions[profileId] ?: return
+        synchronized(session) { session.state = session.state.copy(hold = null, holdSystemRef = null) }
         publish()
     }
 
@@ -196,90 +257,241 @@ object ScannerRepository {
         appContext?.let(ScannerService::skip)
     }
 
+    /** Called by the foreground service after Android confirms that no default route remains. */
+    fun networkUnavailable() {
+        networkAvailable = false
+        sessions.values.forEach { session ->
+            val oldSocket = synchronized(session) {
+                if (!isCurrent(session)) return@forEach
+                session.reconnectJob?.cancel()
+                session.reconnectJob = null
+                session.handshakeJob?.cancel()
+                session.handshakeJob = null
+                session.socketGeneration++
+                val old = session.socket
+                session.socket = null
+                session.state = session.state.copy(
+                    status = ConnectionStatus.CONNECTING,
+                    statusText = "Waiting for network",
+                    error = null
+                )
+                old
+            }
+            oldSocket?.abort()
+        }
+        publish()
+    }
+
+    /** Called for Wi-Fi/cellular/VPN handoffs and when a route returns after an outage. */
+    fun networkChanged(reason: String = "Network changed") {
+        networkAvailable = true
+        sessions.values.forEach { restartSession(it, "$reason; reconnecting", resetBackoff = true) }
+    }
+
     fun connectedProfiles(): List<ServerProfile> = sessions.values.map { it.profile }.sortedBy { it.name.lowercase() }
 
     private fun stopSession(session: Session) {
         session.stopped = true
         session.reconnectJob?.cancel()
+        session.handshakeJob?.cancel()
         session.keyJob?.cancel()
-        session.socket?.close()
+        session.socketGeneration++
+        val old = session.socket
         session.socket = null
+        old?.close()
         synchronized(session) {
             session.pendingEncrypted.clear()
             session.pendingReplay.clear()
             session.masterKey?.fill(0)
             session.masterKey = null
             session.keyJob = null
+            session.handshakeJob = null
             session.relayUrl = null
             session.clientToken = null
         }
     }
 
     private fun openSocket(session: Session) {
-        if (session.stopped || sessions[session.profile.id] !== session) return
-        synchronized(session) {
-            session.state = session.state.copy(status = ConnectionStatus.CONNECTING, statusText = "Connecting to ${session.profile.name}", error = null)
+        if (!isCurrent(session)) return
+        if (!networkAvailable) {
+            synchronized(session) {
+                session.state = session.state.copy(status = ConnectionStatus.CONNECTING, statusText = "Waiting for network", error = null)
+            }
+            publish()
+            return
+        }
+
+        val generation = synchronized(session) {
+            session.socketGeneration++
+            session.state = session.state.copy(
+                status = ConnectionStatus.CONNECTING,
+                statusText = "Connecting to ${session.profile.name}",
+                error = null
+            )
+            session.socketGeneration
         }
         publish()
 
         val socket = ThinLineSocket(session.profile, object : ThinLineSocket.Listener {
             override fun onOpen() {
-                if (!isCurrent(session)) return
-                session.reconnectAttempt = 0
+                if (!isCurrent(session, generation)) return
                 synchronized(session) {
-                    session.state = session.state.copy(status = ConnectionStatus.CONNECTING, statusText = "Connected; negotiating", error = null)
+                    session.state = session.state.copy(
+                        status = ConnectionStatus.CONNECTING,
+                        statusText = "Connected; negotiating",
+                        error = null
+                    )
                 }
                 publish()
+                armHandshakeWatchdog(session, generation, authSubmitted = false)
+            }
+
+            override fun onSavedPinSubmitted() {
+                if (!isCurrent(session, generation)) return
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        status = ConnectionStatus.CONNECTING,
+                        statusText = "Authenticating",
+                        error = null
+                    )
+                }
+                publish()
+                armHandshakeWatchdog(session, generation, authSubmitted = true)
             }
 
             override fun onEnvelope(envelope: ThinLineProtocol.Envelope) {
-                if (isCurrent(session)) handleEnvelope(session, envelope)
+                if (isCurrent(session, generation)) handleEnvelope(session, envelope, generation)
             }
 
             override fun onFailure(message: String, cause: Throwable?) {
-                if (!isCurrent(session)) return
+                if (!isCurrent(session, generation)) return
                 synchronized(session) {
-                    session.state = session.state.copy(status = ConnectionStatus.ERROR, statusText = "Connection lost", error = message)
+                    session.handshakeJob?.cancel()
+                    session.handshakeJob = null
+                    session.socket = null
+                    session.state = session.state.copy(
+                        status = if (networkAvailable) ConnectionStatus.ERROR else ConnectionStatus.CONNECTING,
+                        statusText = if (networkAvailable) "Connection lost" else "Waiting for network",
+                        error = if (networkAvailable) message else null
+                    )
                 }
                 publish()
-                scheduleReconnect(session)
+                scheduleReconnect(session, generation)
             }
 
             override fun onClosed(reason: String) {
-                if (!isCurrent(session)) return
+                if (!isCurrent(session, generation)) return
                 synchronized(session) {
-                    session.state = session.state.copy(status = ConnectionStatus.CONNECTING, statusText = "Disconnected; reconnecting", error = reason)
+                    session.handshakeJob?.cancel()
+                    session.handshakeJob = null
+                    session.socket = null
+                    session.state = session.state.copy(
+                        status = ConnectionStatus.CONNECTING,
+                        statusText = if (networkAvailable) "Disconnected; reconnecting" else "Waiting for network",
+                        error = if (networkAvailable) reason else null
+                    )
                 }
                 publish()
-                scheduleReconnect(session)
+                scheduleReconnect(session, generation)
             }
         })
-        session.socket = socket
-        runCatching { socket.connect() }.onFailure {
+
+        synchronized(session) {
+            if (!isCurrent(session, generation)) return
+            session.socket = socket
+        }
+
+        runCatching { socket.connect() }.onFailure { error ->
+            if (!isCurrent(session, generation)) return@onFailure
             synchronized(session) {
-                session.state = session.state.copy(status = ConnectionStatus.ERROR, statusText = "Connection failed", error = it.message)
+                session.socket = null
+                session.state = session.state.copy(
+                    status = if (networkAvailable) ConnectionStatus.ERROR else ConnectionStatus.CONNECTING,
+                    statusText = if (networkAvailable) "Connection failed" else "Waiting for network",
+                    error = if (networkAvailable) error.message else null
+                )
             }
             publish()
-            scheduleReconnect(session)
+            scheduleReconnect(session, generation)
         }
     }
 
-    private fun scheduleReconnect(session: Session) {
+    private fun armHandshakeWatchdog(session: Session, generation: Long, authSubmitted: Boolean) {
         synchronized(session) {
-            if (!isCurrent(session) || session.reconnectJob?.isActive == true) return
-            session.reconnectAttempt = (session.reconnectAttempt + 1).coerceAtMost(6)
-            val delayMs = (1_000L shl (session.reconnectAttempt - 1)).coerceAtMost(30_000L)
-            session.reconnectJob = scope.launch {
-                delay(delayMs)
-                synchronized(session) { session.reconnectJob = null }
-                if (isCurrent(session)) openSocket(session)
+            session.handshakeJob?.cancel()
+            session.handshakeJob = scope.launch {
+                delay(if (authSubmitted) 5_000L else 3_000L)
+                if (!isCurrent(session, generation)) return@launch
+                val status = session.state.status
+                if (status == ConnectionStatus.CONNECTED || status == ConnectionStatus.AUTH_REQUIRED) return@launch
+
+                session.socket?.requestConfig()
+                synchronized(session) {
+                    if (isCurrent(session, generation)) {
+                        session.state = session.state.copy(statusText = "Negotiating; retrying config")
+                    }
+                }
+                publish()
+
+                delay(4_000L)
+                if (!isCurrent(session, generation)) return@launch
+                val currentStatus = session.state.status
+                if (currentStatus != ConnectionStatus.CONNECTED && currentStatus != ConnectionStatus.AUTH_REQUIRED) {
+                    restartSession(session, "Handshake stalled; reconnecting", resetBackoff = false)
+                }
             }
         }
+    }
+
+    private fun scheduleReconnect(session: Session, generation: Long) {
+        synchronized(session) {
+            if (!isCurrent(session, generation) || session.reconnectJob?.isActive == true) return
+            if (!networkAvailable) {
+                session.state = session.state.copy(status = ConnectionStatus.CONNECTING, statusText = "Waiting for network", error = null)
+                publish()
+                return
+            }
+            session.reconnectAttempt = (session.reconnectAttempt + 1).coerceAtMost(6)
+            val baseDelay = (1_000L shl (session.reconnectAttempt - 1)).coerceAtMost(30_000L)
+            val jitter = session.profile.id.hashCode().toLong().absoluteValue % 350L
+            session.reconnectJob = scope.launch {
+                delay(baseDelay + jitter)
+                synchronized(session) { session.reconnectJob = null }
+                if (isCurrent(session, generation) && networkAvailable) openSocket(session)
+            }
+        }
+    }
+
+    private fun restartSession(session: Session, reason: String, resetBackoff: Boolean) {
+        if (!isCurrent(session)) return
+        val oldSocket = synchronized(session) {
+            if (!isCurrent(session)) return
+            session.reconnectJob?.cancel()
+            session.reconnectJob = null
+            session.handshakeJob?.cancel()
+            session.handshakeJob = null
+            session.socketGeneration++
+            if (resetBackoff) session.reconnectAttempt = 0
+            val old = session.socket
+            session.socket = null
+            session.state = session.state.copy(
+                status = ConnectionStatus.CONNECTING,
+                statusText = reason,
+                error = null
+            )
+            old
+        }
+        publish()
+        oldSocket?.abort()
+        if (networkAvailable && isCurrent(session)) openSocket(session)
     }
 
     private fun isCurrent(session: Session): Boolean = !session.stopped && sessions[session.profile.id] === session
 
-    private fun handleEnvelope(session: Session, envelope: ThinLineProtocol.Envelope) {
+    private fun isCurrent(session: Session, generation: Long): Boolean =
+        isCurrent(session) && session.socketGeneration == generation
+
+    private fun handleEnvelope(session: Session, envelope: ThinLineProtocol.Envelope, generation: Long) {
         when (envelope.command) {
             ThinLineProtocol.VERSION -> {
                 val version = (envelope.payload as? JSONObject)?.optString("version")?.takeIf { it.isNotBlank() }
@@ -287,8 +499,10 @@ object ScannerRepository {
                 publish()
             }
             ThinLineProtocol.PIN -> {
-                val attempted = session.profile.pin
                 synchronized(session) {
+                    session.handshakeJob?.cancel()
+                    session.handshakeJob = null
+                    val attempted = session.profile.pin
                     session.state = session.state.copy(
                         status = ConnectionStatus.AUTH_REQUIRED,
                         statusText = if (attempted.isBlank()) "PIN required" else "PIN rejected",
@@ -297,9 +511,16 @@ object ScannerRepository {
                 }
                 publish()
             }
-            ThinLineProtocol.CONFIG -> handleConfig(session, envelope.payload as? JSONObject ?: return)
+            ThinLineProtocol.CONFIG -> {
+                synchronized(session) {
+                    session.handshakeJob?.cancel()
+                    session.handshakeJob = null
+                    session.reconnectAttempt = 0
+                }
+                handleConfig(session, envelope.payload as? JSONObject ?: return)
+            }
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
-                scope.launch { session.callMutex.withLock { processCall(session, payload) } }
+                scope.launch { session.callMutex.withLock { processCall(session, payload, generation) } }
             }
             ThinLineProtocol.LIST_CALL -> handleHistory(session, envelope.payload as? JSONObject ?: return)
             ThinLineProtocol.ALERT -> handleAlert(session, envelope.payload)
@@ -309,13 +530,25 @@ object ScannerRepository {
             }
             ThinLineProtocol.EXPIRED -> {
                 synchronized(session) {
-                    session.state = session.state.copy(status = ConnectionStatus.AUTH_REQUIRED, statusText = "PIN expired", error = "The server reports that this PIN has expired")
+                    session.handshakeJob?.cancel()
+                    session.handshakeJob = null
+                    session.state = session.state.copy(
+                        status = ConnectionStatus.AUTH_REQUIRED,
+                        statusText = "PIN expired",
+                        error = "The server reports that this PIN has expired"
+                    )
                 }
                 publish()
             }
             ThinLineProtocol.MAX -> {
                 synchronized(session) {
-                    session.state = session.state.copy(status = ConnectionStatus.ERROR, statusText = "Connection limit reached", error = "Server connection limit: ${envelope.payload}")
+                    session.handshakeJob?.cancel()
+                    session.handshakeJob = null
+                    session.state = session.state.copy(
+                        status = ConnectionStatus.ERROR,
+                        statusText = "Connection limit reached",
+                        error = "Server connection limit: ${envelope.payload}"
+                    )
                 }
                 publish()
             }
@@ -346,13 +579,18 @@ object ScannerRepository {
             needsKeyExchange = encrypted && session.masterKey == null
             session.state = session.state.copy(
                 status = ConnectionStatus.CONNECTED,
-                statusText = if (needsKeyExchange) "Connected — securing audio" else "Connected",
+                statusText = when {
+                    session.state.paused -> "Connected — paused"
+                    needsKeyExchange -> "Connected — securing audio"
+                    else -> "Connected"
+                },
                 systems = systems,
                 audioEncryptionEnabled = encrypted,
                 encryptionReady = !encrypted || session.masterKey != null,
                 error = null
             )
-            session.socket?.sendLivefeed(systems)
+            if (session.state.paused) session.socket?.stopLivefeed()
+            else session.socket?.sendLivefeed(systems)
         }
         publish()
         if (needsKeyExchange) startKeyExchange(session)
@@ -392,7 +630,11 @@ object ScannerRepository {
                         val buffered: List<JSONObject>
                         synchronized(session) {
                             session.masterKey = key
-                            session.state = session.state.copy(statusText = "Connected", encryptionReady = true, error = null)
+                            session.state = session.state.copy(
+                                statusText = if (session.state.paused) "Connected — paused" else "Connected",
+                                encryptionReady = true,
+                                error = null
+                            )
                             buffered = session.pendingEncrypted.toList()
                             session.pendingEncrypted.clear()
                             session.keyJob = null
@@ -452,8 +694,11 @@ object ScannerRepository {
         )
     }
 
-    private fun processCall(session: Session, payload: JSONObject) {
-        if (!isCurrent(session)) return
+    private fun processCall(session: Session, payload: JSONObject, generation: Long? = null) {
+        if (generation != null) {
+            if (!isCurrent(session, generation)) return
+        } else if (!isCurrent(session)) return
+
         val context = appContext ?: return
         val id = payload.optLong("id")
         val systemRef = payload.optLong("system")
@@ -531,9 +776,10 @@ object ScannerRepository {
         synchronized(session) {
             val replayRequested = session.pendingReplay.remove(id)
             val enabled = session.state.systems.flatMap { it.talkgroups }.firstOrNull { it.key == key }?.enabled == true
-            val holdAllows = session.state.hold?.let { it == key } ?: true
+            val talkgroupHoldAllows = session.state.hold?.let { it == key } ?: true
+            val systemHoldAllows = session.state.holdSystemRef?.let { it == systemRef } ?: true
             val avoided = key in session.state.avoided
-            shouldPlay = replayRequested || (enabled && holdAllows && !avoided)
+            shouldPlay = replayRequested || (!session.state.paused && enabled && talkgroupHoldAllows && systemHoldAllows && !avoided)
             val merged = (session.state.history + call).associateBy { it.id }.values.sortedByDescending(::callSortKey).take(500)
             session.state = session.state.copy(history = merged, lastCall = call)
         }
