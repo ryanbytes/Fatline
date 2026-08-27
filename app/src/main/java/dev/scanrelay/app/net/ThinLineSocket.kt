@@ -24,7 +24,6 @@ class ThinLineSocket(
     }
 
     private val client = OkHttpClient.Builder()
-        // A dead path should be detected quickly even when Android misses a network callback.
         .pingInterval(15, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
@@ -39,8 +38,6 @@ class ThinLineSocket(
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 savedPinAttempted.set(false)
                 listener.onOpen()
-                // Match ThinLine's public client: negotiate version, then request config.
-                // Protected servers answer CFG with PIN; only then do we submit a saved PIN.
                 val versionSent = webSocket.send(ThinLineProtocol.command(ThinLineProtocol.VERSION))
                 val configSent = webSocket.send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
                 if (!versionSent || !configSent) {
@@ -86,7 +83,8 @@ class ThinLineSocket(
     }
 
     fun sendLivefeed(systems: List<SystemConfig>): Boolean = send(ThinLineProtocol.livefeed(systems))
-    fun stopLivefeed(): Boolean = send(ThinLineProtocol.command(ThinLineProtocol.LIVEFEED_MAP, null))
+    // ThinLine's public client uses a bare ["LFM"] envelope to stop/pause live traffic.
+    fun stopLivefeed(): Boolean = send(ThinLineProtocol.command(ThinLineProtocol.LIVEFEED_MAP))
     fun requestConfig(): Boolean = send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
     fun requestHistory(limit: Int, offset: Int, systemRef: Long?, talkgroups: Collection<Long>): Boolean =
         send(ThinLineProtocol.listCalls(limit, offset, -1, systemRef, talkgroups))
@@ -99,7 +97,6 @@ class ThinLineSocket(
         shutdownClient()
     }
 
-    /** Immediately tears down a socket whose route is no longer trustworthy. */
     fun abort() {
         socket?.cancel()
         socket = null
@@ -121,7 +118,6 @@ class ThinLineSocket(
     }
 
     companion object {
-        /** ThinLine's listener WebSocket is served at the server origin/root. */
         internal fun webSocketUrl(baseUrl: String): String {
             val normalized = baseUrl.trim().let {
                 if (it.startsWith("http://") || it.startsWith("https://") || it.startsWith("ws://") || it.startsWith("wss://")) it
