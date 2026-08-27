@@ -1,22 +1,30 @@
 # FatLine build status
 
-This tree is intended to be built by GitHub Actions because the ChatGPT execution container does not have a complete Android SDK/Gradle dependency cache.
+GitHub Actions is the authoritative Android build environment for this repository.
 
-## Locally checked
+## Verified build baseline
 
-- Python structural/project validator
-- XML manifest parse
-- ThinLine JSON-array protocol fixtures
-- 64-bit system/talkgroup references
-- source presence for multi-server sessions, history, relay crypto, favorites, hold/avoid/skip, alerts, and Media3
+The Android API 36 configuration has completed successful CI runs with:
+
+- Python structural/project validation
+- XML manifest validation
+- deterministic ThinLine protocol unit tests
+- P-256 / ECDH / HKDF-SHA256 / AES-GCM crypto unit tests
+- `testDebugUnitTest`
+- `assembleDebug`
+- upload of `app/build/outputs/apk/debug/app-debug.apk` as the **FatLine-debug** artifact
+
+The runtime-hardening branch was also compiled successfully after adding foreground-service lifecycle cleanup, bounded playback-queue behavior, per-server ordered call processing, and encrypted-audio key-rotation recovery.
 
 ## CI checks
 
 `Android CI` runs:
 
-1. Android SDK 37 installation
+1. Android SDK 36 installation
 2. `python3 tools/validate_project.py`
 3. `gradle testDebugUnitTest assembleDebug --stacktrace`
 4. upload of `app/build/outputs/apk/debug/app-debug.apk`
 
-Do not treat this file as proof of a successful Android compile. The workflow run is authoritative.
+## What CI does not prove
+
+A green build does not by itself prove interoperability with every live ThinLine/Rdio-style server, relay-encryption deployment, Android Auto head unit, or vendor-specific Android background-management behavior. Those paths still require runtime testing against real deployments.

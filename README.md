@@ -6,7 +6,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 
 ## Current 0.2 feature set
 
-- Android 8.0+ (`minSdk 26`), compile/target SDK 37
+- Android 8.0+ (`minSdk 26`), compile/target SDK 36
 - Kotlin + Jetpack Compose
 - Multiple scanner servers connected simultaneously
 - Open and PIN-protected servers; PINs stored with Android Keystore AES-GCM
@@ -14,13 +14,16 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Persistent per-server channel selections and favorites
 - New server profiles default to all authorized talkgroups enabled; an intentional **None** selection stays empty
 - Per-server call identity, history, hold, avoid, reconnect state, and audio-encryption key
+- Per-server ordered call processing while different servers remain concurrent
 - Server archive/history through `LCL` with `CAL` retrieval for replay
 - Hold / avoid / skip controls
 - Local scanner-alert notifications
 - ThinLine relay encrypted audio: P-256 ECDH, HKDF-SHA256 (`tlr-audio-key-wrap-v1`), AES-256-GCM
 - Bounded encrypted-call buffering while a relay key exchange is pending
+- Automatic relay-key refresh after encrypted-audio authentication/decrypt failure
 - Media3 1.11.0 ExoPlayer playback and `MediaLibraryService` Android Auto surface
-- Android Auto browse tree: profiles → favorited talkgroups; selecting a favorite sets a talkgroup hold
+- Android Auto browse tree: profiles → favorited talkgroups; server items are browsable/playable and selecting a favorite sets a talkgroup hold
+- Foreground-service restore cleanup for deleted/stale profiles and bounded playback queue handling
 
 ## Build
 
@@ -30,9 +33,9 @@ GitHub Actions is the authoritative Android build environment:
 .github/workflows/android.yml
 ```
 
-It installs Android API 37, runs the static validator and unit tests, builds the debug APK, and uploads the **FatLine-debug** artifact.
+It installs Android API 36, runs the static validator and unit tests, builds the debug APK, and uploads the **FatLine-debug** artifact.
 
-Local commands with JDK 21, Android SDK 37, and Gradle 9.4.1:
+Local commands with JDK 21, Android SDK 36, and Gradle 9.4.1:
 
 ```bash
 python3 tools/validate_project.py
@@ -44,9 +47,9 @@ gradle testDebugUnitTest assembleDebug
 - Saved PINs are encrypted with per-profile keys in Android Keystore.
 - HTTPS/WSS uses normal Android/OkHttp certificate validation; no trust-all or pin-bypass code exists.
 - Cleartext HTTP remains allowed for self-hosted LAN scanner deployments and the UI warns when it is used.
-- Relay audio master keys are held in memory only and zeroed when a scanner session is removed.
+- Relay audio master keys are held in memory only, cleared when scanner sessions are removed, and refreshed when encrypted audio indicates a stale key.
 - No ad or analytics SDK is included.
 
 ## Verification status
 
-Static validation can run without the Android SDK. The Android compile and unit-test result is determined by the repository's `Android CI` workflow; runtime testing with a real ThinLine server and Android Auto host is still required even after CI is green.
+The repository has produced green GitHub Actions builds for the current Android API 36 toolchain, including `testDebugUnitTest`, `assembleDebug`, and debug-APK upload. Runtime interoperability with real ThinLine servers, encrypted relay deployments, and an Android Auto host still requires device/server testing; CI proves the Android project builds and its deterministic unit tests pass, not that every external deployment behaves identically.
