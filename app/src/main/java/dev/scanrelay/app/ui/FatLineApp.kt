@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -28,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.scanrelay.app.ScannerViewModel
@@ -61,16 +63,21 @@ fun FatLineApp(viewModel: ScannerViewModel) {
 
                     if (profiles.isNotEmpty()) {
                         item {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                profiles.forEach { profile ->
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(profiles, key = { it.id }) { profile ->
                                     OutlinedButton(onClick = { editingId = profile.id }) { Text(profile.name) }
                                 }
-                                OutlinedButton(onClick = {
-                                    editingId = UUID.randomUUID().toString()
-                                    name = "Scanner"
-                                    url = ""
-                                    pin = ""
-                                }) { Text("New") }
+                                item {
+                                    OutlinedButton(onClick = {
+                                        editingId = UUID.randomUUID().toString()
+                                        name = "Scanner"
+                                        url = ""
+                                        pin = ""
+                                    }) { Text("New") }
+                                }
                             }
                         }
                     }
@@ -80,7 +87,13 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
                                 OutlinedTextField(url, { url = it }, label = { Text("Server URL") }, modifier = Modifier.fillMaxWidth())
-                                OutlinedTextField(pin, { pin = it }, label = { Text("PIN (optional)") }, modifier = Modifier.fillMaxWidth())
+                                OutlinedTextField(
+                                    pin,
+                                    { pin = it },
+                                    label = { Text("PIN (optional)") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    visualTransformation = PasswordVisualTransformation()
+                                )
                                 if (url.startsWith("http://", true)) {
                                     Text("Warning: HTTP does not provide transport encryption.", style = MaterialTheme.typography.bodySmall)
                                 }
@@ -130,6 +143,12 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                             onClick = { viewModel.requestHistory(server.profile.id, true) },
                                             enabled = server.status == ConnectionStatus.CONNECTED
                                         ) { Text("History") }
+                                        if (server.historyHasMore) {
+                                            OutlinedButton(
+                                                onClick = { viewModel.requestHistory(server.profile.id, false) },
+                                                enabled = server.status == ConnectionStatus.CONNECTED
+                                            ) { Text("More") }
+                                        }
                                         OutlinedButton(onClick = viewModel::skip) { Text("Skip audio") }
                                     }
                                 }
@@ -138,12 +157,34 @@ fun FatLineApp(viewModel: ScannerViewModel) {
 
                         server.systems.forEach { system ->
                             item(key = "system-${server.profile.id}-${system.systemRef}") {
-                                Text(
-                                    system.label,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            system.label,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        val enabledCount = system.talkgroups.count { it.enabled }
+                                        Text(
+                                            "$enabledCount/${system.talkgroups.size} enabled",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        OutlinedButton(
+                                            onClick = { viewModel.setSystemTalkgroups(server.profile.id, system, true) },
+                                            enabled = system.talkgroups.any { !it.enabled }
+                                        ) { Text("All") }
+                                        OutlinedButton(
+                                            onClick = { viewModel.setSystemTalkgroups(server.profile.id, system, false) },
+                                            enabled = system.talkgroups.any { it.enabled }
+                                        ) { Text("None") }
+                                    }
+                                }
                             }
                             items(system.talkgroups, key = { "tg-${server.profile.id}-${it.systemRef}-${it.talkgroupRef}" }) { tg ->
                                 Row(
