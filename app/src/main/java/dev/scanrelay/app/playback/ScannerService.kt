@@ -63,9 +63,18 @@ class ScannerService : MediaLibraryService() {
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
             ACTION_DISCONNECT_ALL -> disconnectAll()
             ACTION_ENQUEUE -> addMediaFromIntent(intent)
-            ACTION_SKIP -> skipInternal()
-            ACTION_STOP_AUDIO -> stopAudioInternal()
-            ACTION_REMOVE_PROFILE -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::removeProfileMedia)
+            ACTION_SKIP -> {
+                skipInternal()
+                stopIfIdle()
+            }
+            ACTION_STOP_AUDIO -> {
+                stopAudioInternal()
+                stopIfIdle()
+            }
+            ACTION_REMOVE_PROFILE -> {
+                intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::removeProfileMedia)
+                stopIfIdle()
+            }
             null -> restoreConnections()
         }
         return START_STICKY
@@ -74,45 +83,92 @@ class ScannerService : MediaLibraryService() {
     override fun onDestroy() {
         session.release()
         player.release()
-        ScannerRepository.disconnectAll()
+        withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnectAll() }
         super.onDestroy()
     }
 
     private fun connectProfile(profileId: String) {
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val active = prefs.getStringSet(KEY_ACTIVE_PROFILES, emptySet()).orEmpty().toMutableSet()
-        active += profileId
-        prefs.edit().putStringSet(KEY_ACTIVE_PROFILES, active).apply()
-        ProfileStore(this).load().firstOrNull { it.id == profileId }?.let(ScannerRepository::connect)
-        updateNotification("FatLine", "Monitoring ${active.size} server${if (active.size == 1) "" else "s"}")
+        val profile = ProfileStore(this).load().firstOrNull { it.id == profileId }
+        if (profile == null) {
+            val active = activeProfileIds().apply { remove(profileId) }
+            persistActiveProfiles(active)
+            if (active.isEmpty()) stopIfIdle() else updateMonitoringNotification(active.size)
+            return
+        }
+
+        val active = activeProfileIds().apply { add(profileId) }
+        persistActiveProfiles(active)
+        ScannerRepository.connect(profile)
+        updateMonitoringNotification(active.size)
     }
 
     private fun disconnectProfile(profileId: String) {
-        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
-        val active = prefs.getStringSet(KEY_ACTIVE_PROFILES, emptySet()).orEmpty().toMutableSet()
-        active -= profileId
-        prefs.edit().putStringSet(KEY_ACTIVE_PROFILES, active).apply()
-        ScannerRepository.disconnect(profileId)
+        val active = activeProfileIds().apply { remove(profileId) }
+        persistActiveProfiles(active)
+        withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnect(profileId) }
         removeProfileMedia(profileId)
         if (active.isEmpty()) {
             stopAudioInternal()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
-        } else updateNotification("FatLine", "Monitoring ${active.size} servers")
+        } else updateMonitoringNotification(active.size)
     }
 
     private fun disconnectAll() {
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(KEY_ACTIVE_PROFILES).apply()
-        ScannerRepository.disconnectAll()
+        persistActiveProfiles(emptySet())
+        withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnectAll() }
         stopAudioInternal()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun restoreConnections() {
-        val ids = getSharedPreferences(PREFS, MODE_PRIVATE).getStringSet(KEY_ACTIVE_PROFILES, emptySet()).orEmpty()
+        val savedIds = activeProfileIds()
         val profiles = ProfileStore(this).load().associateBy { it.id }
-        ids.mapNotNull(profiles::get).forEach(ScannerRepository::connect)
+        val validIds = savedIds.filterTo(mutableSetOf()) { profiles.containsKey(it) }
+        if (validIds != savedIds) persistActiveProfiles(validIds)
+
+        if (validIds.isEmpty()) {
+            stopAudioInternal()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
+        }
+
+        validIds.mapNotNull(profiles::get).forEach(ScannerRepository::connect)
+        updateMonitoringNotification(validIds.size)
+    }
+
+    private fun activeProfileIds(): MutableSet<String> =
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getStringSet(KEY_ACTIVE_PROFILES, emptySet())
+            .orEmpty()
+            .toMutableSet()
+
+    private fun persistActiveProfiles(active: Set<String>) {
+        val editor = getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+        if (active.isEmpty()) editor.remove(KEY_ACTIVE_PROFILES)
+        else editor.putStringSet(KEY_ACTIVE_PROFILES, active.toSet())
+        editor.apply()
+    }
+
+    private fun updateMonitoringNotification(count: Int) {
+        updateNotification("FatLine", "Monitoring $count server${if (count == 1) "" else "s"}")
+    }
+
+    private fun stopIfIdle() {
+        if (activeProfileIds().isNotEmpty() || player.mediaItemCount > 0) return
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private inline fun withRepositoryServiceCallbacksSuppressed(block: () -> Unit) {
+        suppressRepositoryServiceCallbacks = true
+        try {
+            block()
+        } finally {
+            suppressRepositoryServiceCallbacks = false
+        }
     }
 
     private fun addMediaFromIntent(intent: Intent) {
@@ -133,18 +189,30 @@ class ScannerService : MediaLibraryService() {
                     .build()
             )
             .build()
-        if (player.mediaItemCount >= 30) player.removeMediaItem(0)
+
+        if (player.playbackState == Player.STATE_ENDED) player.clearMediaItems()
+        trimQueueForIncomingCall()
         player.addMediaItem(item)
-        player.prepare()
-        if (!player.isPlaying) player.play()
+        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+        if (!player.playWhenReady) player.play()
+    }
+
+    private fun trimQueueForIncomingCall() {
+        if (player.mediaItemCount < MAX_QUEUE_ITEMS) return
+        val current = player.currentMediaItemIndex
+        val removeIndex = when {
+            current > 0 -> 0
+            player.mediaItemCount > 1 -> 1
+            else -> -1
+        }
+        if (removeIndex >= 0) player.removeMediaItem(removeIndex)
     }
 
     private fun skipInternal() {
-        if (player.hasNextMediaItem()) player.seekToNextMediaItem()
-        else if (player.mediaItemCount > 0) {
-            player.removeMediaItem(player.currentMediaItemIndex.coerceAtLeast(0))
-            if (player.mediaItemCount > 0) player.play()
-        }
+        if (player.mediaItemCount <= 0) return
+        val index = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0
+        player.removeMediaItem(index)
+        if (player.mediaItemCount > 0 && !player.playWhenReady) player.play()
     }
 
     private fun stopAudioInternal() {
@@ -211,7 +279,7 @@ class ScannerService : MediaLibraryService() {
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             val all = when {
                 parentId == ROOT_ID -> ProfileStore(this@ScannerService).load().map { profile ->
-                    browsableItem("profile:${profile.id}", profile.name, profile.baseUrl)
+                    serverItem("profile:${profile.id}", profile.name, profile.baseUrl)
                 }
                 parentId.startsWith("profile:") -> {
                     val profileId = parentId.removePrefix("profile:")
@@ -256,6 +324,11 @@ class ScannerService : MediaLibraryService() {
         .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(subtitle).setIsBrowsable(true).setIsPlayable(false).build())
         .build()
 
+    private fun serverItem(id: String, title: String, subtitle: String) = MediaItem.Builder()
+        .setMediaId(id)
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(subtitle).setIsBrowsable(true).setIsPlayable(true).build())
+        .build()
+
     private fun playableItem(id: String, title: String, subtitle: String) = MediaItem.Builder()
         .setMediaId(id)
         .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(subtitle).setIsBrowsable(false).setIsPlayable(true).build())
@@ -267,6 +340,9 @@ class ScannerService : MediaLibraryService() {
         private const val PREFS = "fatline_session"
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
         private const val ROOT_ID = "fatline_root"
+        private const val MAX_QUEUE_ITEMS = 30
+
+        @Volatile private var suppressRepositoryServiceCallbacks = false
 
         const val ACTION_CONNECT = "dev.scanrelay.CONNECT"
         const val ACTION_DISCONNECT = "dev.scanrelay.DISCONNECT"
@@ -309,15 +385,22 @@ class ScannerService : MediaLibraryService() {
         }
 
         fun skip(context: Context) {
-            context.startService(Intent(context, ScannerService::class.java).setAction(ACTION_SKIP))
+            val intent = Intent(context, ScannerService::class.java).setAction(ACTION_SKIP)
+            runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
         fun stopAudio(context: Context) {
-            context.startService(Intent(context, ScannerService::class.java).setAction(ACTION_STOP_AUDIO))
+            if (suppressRepositoryServiceCallbacks) return
+            val intent = Intent(context, ScannerService::class.java).setAction(ACTION_STOP_AUDIO)
+            runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
         fun removeProfile(context: Context, profileId: String) {
-            context.startService(Intent(context, ScannerService::class.java).setAction(ACTION_REMOVE_PROFILE).putExtra(EXTRA_PROFILE_ID, profileId))
+            if (suppressRepositoryServiceCallbacks) return
+            val intent = Intent(context, ScannerService::class.java)
+                .setAction(ACTION_REMOVE_PROFILE)
+                .putExtra(EXTRA_PROFILE_ID, profileId)
+            runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
         }
     }
 }
