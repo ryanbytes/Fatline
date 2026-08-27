@@ -257,7 +257,6 @@ object ScannerRepository {
         appContext?.let(ScannerService::skip)
     }
 
-    /** Called by the foreground service after Android confirms that no default route remains. */
     fun networkUnavailable() {
         networkAvailable = false
         sessions.values.forEach { session ->
@@ -282,7 +281,6 @@ object ScannerRepository {
         publish()
     }
 
-    /** Called for Wi-Fi/cellular/VPN handoffs and when a route returns after an outage. */
     fun networkChanged(reason: String = "Network changed") {
         networkAvailable = true
         sessions.values.forEach { restartSession(it, "$reason; reconnecting", resetBackoff = true) }
