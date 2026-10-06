@@ -286,13 +286,20 @@ object ScannerRepository {
         synchronized(session) {
             if (reset) {
                 session.historyOffset = 0
-                session.state = session.state.copy(history = emptyList(), historyHasMore = false)
+                session.state = session.state.copy(
+                    history = emptyList(),
+                    historyHasMore = false,
+                    historySystemRef = systemRef,
+                    historyTalkgroupRef = talkgroupRef
+                )
             }
+            val activeSystemRef = session.state.historySystemRef
+            val activeTalkgroupRef = session.state.historyTalkgroupRef
             session.socket?.requestHistory(
                 limit = 100,
                 offset = session.historyOffset,
-                systemRef = systemRef,
-                talkgroups = talkgroupRef?.let(::listOf).orEmpty()
+                systemRef = activeSystemRef,
+                talkgroups = activeTalkgroupRef?.let(::listOf).orEmpty()
             )
         }
         publish()
