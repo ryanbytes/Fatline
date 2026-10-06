@@ -1562,6 +1562,11 @@ private fun AlertsScreen(
                         talkgroup.systemRef,
                         talkgroup.talkgroupRef
                     ) { mutableStateOf(false) }
+                    var showChannelSoundChoices by remember(
+                        server.profile.id,
+                        talkgroup.systemRef,
+                        talkgroup.talkgroupRef
+                    ) { mutableStateOf(false) }
 
                     var customKeywordsText by remember(
                         server.profile.id,
@@ -1681,6 +1686,58 @@ private fun AlertsScreen(
                                                 (preference?.keywordListIds?.size ?: 0) +
                                                 "/" + server.alertKeywordLists.size
                                         )
+                                    }
+                                }
+                                item {
+                                    OutlinedButton(onClick = { showChannelSoundChoices = !showChannelSoundChoices }) {
+                                        Text("Sound: " + serverAlertSoundLabel(preference?.notificationSound))
+                                    }
+                                }
+                                item {
+                                    if (preference?.pagerAlert == true) {
+                                        Button(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    pagerAlert = false
+                                                )
+                                            }
+                                        ) { Text("Pager ✓") }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    pagerAlert = true
+                                                )
+                                            }
+                                        ) { Text("Pager off") }
+                                    }
+                                }
+                            }
+                            if (showChannelSoundChoices) {
+                                Text("Notification sound", style = MaterialTheme.typography.bodySmall)
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(SERVER_ALERT_SOUNDS, key = { "channel-sound-" + it.first }) { sound ->
+                                        val selected = preference?.notificationSound.orEmpty() == sound.first
+                                        if (selected) {
+                                            Button(
+                                                onClick = { showChannelSoundChoices = false }
+                                            ) { Text(sound.second + " ✓") }
+                                        } else {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.setAlertPreference(
+                                                        server.profile.id,
+                                                        talkgroup.key,
+                                                        notificationSound = sound.first
+                                                    )
+                                                    showChannelSoundChoices = false
+                                                }
+                                            ) { Text(sound.second) }
+                                        }
                                     }
                                 }
                             }
