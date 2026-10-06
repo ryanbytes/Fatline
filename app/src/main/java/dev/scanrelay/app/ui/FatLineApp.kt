@@ -1012,6 +1012,12 @@ private fun AlertsScreen(
                     val alertEnabled = preference?.alertEnabled == true
                     val toneAlerts = preference?.toneAlerts ?: true
                     val keywordAlerts = preference?.keywordAlerts ?: true
+                    val selectedToneSetIds = preference?.toneSetIds.orEmpty().toSet()
+                    var showToneSets by remember(
+                        server.profile.id,
+                        talkgroup.systemRef,
+                        talkgroup.talkgroupRef
+                    ) { mutableStateOf(false) }
                     var showKeywordLists by remember(
                         server.profile.id,
                         talkgroup.systemRef,
@@ -1062,26 +1068,48 @@ private fun AlertsScreen(
                                     }
                                 }
                                 item {
-                                    if (toneAlerts) {
-                                        Button(
-                                            onClick = {
-                                                viewModel.setAlertPreference(
-                                                    server.profile.id,
-                                                    talkgroup.key,
-                                                    toneAlerts = false
-                                                )
-                                            }
-                                        ) { Text("Tone ✓") }
-                                    } else {
-                                        OutlinedButton(
-                                            onClick = {
-                                                viewModel.setAlertPreference(
-                                                    server.profile.id,
-                                                    talkgroup.key,
-                                                    toneAlerts = true
-                                                )
-                                            }
-                                        ) { Text("Tone off") }
+                                    when {
+                                        !talkgroup.toneDetectionEnabled -> {
+                                            OutlinedButton(
+                                                onClick = {},
+                                                enabled = false
+                                            ) { Text("Tone unavailable") }
+                                        }
+                                        toneAlerts -> {
+                                            Button(
+                                                onClick = {
+                                                    viewModel.setAlertPreference(
+                                                        server.profile.id,
+                                                        talkgroup.key,
+                                                        toneAlerts = false
+                                                    )
+                                                }
+                                            ) { Text("Tone ✓") }
+                                        }
+                                        else -> {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.setAlertPreference(
+                                                        server.profile.id,
+                                                        talkgroup.key,
+                                                        toneAlerts = true
+                                                    )
+                                                }
+                                            ) { Text("Tone off") }
+                                        }
+                                    }
+                                }
+                                if (talkgroup.toneDetectionEnabled && talkgroup.toneSets.isNotEmpty()) {
+                                    item {
+                                        OutlinedButton(onClick = { showToneSets = !showToneSets }) {
+                                            Text(
+                                                if (selectedToneSetIds.isEmpty()) {
+                                                    "Tones all"
+                                                } else {
+                                                    "Tones " + selectedToneSetIds.size + "/" + talkgroup.toneSets.size
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                                 item {
@@ -1114,6 +1142,38 @@ private fun AlertsScreen(
                                                 (preference?.keywordListIds?.size ?: 0) +
                                                 "/" + server.alertKeywordLists.size
                                         )
+                                    }
+                                }
+                            }
+                            if (showToneSets && talkgroup.toneDetectionEnabled && talkgroup.toneSets.isNotEmpty()) {
+                                Text(
+                                    "Leave all unselected to alert on every tone set.",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(talkgroup.toneSets, key = { it.id }) { toneSet ->
+                                        val selected = toneSet.id in selectedToneSetIds
+                                        if (selected) {
+                                            Button(
+                                                onClick = {
+                                                    viewModel.setAlertToneSets(
+                                                        server.profile.id,
+                                                        talkgroup.key,
+                                                        selectedToneSetIds - toneSet.id
+                                                    )
+                                                }
+                                            ) { Text(toneSet.label + " ✓") }
+                                        } else {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.setAlertToneSets(
+                                                        server.profile.id,
+                                                        talkgroup.key,
+                                                        selectedToneSetIds + toneSet.id
+                                                    )
+                                                }
+                                            ) { Text(toneSet.label) }
+                                        }
                                     }
                                 }
                             }
