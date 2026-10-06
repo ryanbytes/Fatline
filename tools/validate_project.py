@@ -224,6 +224,13 @@ require('setAlertKeywords' in repo and 'normalizeAlertKeywords' in repo, 'custom
 require('setAlertKeywords' in viewmodel, 'custom keyword view-model bridge missing')
 require('Custom keywords' in ui and 'Save keywords' in ui and 'Separate phrases with commas or new lines' in ui, 'custom keyword editor missing')
 require('customAlertKeywordsNormalizeCommaNewlineWhitespaceAndDuplicates' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'custom keyword normalization regression test missing')
+require('AlertToneSet' in models and 'toneDetectionEnabled' in models and 'toneSets' in models, 'talkgroup tone-set metadata missing')
+require('parseToneSets' in protocol and 'toneDetectionEnabled = node.optBoolean' in protocol, 'tone-set config parsing missing')
+require('setAlertToneSets' in repo and 'normalizeAlertToneSetIds' in repo, 'per-talkgroup tone-set persistence missing')
+require('setAlertToneSets' in viewmodel, 'tone-set view-model bridge missing')
+require('Tones all' in ui and 'Leave all unselected to alert on every tone set.' in ui and 'Tone unavailable' in ui, 'tone-set selection UI missing')
+require('systemsParseToneDetectionAndToneSets' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt').read_text(), 'tone-set config regression test missing')
+require('alertToneSetIdsTrimDropBlanksAndDeduplicate' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'tone-set selection normalization regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
