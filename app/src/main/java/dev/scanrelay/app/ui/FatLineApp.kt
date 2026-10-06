@@ -861,6 +861,10 @@ private fun AlertsScreen(
     var alertQuery by remember(selectedProfileId) { mutableStateOf("") }
     var preferenceQuery by remember(selectedProfileId) { mutableStateOf("") }
     var showAlertPreferences by remember(selectedProfileId) { mutableStateOf(false) }
+    var keywordListEditorId by remember(selectedProfileId) { mutableStateOf<Long?>(null) }
+    var keywordListEditorLabel by remember(selectedProfileId) { mutableStateOf("") }
+    var keywordListEditorDescription by remember(selectedProfileId) { mutableStateOf("") }
+    var keywordListEditorKeywords by remember(selectedProfileId) { mutableStateOf("") }
     val normalizedQuery = alertQuery.trim().lowercase()
     val normalizedPreferenceQuery = preferenceQuery.trim().lowercase()
     val visibleAlerts = server?.alerts.orEmpty().filter { alert ->
@@ -987,6 +991,8 @@ private fun AlertsScreen(
                     }
                     if (showAlertPreferences && server.alertKeywordListsLoading) {
                         Text("Loading keyword lists…", style = MaterialTheme.typography.bodySmall)
+                    } else if (showAlertPreferences && server.alertKeywordListsSaving) {
+                        Text("Saving keyword lists…", style = MaterialTheme.typography.bodySmall)
                     }
                     if (showAlertPreferences) {
                         OutlinedTextField(
@@ -1005,6 +1011,137 @@ private fun AlertsScreen(
             }
 
             if (showAlertPreferences) {
+                item {
+                    Card(Modifier.padding(horizontal = 16.dp)) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Manage keyword lists", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (keywordListEditorId == null) {
+                                    "Create a reusable keyword list for alert matching."
+                                } else {
+                                    "Editing keyword list #" + keywordListEditorId
+                                },
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            OutlinedTextField(
+                                value = keywordListEditorLabel,
+                                onValueChange = { keywordListEditorLabel = it },
+                                label = { Text("List name") },
+                                singleLine = true,
+                                enabled = !server.alertKeywordListsSaving,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = keywordListEditorDescription,
+                                onValueChange = { keywordListEditorDescription = it },
+                                label = { Text("Description") },
+                                singleLine = true,
+                                enabled = !server.alertKeywordListsSaving,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = keywordListEditorKeywords,
+                                onValueChange = { keywordListEditorKeywords = it },
+                                label = { Text("Keywords") },
+                                supportingText = { Text("Separate phrases with commas or new lines.") },
+                                enabled = !server.alertKeywordListsSaving,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        val listId = keywordListEditorId
+                                        if (listId == null) {
+                                            viewModel.createAlertKeywordList(
+                                                server.profile.id,
+                                                keywordListEditorLabel,
+                                                keywordListEditorDescription,
+                                                keywordListEditorKeywords
+                                            )
+                                        } else {
+                                            viewModel.updateAlertKeywordList(
+                                                server.profile.id,
+                                                listId,
+                                                keywordListEditorLabel,
+                                                keywordListEditorDescription,
+                                                keywordListEditorKeywords
+                                            )
+                                        }
+                                    },
+                                    enabled = keywordListEditorLabel.isNotBlank() &&
+                                        !server.alertKeywordListsSaving
+                                ) {
+                                    Text(if (keywordListEditorId == null) "Create list" else "Save changes")
+                                }
+                                if (keywordListEditorId != null) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            keywordListEditorId = null
+                                            keywordListEditorLabel = ""
+                                            keywordListEditorDescription = ""
+                                            keywordListEditorKeywords = ""
+                                        },
+                                        enabled = !server.alertKeywordListsSaving
+                                    ) { Text("Cancel edit") }
+                                }
+                            }
+
+                            if (server.alertKeywordLists.isEmpty() && !server.alertKeywordListsLoading) {
+                                Text("No keyword lists yet.", style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                server.alertKeywordLists.forEach { keywordList ->
+                                    Column(
+                                        Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(keywordList.label, fontWeight = FontWeight.Medium)
+                                        if (keywordList.description.isNotBlank()) {
+                                            Text(
+                                                keywordList.description,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        Text(
+                                            keywordList.keywords.size.toString() + " keyword(s)",
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    keywordListEditorId = keywordList.id
+                                                    keywordListEditorLabel = keywordList.label
+                                                    keywordListEditorDescription = keywordList.description
+                                                    keywordListEditorKeywords =
+                                                        keywordList.keywords.joinToString(", ")
+                                                },
+                                                enabled = !server.alertKeywordListsSaving
+                                            ) { Text("Edit") }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    if (keywordListEditorId == keywordList.id) {
+                                                        keywordListEditorId = null
+                                                        keywordListEditorLabel = ""
+                                                        keywordListEditorDescription = ""
+                                                        keywordListEditorKeywords = ""
+                                                    }
+                                                    viewModel.deleteAlertKeywordList(
+                                                        server.profile.id,
+                                                        keywordList.id
+                                                    )
+                                                },
+                                                enabled = !server.alertKeywordListsSaving
+                                            ) { Text("Delete") }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 itemsIndexed(
                     visiblePreferenceChannels,
                     key = { index, pair ->

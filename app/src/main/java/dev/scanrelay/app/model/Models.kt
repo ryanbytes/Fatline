@@ -189,6 +189,7 @@ data class ServerScannerState(
     val alertPreferencesError: String? = null,
     val alertKeywordLists: List<AlertKeywordList> = emptyList(),
     val alertKeywordListsLoading: Boolean = false,
+    val alertKeywordListsSaving: Boolean = false,
     val alertKeywordListsError: String? = null,
     val hold: ChannelKey? = null,
     val holdSystemRef: Long? = null,
