@@ -844,6 +844,38 @@ object ScannerRepository {
         }
     }
 
+    fun setAlertKeywords(profileId: String, key: ChannelKey, rawKeywords: String) {
+        val session = sessions[profileId] ?: return
+        val normalizedKeywords = normalizeAlertKeywords(rawKeywords)
+        val changed = synchronized(session) {
+            val existing = session.state.alertPreferences.firstOrNull { it.key == key }
+                ?: AlertPreference(systemRef = key.systemRef, talkgroupRef = key.talkgroupRef)
+            val updated = existing.copy(keywords = normalizedKeywords)
+            if (updated == existing && session.state.alertPreferences.any { it.key == key }) {
+                false
+            } else {
+                session.alertPreferenceRevision++
+                session.state = session.state.copy(
+                    alertPreferences = (session.state.alertPreferences.filterNot { it.key == key } + updated)
+                        .sortedWith(compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }),
+                    alertPreferencesSaving = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleAlertPreferenceSave(session)
+    }
+
+    internal fun normalizeAlertKeywords(rawKeywords: String): List<String> =
+        rawKeywords
+            .replace('\n', ',')
+            .split(',')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
     fun setAlertKeywordLists(profileId: String, key: ChannelKey, keywordListIds: Collection<Long>) {
         val session = sessions[profileId] ?: return
         val normalizedIds = keywordListIds.filter { it > 0 }.distinct().sorted()

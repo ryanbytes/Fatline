@@ -1018,6 +1018,15 @@ private fun AlertsScreen(
                         talkgroup.talkgroupRef
                     ) { mutableStateOf(false) }
 
+                    var customKeywordsText by remember(
+                        server.profile.id,
+                        talkgroup.systemRef,
+                        talkgroup.talkgroupRef,
+                        preference?.keywords
+                    ) {
+                        mutableStateOf(preference?.keywords?.joinToString(", ").orEmpty())
+                    }
+
                     Card(Modifier.padding(horizontal = 16.dp)) {
                         Column(
                             Modifier.fillMaxWidth().padding(12.dp),
@@ -1158,6 +1167,25 @@ private fun AlertsScreen(
                                             )
                                         }
                                 }
+                            }
+
+                            if (showKeywordLists) {
+                                OutlinedTextField(
+                                    value = customKeywordsText,
+                                    onValueChange = { customKeywordsText = it },
+                                    label = { Text("Custom keywords") },
+                                    supportingText = { Text("Separate phrases with commas or new lines.") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setAlertKeywords(
+                                            server.profile.id,
+                                            talkgroup.key,
+                                            customKeywordsText
+                                        )
+                                    }
+                                ) { Text("Save keywords") }
                             }
 
                             if (preference != null) {
