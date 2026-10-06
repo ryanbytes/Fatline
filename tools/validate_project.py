@@ -30,6 +30,7 @@ required = [
     'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt',
+    'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt',
 ]
 for rel in required:
     require((ROOT / rel).is_file(), f'missing {rel}')
@@ -143,6 +144,10 @@ require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' i
 
 # User-visible ThinLine parity / enhancements.
 require('setMany' in channel_store and 'setSystemEnabled' in repo, 'batched system-level channel update missing')
+require('knownKey' in channel_store and 'reconcileChannelSelection' in channel_store, 'newly scoped channel tracking missing')
+require('autoEnableNewTalkgroups' in repo and 'channelStore?.apply' in repo, 'server auto-enable-new-talkgroups policy missing')
+require('newlyScopedChannelsTurnOnWhenServerPolicyIsEnabled' in (ROOT / 'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt').read_text(), 'auto-enable regression test missing')
+require('baselineMigrationDoesNotBulkEnableCurrentDisabledChannels' in (ROOT / 'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt').read_text(), 'channel baseline migration regression test missing')
 require('setSystemTalkgroups' in viewmodel and 'setSystemTalkgroups' in ui, 'system-level enable/disable control missing')
 require('parseScanLists' in protocol and 'scanLists' in models, 'server scan-list parsing/state missing')
 require('setChannelsEnabled' in repo and 'setChannels' in viewmodel, 'batched scan-list channel toggles missing')
