@@ -329,6 +329,35 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun keywordListPayloadTrimsAndDeduplicatesFields() {
+        val payload = ScannerRepository.keywordListPayload(
+            "  Priority  ",
+            "  High-priority phrases  ",
+            " pursuit, shots fired\npursuit,  cardiac arrest "
+        )
+
+        assertEquals("Priority", payload.getString("label"))
+        assertEquals("High-priority phrases", payload.getString("description"))
+        val keywords = payload.getJSONArray("keywords")
+        assertEquals(3, keywords.length())
+        assertEquals("pursuit", keywords.getString(0))
+        assertEquals("shots fired", keywords.getString(1))
+        assertEquals("cardiac arrest", keywords.getString(2))
+    }
+
+    @Test
+    fun keywordListUrlsUseCanonicalEndpoint() {
+        assertEquals(
+            "https://scanner.example.com:3000/api/keyword-lists",
+            ScannerRepository.keywordListUrl("wss://scanner.example.com:3000/path")
+        )
+        assertEquals(
+            "https://scanner.example.com:3000/api/keyword-lists/9",
+            ScannerRepository.keywordListUrl("wss://scanner.example.com:3000/path", 9)
+        )
+    }
+
+    @Test
     fun callDownloadUsesDedicatedAuthenticatedAudioEndpoint() {
         assertEquals(
             "https://scanner.example.com:3000/api/calls/42/audio",
