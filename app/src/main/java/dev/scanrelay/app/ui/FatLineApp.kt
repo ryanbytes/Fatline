@@ -49,6 +49,7 @@ import dev.scanrelay.app.ScannerViewModel
 import dev.scanrelay.app.alerts.AlertSoundPreferences
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ConnectionStatus
+import dev.scanrelay.app.model.FavoriteTagKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerAlert
 import dev.scanrelay.app.model.ScannerState
@@ -717,8 +718,7 @@ private fun ChannelsScreen(
 
             visibleSystems.forEachIndexed { systemIndex, system ->
                 val fullSystem = server.systems.firstOrNull { it.systemRef == system.systemRef } ?: system
-                val systemFavorite = fullSystem.talkgroups.isNotEmpty() &&
-                    fullSystem.talkgroups.all { it.favorite }
+                val systemFavorite = system.systemRef in server.favoriteSystemRefs
                 item(key = "system-" + server.profile.id + "-" + systemIndex + "-" + system.systemRef) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -735,9 +735,9 @@ private fun ChannelsScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             OutlinedButton(
                                 onClick = {
-                                    viewModel.setFavorites(
+                                    viewModel.setSystemFavorite(
                                         server.profile.id,
-                                        fullSystem.talkgroups.map { it.key },
+                                        system.systemRef,
                                         !systemFavorite
                                     )
                                 },
@@ -771,12 +771,8 @@ private fun ChannelsScreen(
                 }
 
                 groupTalkgroupsByTag(system.talkgroups).forEachIndexed { tagIndex, tagGroup ->
-                    val fullTagTalkgroups = groupTalkgroupsByTag(fullSystem.talkgroups)
-                        .firstOrNull { it.tag == tagGroup.tag }
-                        ?.talkgroups
-                        .orEmpty()
-                    val tagFavorite = fullTagTalkgroups.isNotEmpty() &&
-                        fullTagTalkgroups.all { it.favorite }
+                    val tagFavorite =
+                        FavoriteTagKey(system.systemRef, tagGroup.tag) in server.favoriteTags
                     item(key = "tag-" + server.profile.id + "-" + systemIndex + "-" + tagIndex + "-" + tagGroup.tag) {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
@@ -794,13 +790,14 @@ private fun ChannelsScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 OutlinedButton(
                                     onClick = {
-                                        viewModel.setFavorites(
+                                        viewModel.setTagFavorite(
                                             server.profile.id,
-                                            fullTagTalkgroups.map { it.key },
+                                            system.systemRef,
+                                            tagGroup.tag,
                                             !tagFavorite
                                         )
                                     },
-                                    enabled = fullTagTalkgroups.isNotEmpty()
+                                    enabled = tagGroup.talkgroups.isNotEmpty()
                                 ) { Text(if (tagFavorite) "★" else "☆") }
                                 OutlinedButton(
                                     onClick = {
