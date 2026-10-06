@@ -1,7 +1,11 @@
 package dev.scanrelay.app.ui
 
+import android.app.Activity
 import android.content.Intent
+import android.media.RingtoneManager
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +45,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.scanrelay.app.ScannerViewModel
+import dev.scanrelay.app.alerts.AlertSoundPreferences
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ConnectionStatus
 import dev.scanrelay.app.model.RadioCall
@@ -956,6 +961,7 @@ private fun SettingsScreen(
     modifier: Modifier
 ) {
     val loginState by viewModel.accountLogin.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
     }
@@ -965,6 +971,19 @@ private fun SettingsScreen(
     var username by remember(editingId) { mutableStateOf("") }
     var password by remember(editingId) { mutableStateOf("") }
     var pin by remember(editingId, editing?.pin) { mutableStateOf(editing?.pin ?: "") }
+    var alertSoundLabel by remember(editingId) {
+        mutableStateOf(AlertSoundPreferences.displayName(context, editingId))
+    }
+    val alertSoundPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val picked = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            AlertSoundPreferences.set(context, editingId, picked)
+            alertSoundLabel = AlertSoundPreferences.displayName(context, editingId)
+        }
+    }
 
     LaunchedEffect(loginState.message) {
         if (loginState.message == "Signed in") password = ""
@@ -1066,6 +1085,33 @@ private fun SettingsScreen(
                         visualTransformation = PasswordVisualTransformation()
                     )
 
+                    HorizontalDivider()
+                    Text("Notifications", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Alert sound: " + alertSoundLabel, style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            val setting = AlertSoundPreferences.get(context, editingId)
+                            val existing = when (setting) {
+                                null -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                                AlertSoundPreferences.SILENT -> null
+                                else -> runCatching { Uri.parse(setting) }.getOrNull()
+                            }
+                            val picker = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "FatLine alert sound")
+                            }
+                            alertSoundPicker.launch(picker)
+                        }) { Text("Choose sound") }
+
+                        OutlinedButton(onClick = {
+                            AlertSoundPreferences.useSystemDefault(context, editingId)
+                            alertSoundLabel = AlertSoundPreferences.displayName(context, editingId)
+                        }) { Text("System default") }
+                    }
+
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = {
@@ -1087,6 +1133,7 @@ private fun SettingsScreen(
                         if (editing != null) {
                             OutlinedButton(onClick = {
                                 viewModel.deleteProfile(editingId)
+                                AlertSoundPreferences.clear(context, editingId)
                                 editingId = UUID.randomUUID().toString()
                                 name = "Scanner"
                                 url = ""
