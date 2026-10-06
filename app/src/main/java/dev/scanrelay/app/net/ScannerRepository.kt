@@ -108,7 +108,7 @@ object ScannerRepository {
                 })
             }
             session.state = session.state.copy(systems = systems)
-            if (!session.state.paused) session.socket?.sendLivefeed(systems)
+            sendEffectiveLivefeedLocked(session)
         }
         publish()
     }
@@ -124,7 +124,7 @@ object ScannerRepository {
                 else system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = enabled) })
             }
             session.state = session.state.copy(systems = systems)
-            if (!session.state.paused) session.socket?.sendLivefeed(systems)
+            sendEffectiveLivefeedLocked(session)
         }
         publish()
     }
@@ -138,7 +138,7 @@ object ScannerRepository {
                 system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = enabled) })
             }
             session.state = session.state.copy(systems = systems)
-            if (!session.state.paused) session.socket?.sendLivefeed(systems)
+            sendEffectiveLivefeedLocked(session)
         }
         publish()
     }
@@ -157,7 +157,7 @@ object ScannerRepository {
             )
             if (session.state.status == ConnectionStatus.CONNECTED) {
                 if (paused) session.socket?.stopLivefeed()
-                else session.socket?.sendLivefeed(session.state.systems)
+                else sendEffectiveLivefeedLocked(session)
             }
         }
         appContext?.let { ScannerService.setProfilePaused(it, profileId, paused) }
@@ -188,6 +188,7 @@ object ScannerRepository {
                 hold = key,
                 holdSystemRef = if (key != null) null else session.state.holdSystemRef
             )
+            sendEffectiveLivefeedLocked(session)
         }
         publish()
     }
@@ -199,13 +200,17 @@ object ScannerRepository {
                 holdSystemRef = systemRef,
                 hold = if (systemRef != null) null else session.state.hold
             )
+            sendEffectiveLivefeedLocked(session)
         }
         publish()
     }
 
     fun clearHold(profileId: String) {
         val session = sessions[profileId] ?: return
-        synchronized(session) { session.state = session.state.copy(hold = null, holdSystemRef = null) }
+        synchronized(session) {
+            session.state = session.state.copy(hold = null, holdSystemRef = null)
+            sendEffectiveLivefeedLocked(session)
+        }
         publish()
     }
 
@@ -215,13 +220,17 @@ object ScannerRepository {
             val set = session.state.avoided.toMutableSet()
             if (avoided) set += key else set -= key
             session.state = session.state.copy(avoided = set)
+            sendEffectiveLivefeedLocked(session)
         }
         publish()
     }
 
     fun clearAvoids(profileId: String) {
         val session = sessions[profileId] ?: return
-        synchronized(session) { session.state = session.state.copy(avoided = emptySet()) }
+        synchronized(session) {
+            session.state = session.state.copy(avoided = emptySet())
+            sendEffectiveLivefeedLocked(session)
+        }
         publish()
     }
 
@@ -589,7 +598,7 @@ object ScannerRepository {
                 error = null
             )
             if (session.state.paused) session.socket?.stopLivefeed()
-            else session.socket?.sendLivefeed(systems)
+            else sendEffectiveLivefeedLocked(session)
         }
         publish()
         if (needsKeyExchange) startKeyExchange(session)
@@ -657,6 +666,27 @@ object ScannerRepository {
             }
         }
     }
+
+    private fun sendEffectiveLivefeedLocked(session: Session) {
+        if (session.state.paused || session.state.status != ConnectionStatus.CONNECTED) return
+        session.socket?.sendLivefeed(effectiveLivefeedSystems(session.state))
+    }
+
+    private fun effectiveLivefeedSystems(state: ServerScannerState): List<SystemConfig> =
+        state.systems.map { system ->
+            val systemAllowed = state.holdSystemRef?.let { it == system.systemRef } ?: true
+            system.copy(
+                talkgroups = system.talkgroups.map { talkgroup ->
+                    val talkgroupAllowed = state.hold?.let { it == talkgroup.key } ?: true
+                    talkgroup.copy(
+                        enabled = talkgroup.enabled &&
+                            systemAllowed &&
+                            talkgroupAllowed &&
+                            talkgroup.key !in state.avoided
+                    )
+                }
+            )
+        }
 
     private fun handleHistory(session: Session, payload: JSONObject) {
         val results = payload.optJSONArray("results") ?: JSONArray()
