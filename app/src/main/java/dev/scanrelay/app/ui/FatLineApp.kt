@@ -295,6 +295,13 @@ private fun ScannerStatusCard(server: ServerScannerState, viewModel: ScannerView
                 style = MaterialTheme.typography.bodySmall
             )
 
+            if (server.showListenersCount && server.status == ConnectionStatus.CONNECTED) {
+                Text(
+                    "Listeners " + server.listenerCount,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
             if (server.audioEncryptionEnabled) {
                 Text(
                     if (server.encryptionReady) "Encrypted audio ready" else "Encrypted audio key exchange pending",
