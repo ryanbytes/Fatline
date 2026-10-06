@@ -226,7 +226,11 @@ private fun ScannerScreen(
                     )
                 }
                 itemsIndexed(server.alerts.take(3), key = { index, alert -> "preview-alert-" + index + "-" + alert.stableKey }) { _, alert ->
-                    AlertCard(alert, mappingEnabled = server.incidentMappingEnabled)
+                    AlertCard(
+                        alert,
+                        mappingEnabled = server.incidentMappingEnabled,
+                        time12hFormat = server.time12hFormat
+                    )
                 }
             }
 
@@ -252,6 +256,7 @@ private fun ScannerScreen(
                 items(recent, key = { call -> "recent-" + call.profileId + "-" + call.id }) { call ->
                     CallRow(
                         call,
+                        time12hFormat = server.time12hFormat,
                         onReplay = { viewModel.replay(call.profileId, call.id) },
                         onDownload = { viewModel.downloadCall(call.profileId, call.id) }
                     )
@@ -343,7 +348,16 @@ private fun NowPlayingCard(server: ServerScannerState, call: RadioCall, viewMode
             call.sourceDisplay?.let { InfoRow(if (call.sources.size > 1) "Units" else "Unit", it) }
             call.frequency?.let { InfoRow("Frequency", formatFrequency(it)) }
             call.durationSeconds?.let { InfoRow("Duration", String.format(Locale.US, "%.1f s", it)) }
-            if (call.dateTime.isNotBlank()) InfoRow("Time", call.dateTime)
+            if (call.dateTime.isNotBlank()) {
+                InfoRow(
+                    "Time",
+                    formatServerDateTime(
+                        call.dateTime,
+                        time12hFormat = server.time12hFormat,
+                        includeDate = false
+                    )
+                )
+            }
 
             call.transcript?.takeIf { it.isNotBlank() }?.let {
                 HorizontalDivider()
@@ -844,6 +858,7 @@ private fun HistoryScreen(
                 items(visibleHistory, key = { call -> "history-" + call.profileId + "-" + call.id }) { call ->
                     CallRow(
                         call,
+                        time12hFormat = server.time12hFormat,
                         onContinue = { viewModel.continueHistory(call.profileId, call.id) },
                         onReplay = { viewModel.replay(call.profileId, call.id) },
                         onDownload = { viewModel.downloadCall(call.profileId, call.id) }
@@ -1509,6 +1524,7 @@ private fun AlertsScreen(
                     AlertCard(
                         alert,
                         mappingEnabled = server.incidentMappingEnabled,
+                        time12hFormat = server.time12hFormat,
                         onReplay = alert.callId?.let { callId ->
                             { viewModel.replay(server.profile.id, callId) }
                         }
@@ -1803,6 +1819,7 @@ private fun InfoRow(label: String, value: String) {
 @Composable
 private fun CallRow(
     call: RadioCall,
+    time12hFormat: Boolean,
     onReplay: () -> Unit,
     onDownload: () -> Unit,
     onContinue: (() -> Unit)? = null
@@ -1816,7 +1833,12 @@ private fun CallRow(
                 Text(call.talkgroupLabel, fontWeight = FontWeight.SemiBold)
                 Text(call.systemLabel + " · TG " + call.talkgroupRef, style = MaterialTheme.typography.bodySmall)
                 call.sourceDisplay?.let { Text("Unit: " + it, style = MaterialTheme.typography.bodySmall) }
-                if (call.dateTime.isNotBlank()) Text(call.dateTime, style = MaterialTheme.typography.bodySmall)
+                if (call.dateTime.isNotBlank()) {
+                    Text(
+                        formatServerDateTime(call.dateTime, time12hFormat),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 call.transcript?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall)
                 }
@@ -1836,6 +1858,7 @@ private fun CallRow(
 private fun AlertCard(
     alert: ScannerAlert,
     mappingEnabled: Boolean,
+    time12hFormat: Boolean,
     onReplay: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -1874,7 +1897,10 @@ private fun AlertCard(
                 Text(it, style = MaterialTheme.typography.bodySmall)
             }
             alert.dateTime?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    formatServerDateTime(it, time12hFormat),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
             if (onReplay != null || mapUri != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
