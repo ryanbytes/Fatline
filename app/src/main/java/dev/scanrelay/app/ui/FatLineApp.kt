@@ -741,50 +741,92 @@ private fun ChannelsScreen(
                     }
                 }
 
-                itemsIndexed(
-                    system.talkgroups,
-                    key = { talkgroupIndex, tg -> "tg-" + server.profile.id + "-" + systemIndex + "-" + talkgroupIndex + "-" + tg.systemRef + "-" + tg.talkgroupRef }
-                ) { _, tg ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = tg.enabled,
-                            onCheckedChange = { enabled ->
-                                viewModel.setTalkgroup(server.profile.id, tg.systemRef, tg.talkgroupRef, enabled)
+                groupTalkgroupsByTag(system.talkgroups).forEachIndexed { tagIndex, tagGroup ->
+                    item(key = "tag-" + server.profile.id + "-" + systemIndex + "-" + tagIndex + "-" + tagGroup.tag) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(tagGroup.tag, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    tagGroup.talkgroups.count { it.enabled }.toString() + "/" +
+                                        tagGroup.talkgroups.size + " enabled",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             }
-                        )
-                        Column(Modifier.weight(1f)) {
-                            Text(tg.displayName)
-                            Text(
-                                "TG " + tg.talkgroupRef +
-                                    if (tg.tag.isBlank()) "" else " · " + tg.tag,
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setChannels(
+                                            server.profile.id,
+                                            tagGroup.talkgroups.map { it.key },
+                                            true
+                                        )
+                                    }
+                                ) { Text("All") }
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setChannels(
+                                            server.profile.id,
+                                            tagGroup.talkgroups.map { it.key },
+                                            false
+                                        )
+                                    }
+                                ) { Text("None") }
+                            }
                         }
-                        OutlinedButton(
-                            onClick = { viewModel.setFavorite(server.profile.id, tg.systemRef, tg.talkgroupRef, !tg.favorite) }
-                        ) { Text(if (tg.favorite) "★" else "☆") }
-                        editingScanList?.let { list ->
-                            val inList = tg.key in list.channels
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.setScanListChannel(
-                                        server.profile.id,
-                                        list.id,
-                                        tg.key,
-                                        !inList
-                                    )
-                                }
-                            ) { Text(if (inList) "✓ List" else "+ List") }
-                        }
-                        OutlinedButton(onClick = {
-                            if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
-                            else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
-                        }) { Text(if (server.hold == tg.key) "Held" else "Hold") }
                     }
-                    HorizontalDivider(Modifier.padding(start = 64.dp))
+
+                    itemsIndexed(
+                        tagGroup.talkgroups,
+                        key = { talkgroupIndex, tg ->
+                            "tg-" + server.profile.id + "-" + systemIndex + "-" + tagIndex + "-" +
+                                talkgroupIndex + "-" + tg.systemRef + "-" + tg.talkgroupRef
+                        }
+                    ) { _, tg ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = tg.enabled,
+                                onCheckedChange = { enabled ->
+                                    viewModel.setTalkgroup(server.profile.id, tg.systemRef, tg.talkgroupRef, enabled)
+                                }
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(tg.displayName)
+                                Text(
+                                    "TG " + tg.talkgroupRef +
+                                        if (tg.tag.isBlank()) "" else " · " + tg.tag,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.setFavorite(server.profile.id, tg.systemRef, tg.talkgroupRef, !tg.favorite) }
+                            ) { Text(if (tg.favorite) "★" else "☆") }
+                            editingScanList?.let { list ->
+                                val inList = tg.key in list.channels
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setScanListChannel(
+                                            server.profile.id,
+                                            list.id,
+                                            tg.key,
+                                            !inList
+                                        )
+                                    }
+                                ) { Text(if (inList) "✓ List" else "+ List") }
+                            }
+                            OutlinedButton(onClick = {
+                                if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
+                                else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
+                            }) { Text(if (server.hold == tg.key) "Held" else "Hold") }
+                        }
+                        HorizontalDivider(Modifier.padding(start = 64.dp))
+                    }
                 }
             }
         }
