@@ -28,6 +28,7 @@ required = [
     'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
+    'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt',
 ]
 for rel in required:
     require((ROOT / rel).is_file(), f'missing {rel}')
@@ -137,6 +138,8 @@ require('ACTION_SET_PROFILE_PAUSED' in service and 'pausedProfiles' in service, 
 require('ScannerService.setProfilePaused' in repo, 'repository pause must silence queued profile audio')
 require('holdSystemRef' in models and 'setSystemHold' in repo and 'viewModel.setSystemHold' in ui, 'system hold parity missing')
 require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'talkgroup hold/avoid/skip support missing')
+require('effectiveLivefeedSystems' in repo and 'sendEffectiveLivefeedLocked' in repo, 'hold/avoid must filter the server LFM subscription')
+require('talkgroup.key !in state.avoided' in repo, 'avoided channels must be excluded from the server subscription')
 require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
 require('recentCalls' in models and 'session.state.recentCalls' in repo, 'dedicated live recent-call state missing')
 require('server.recentCalls' in ui and 'server.history.take(10)' not in ui, 'scanner recent list must not reuse archive history')
