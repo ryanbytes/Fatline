@@ -80,6 +80,8 @@ object ScannerRepository {
         val settingsMutex = Mutex()
         @Volatile var scanListSaveJob: Job? = null
         @Volatile var scanListRevision = 0L
+        @Volatile var favoriteSaveJob: Job? = null
+        @Volatile var favoriteRevision = 0L
         @Volatile var alertRefreshJob: Job? = null
         val alertPreferenceMutex = Mutex()
         val alertKeywordListMutex = Mutex()
@@ -385,6 +387,74 @@ object ScannerRepository {
         }
     }
 
+    private fun scheduleFavoriteSave(session: Session) {
+        if (session.profile.pin.trim().isBlank()) return
+        synchronized(session) {
+            session.favoriteSaveJob?.cancel()
+            session.favoriteSaveJob = scope.launch {
+                delay(650L)
+                persistFavorites(session)
+            }
+        }
+    }
+
+    private suspend fun persistFavorites(session: Session) {
+        session.settingsMutex.withLock {
+            while (isCurrent(session)) {
+                val snapshot = synchronized(session) {
+                    Triple(
+                        session.favoriteRevision,
+                        session.state.systems
+                            .flatMap { it.talkgroups }
+                            .filter { it.favorite }
+                            .map { it.key }
+                            .toSet(),
+                        session.state.systems
+                    )
+                }
+                val revision = snapshot.first
+                val favorites = snapshot.second
+                val systems = snapshot.third
+                val pin = session.profile.pin.trim()
+                if (pin.isBlank()) {
+                    synchronized(session) { session.favoriteSaveJob = null }
+                    return
+                }
+
+                try {
+                    val origin = httpOrigin(session.profile.baseUrl)
+                    val auth = "Bearer $pin"
+                    val currentRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .get()
+                        .build()
+                    val current = executeSettingsJson(currentRequest)
+                    val updated = mergeFavoritesIntoSettings(current, favorites, systems)
+                    val saveRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .post(updated.toString().toRequestBody(JSON_MEDIA_TYPE))
+                        .build()
+                    executeSettingsJson(saveRequest)
+
+                    val done = synchronized(session) {
+                        if (session.favoriteRevision == revision) {
+                            session.favoriteSaveJob = null
+                            true
+                        } else false
+                    }
+                    if (done) return
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session)) return
+                    synchronized(session) { session.favoriteSaveJob = null }
+                    return
+                }
+            }
+        }
+    }
+
     private fun executeSettingsJson(request: Request): JSONObject =
         keyHttpClient.newCall(request).execute().use { response ->
             val text = response.body.string()
@@ -676,21 +746,28 @@ object ScannerRepository {
         publish()
     }
 
-    fun setFavorite(profileId: String, systemRef: Long, talkgroupRef: Long, favorite: Boolean) {
+    fun setFavorite(profileId: String, systemRef: Long, talkgroupRef: Long, favorite: Boolean) =
+        setFavorites(profileId, setOf(ChannelKey(systemRef, talkgroupRef)), favorite)
+
+    fun setFavorites(profileId: String, keys: Collection<ChannelKey>, favorite: Boolean) {
+        if (keys.isEmpty()) return
         val session = sessions[profileId] ?: return
-        val key = ChannelKey(systemRef, talkgroupRef)
-        channelStore?.setFavorite(profileId, key, favorite)
+        val targetKeys = keys.toSet()
+        channelStore?.setFavorites(profileId, targetKeys, favorite)
         synchronized(session) {
+            session.favoriteRevision++
             session.state = session.state.copy(
                 systems = session.state.systems.map { system ->
-                    if (system.systemRef != systemRef) system
-                    else system.copy(talkgroups = system.talkgroups.map { tg ->
-                        if (tg.talkgroupRef == talkgroupRef) tg.copy(favorite = favorite) else tg
-                    })
+                    system.copy(
+                        talkgroups = system.talkgroups.map { talkgroup ->
+                            if (talkgroup.key in targetKeys) talkgroup.copy(favorite = favorite) else talkgroup
+                        }
+                    )
                 }
             )
         }
         publish()
+        scheduleFavoriteSave(session)
     }
 
     fun setHold(profileId: String, key: ChannelKey?) {
@@ -1844,6 +1921,7 @@ object ScannerRepository {
         session.handshakeJob?.cancel()
         session.keyJob?.cancel()
         session.scanListSaveJob?.cancel()
+        session.favoriteSaveJob?.cancel()
         session.alertRefreshJob?.cancel()
         session.socketGeneration++
         val old = session.socket
@@ -1856,6 +1934,7 @@ object ScannerRepository {
             session.masterKey = null
             session.keyJob = null
             session.scanListSaveJob = null
+            session.favoriteSaveJob = null
             session.alertRefreshJob = null
             session.handshakeJob = null
             session.relayUrl = null
@@ -2195,11 +2274,17 @@ object ScannerRepository {
         val autoEnableNewTalkgroups = options?.optBoolean("autoEnableNewTalkgroups", false) == true
         val incidentMappingEnabled = options?.optBoolean("incidentMappingEnabled", false) == true
         val uiAccentColor = options?.optString("uiAccentColor")?.trim()?.takeIf { it.isNotBlank() }
-        val userUiAccentColor = payload.optJSONObject("userSettings")
+        val userSettings = payload.optJSONObject("userSettings")
+        val userUiAccentColor = userSettings
             ?.opt("uiAccentColor")
             ?.let { it as? String }
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+        val serverFavorites = parseFavoriteChannels(userSettings, parsed)
+        val favoriteSavePending = synchronized(session) { session.favoriteSaveJob?.isActive == true }
+        if (serverFavorites != null && !favoriteSavePending) {
+            channelStore?.replaceFavorites(session.profile.id, serverFavorites)
+        }
         val systems = channelStore?.apply(
             session.profile.id,
             parsed,
