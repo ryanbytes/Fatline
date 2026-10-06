@@ -105,6 +105,12 @@ data class RadioCall(
             ?: sourceRef?.toString()
 }
 
+data class AlertKeywordList(
+    val id: Long,
+    val label: String,
+    val description: String = "",
+    val keywords: List<String> = emptyList()
+)
 data class AlertPreference(
     val systemRef: Long,
     val talkgroupRef: Long,
@@ -174,6 +180,9 @@ data class ServerScannerState(
     val alertPreferencesLoading: Boolean = false,
     val alertPreferencesSaving: Boolean = false,
     val alertPreferencesError: String? = null,
+    val alertKeywordLists: List<AlertKeywordList> = emptyList(),
+    val alertKeywordListsLoading: Boolean = false,
+    val alertKeywordListsError: String? = null,
     val hold: ChannelKey? = null,
     val holdSystemRef: Long? = null,
     val paused: Boolean = false,
