@@ -187,6 +187,8 @@ require('systemsParseExactAndRangeUnitAliases' in protocol_tests, 'unit alias re
 require('callSourcesAreOrderedDeduplicatedAndAliasAware' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'multi-source parser regression test missing')
 require('alertsLoading' in models and 'alertsError' in models and 'stableKey' in models, 'persisted rich-alert state missing')
 require('refreshAlerts' in repo and '/api/alerts' in repo and 'parseServerAlerts' in repo, 'server alert-history loading missing')
+require('postConnectionLoss' in (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/AlertNotifier.kt').read_text(), 'connection-loss notification helper missing')
+require('hasConnected' in repo and 'disconnectNotified' in repo and 'notifyConnectionLoss' in repo, 'one-shot disconnect notification state missing')
 require('ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)' in repo, 'incident updates must refresh persisted alert details')
 require('AppTab.Alerts' in ui and 'Search alerts' in ui and 'Replay call' in ui, 'dedicated searchable Alerts screen missing')
 require('refreshAlerts' in viewmodel, 'alert refresh view-model bridge missing')
