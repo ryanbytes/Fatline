@@ -1018,6 +1018,15 @@ private fun AlertsScreen(
                         talkgroup.talkgroupRef
                     ) { mutableStateOf(false) }
 
+                    var customKeywordsText by remember(
+                        server.profile.id,
+                        talkgroup.systemRef,
+                        talkgroup.talkgroupRef,
+                        preference?.keywords
+                    ) {
+                        mutableStateOf(preference?.keywords?.joinToString(", ").orEmpty())
+                    }
+
                     Card(Modifier.padding(horizontal = 16.dp)) {
                         Column(
                             Modifier.fillMaxWidth().padding(12.dp),
@@ -1158,6 +1167,27 @@ private fun AlertsScreen(
                                             )
                                         }
                                 }
+                            }
+
+                            if (showKeywordLists) {
+                                OutlinedTextField(
+                                    value = customKeywordsText,
+                                    onValueChange = { customKeywordsText = it },
+                                    label = { Text("Custom keywords") },
+                                    supportingText = { Text("Separate phrases with commas or new lines.") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setAlertKeywords(
+                                            server.profile.id,
+                                            talkgroup.key,
+                                            customKeywordsText
+                                        )
+                                    },
+                                    enabled = ScannerRepositoryKeywordPreview.normalize(customKeywordsText) !=
+                                        preference?.keywords.orEmpty()
+                                ) { Text("Save keywords") }
                             }
 
                             if (preference != null) {
@@ -1586,6 +1616,15 @@ internal fun incidentMapUri(alert: ScannerAlert): String? {
 
     val address = alert.incidentAddress?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return "geo:0,0?q=" + URLEncoder.encode(address, "UTF-8").replace("+", "%20")
+}
+
+private object ScannerRepositoryKeywordPreview {
+    fun normalize(raw: String): List<String> =
+        raw.replace('\n', ',')
+            .split(',')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
 }
 
 private fun formatFrequency(frequency: Long): String =
