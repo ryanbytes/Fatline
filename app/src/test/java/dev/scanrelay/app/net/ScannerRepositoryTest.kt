@@ -328,4 +328,13 @@ class ScannerRepositoryTest {
         assertEquals(listOf("pursuit", "shots fired"), priority.keywords)
     }
 
+    @Test
+    fun customAlertKeywordsNormalizeCommaNewlineWhitespaceAndDuplicates() {
+        val keywords = ScannerRepository.normalizeAlertKeywords(
+            " pursuit, shots fired\npursuit,  cardiac arrest  , "
+        )
+
+        assertEquals(listOf("pursuit", "shots fired", "cardiac arrest"), keywords)
+    }
+
 }
