@@ -213,18 +213,18 @@ private fun ScannerScreen(
 
             item {
                 Text(
-                    "Recent calls",
+                    "Recent live calls",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
             }
 
-            val recent = server.history.take(10)
+            val recent = server.recentCalls
             if (recent.isEmpty()) {
                 item {
                     Text(
-                        "No recent calls.",
+                        "No live calls received yet.",
                         modifier = Modifier.padding(horizontal = 16.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
