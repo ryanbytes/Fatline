@@ -1138,7 +1138,7 @@ object ScannerRepository {
         mime: String?
     ): String {
         val fromHeader = contentDisposition
-            ?.let { Regex("""filename\\s*=\\s*"([^"]+)"|filename\\s*=\\s*([^;\\s]+)""", RegexOption.IGNORE_CASE).find(it) }
+            ?.let { Regex("""filename\s*=\s*"([^"]+)"|filename\s*=\s*([^;\s]+)""", RegexOption.IGNORE_CASE).find(it) }
             ?.let { match -> match.groups[1]?.value ?: match.groups[2]?.value }
             ?.trim()
             ?.takeIf { it.isNotBlank() }
@@ -1154,7 +1154,7 @@ object ScannerRepository {
         val candidate = fromHeader ?: "FatLine-call-$callId.$fallbackExtension"
         return candidate
             .substringAfterLast('/')
-            .substringAfterLast('\\\\')
+            .substringAfterLast('\\')
             .replace(Regex("""[^A-Za-z0-9._() -]"""), "_")
             .trim()
             .trim('.')
