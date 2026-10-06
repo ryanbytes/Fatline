@@ -14,6 +14,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Public-client wire parity for root WebSocket URL, `CAL` string IDs, complete `LFM` boolean maps, challenge-driven PIN authentication, and bare `LFM` live-feed pause
 - Persistent per-server channel selections and favorites
 - New server profiles default to all authorized talkgroups enabled; an intentional **None** selection stays empty
+- Newly authorized/re-scoped talkgroups follow ThinLine's `autoEnableNewTalkgroups` policy without disturbing existing saved selections
 - Per-talkgroup and per-system All/None controls; system bulk changes persist in one batch and emit one live-feed update
 - Pause / resume live scanning without losing channel selections
 - Talkgroup hold and system hold
