@@ -111,6 +111,7 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
     fun setSystemEnabled(profileId: String, systemRef: Long, enabled: Boolean) {
@@ -127,6 +128,7 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
     fun setAllEnabled(profileId: String, enabled: Boolean) {
@@ -141,6 +143,7 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
     fun setPaused(profileId: String, paused: Boolean) {
@@ -191,6 +194,7 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
     fun setSystemHold(profileId: String, systemRef: Long?) {
@@ -203,6 +207,7 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
     fun clearHold(profileId: String) {
@@ -212,6 +217,7 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
     fun avoid(profileId: String, key: ChannelKey, avoided: Boolean = true) {
@@ -223,6 +229,7 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
     fun clearAvoids(profileId: String) {
@@ -232,8 +239,27 @@ object ScannerRepository {
             sendEffectiveLivefeedLocked(session)
         }
         publish()
+        pruneQueuedLiveCalls(profileId)
     }
 
+    fun isChannelSubscribed(profileId: String, systemRef: Long, talkgroupRef: Long): Boolean {
+        val session = sessions[profileId] ?: return false
+        val state = session.state
+        if (state.paused) return false
+        val key = ChannelKey(systemRef, talkgroupRef)
+        val baseEnabled = state.systems
+            .firstOrNull { it.systemRef == systemRef }
+            ?.talkgroups
+            ?.firstOrNull { it.talkgroupRef == talkgroupRef }
+            ?.enabled == true
+        val talkgroupHoldAllows = state.hold?.let { it == key } ?: true
+        val systemHoldAllows = state.holdSystemRef?.let { it == systemRef } ?: true
+        return baseEnabled && talkgroupHoldAllows && systemHoldAllows && key !in state.avoided
+    }
+
+    private fun pruneQueuedLiveCalls(profileId: String) {
+        appContext?.let { ScannerService.filterProfileMedia(it, profileId) }
+    }
     fun requestHistory(profileId: String, reset: Boolean = true, systemRef: Long? = null, talkgroupRef: Long? = null) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
@@ -256,7 +282,7 @@ object ScannerRepository {
         val existing = session.state.history.firstOrNull { it.id == callId }
         val path = existing?.audioPath
         if (path != null && File(path).isFile) {
-            appContext?.let { ScannerService.enqueue(it, existing) }
+            appContext?.let { ScannerService.enqueue(it, existing, liveFeed = false) }
             return
         }
         synchronized(session) { session.pendingReplay += callId }
@@ -802,8 +828,9 @@ object ScannerRepository {
         )
 
         val shouldPlay: Boolean
+        var replayRequested = false
         synchronized(session) {
-            val replayRequested = session.pendingReplay.remove(id)
+            replayRequested = session.pendingReplay.remove(id)
             val enabled = session.state.systems.flatMap { it.talkgroups }.firstOrNull { it.key == key }?.enabled == true
             val talkgroupHoldAllows = session.state.hold?.let { it == key } ?: true
             val systemHoldAllows = session.state.holdSystemRef?.let { it == systemRef } ?: true
@@ -822,7 +849,7 @@ object ScannerRepository {
             )
         }
         publish()
-        if (shouldPlay && path != null) ScannerService.enqueue(context, call)
+        if (shouldPlay && path != null) ScannerService.enqueue(context, call, liveFeed = !replayRequested)
     }
 
     private fun bufferEncryptedCallLocked(session: Session, payload: JSONObject) {
