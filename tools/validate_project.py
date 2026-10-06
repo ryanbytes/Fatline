@@ -204,6 +204,7 @@ require('richAlertHistoryParsesAndSortsServerFields' in (ROOT / 'app/src/test/ja
 require('AlertPreference' in models and 'alertPreferencesSaving' in models, 'server-backed alert preference state missing')
 require('refreshAlertPreferences' in repo and 'setAlertPreference' in repo and '/api/alerts/preferences' in repo, 'alert preference repository controls missing')
 require('.put(serializeAlertPreferences' in repo, 'alert preferences must use ThinLine PUT endpoint')
+require('val canonical = fetchAlertPreferences(session)' in repo, 'alert preference saves must reload canonical server state')
 require('toneSetSounds' in repo and 'toneSetPagerAlerts' in repo and 'notificationSound' in repo, 'alert preference writes must preserve advanced server fields')
 require('refreshAlertPreferences' in viewmodel and 'setAlertPreference' in viewmodel, 'alert preference view-model bridge missing')
 require('Alert settings' in ui and 'Search alert channels' in ui and 'Keyword off' in ui, 'per-talkgroup alert preference UI missing')
