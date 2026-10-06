@@ -20,7 +20,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Pause / resume live scanning without losing channel selections
 - Talkgroup hold and system hold
 - Avoid / unavoid, clear avoids, and skip current audio
-- Server archive/history through `LCL`, paged results, and `CAL` replay
+- Server archive/history through `LCL`, paged results, `CAL` replay, and continuous archive playback from any loaded call toward live
 - Authenticated archived-call audio downloads to `Downloads/FatLine` on modern Android
 - Local scanner-alert notifications and transcript display when supplied by the server
 - Per-scanner Android notification sounds, including system-default, installed custom sounds, and silent alerts

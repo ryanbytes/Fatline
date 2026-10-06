@@ -17,6 +17,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScannerRepositoryTest {
+    @Test
+    fun historyContinueStartsAtSelectedAndMovesTowardNewest() {
+        assertEquals(
+            listOf(30L, 40L, 50L),
+            ScannerRepository.continuationCallIds(
+                historyIdsNewestFirst = listOf(50L, 40L, 30L, 20L),
+                startId = 30L
+            )
+        )
+    }
+
+    @Test
+    fun historyContinueIgnoresCallsOlderThanSelectionAndMissingSelection() {
+        assertEquals(
+            listOf(20L, 30L, 40L),
+            ScannerRepository.continuationCallIds(
+                historyIdsNewestFirst = listOf(40L, 30L, 20L, 10L),
+                startId = 20L
+            )
+        )
+        assertEquals(
+            emptyList<Long>(),
+            ScannerRepository.continuationCallIds(listOf(3L, 2L, 1L), 99L)
+        )
+    }
+
     private val profile = ServerProfile(id = "test", name = "Test", baseUrl = "https://example.invalid")
     private val systems = listOf(
         SystemConfig(
