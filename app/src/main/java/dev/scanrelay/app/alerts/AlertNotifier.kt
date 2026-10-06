@@ -15,7 +15,7 @@ object AlertNotifier {
     private const val ALERT_CHANNEL_PREFIX = "fatline_alerts_"
     private const val CONNECTION_CHANNEL_ID = "fatline_connection"
 
-    fun post(context: Context, profileId: String, title: String, body: String, notificationId: Int) {
+    fun post(context: Context, profileId: String, profileName: String, title: String, body: String, notificationId: Int) {
         val manager = context.getSystemService(NotificationManager::class.java)
         val soundSetting = AlertSoundPreferences.get(context, profileId)
         val profileChannelPrefix = ALERT_CHANNEL_PREFIX + profileId.hashCode() + "_"
@@ -23,7 +23,7 @@ object AlertNotifier {
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .build()
-        val channel = NotificationChannel(channelId, "Scanner alerts", NotificationManager.IMPORTANCE_HIGH)
+        val channel = NotificationChannel(channelId, "$profileName alerts", NotificationManager.IMPORTANCE_HIGH)
         when (soundSetting) {
             AlertSoundPreferences.SILENT -> channel.setSound(null, null)
             null -> channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttributes)
