@@ -3,6 +3,7 @@ package dev.scanrelay.app.net
 import android.content.Context
 import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.data.ChannelStore
+import dev.scanrelay.app.model.AlertPreference
 import dev.scanrelay.app.model.CallSource
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ConnectionStatus
@@ -60,6 +61,9 @@ object ScannerRepository {
         @Volatile var scanListSaveJob: Job? = null
         @Volatile var scanListRevision = 0L
         @Volatile var alertRefreshJob: Job? = null
+        val alertPreferenceMutex = Mutex()
+        @Volatile var alertPreferenceSaveJob: Job? = null
+        @Volatile var alertPreferenceRevision = 0L
         @Volatile var hasConnected = false
         @Volatile var disconnectNotified = false
     }
@@ -341,6 +345,113 @@ object ScannerRepository {
                 throw IllegalStateException("Server returned invalid alert history")
             }
         }
+    private fun executeSuccess(request: Request) {
+        keyHttpClient.newCall(request).execute().use { response ->
+            val text = response.body.string()
+            if (!response.isSuccessful) {
+                val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+                val message = json.optString("message").takeIf { it.isNotBlank() }
+                    ?: json.optString("error").takeIf { it.isNotBlank() }
+                    ?: "Request failed (HTTP ${response.code})"
+                throw IllegalStateException(message)
+            }
+        }
+    }
+
+    internal fun parseAlertPreferences(raw: JSONArray): List<AlertPreference> {
+        fun strings(value: Any?): List<String> {
+            val array = when (value) {
+                is JSONArray -> value
+                is String -> runCatching { JSONArray(value) }.getOrNull()
+                else -> null
+            } ?: return emptyList()
+            return buildList {
+                for (i in 0 until array.length()) {
+                    array.optString(i).trim().takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }.distinct()
+        }
+        fun longs(value: Any?): List<Long> {
+            val array = when (value) {
+                is JSONArray -> value
+                is String -> runCatching { JSONArray(value) }.getOrNull()
+                else -> null
+            } ?: return emptyList()
+            return buildList {
+                for (i in 0 until array.length()) {
+                    val parsed = array.opt(i)?.toString()?.toLongOrNull() ?: continue
+                    if (parsed > 0) add(parsed)
+                }
+            }.distinct()
+        }
+        fun stringMap(value: Any?): Map<String, String> {
+            val obj = when (value) {
+                is JSONObject -> value
+                is String -> runCatching { JSONObject(value) }.getOrNull()
+                else -> null
+            } ?: return emptyMap()
+            return buildMap {
+                obj.keys().forEach { key ->
+                    obj.optString(key).takeIf { it.isNotBlank() }?.let { put(key, it) }
+                }
+            }
+        }
+        fun boolMap(value: Any?): Map<String, Boolean> {
+            val obj = when (value) {
+                is JSONObject -> value
+                is String -> runCatching { JSONObject(value) }.getOrNull()
+                else -> null
+            } ?: return emptyMap()
+            return buildMap {
+                obj.keys().forEach { key -> if (obj.has(key)) put(key, obj.optBoolean(key, false)) }
+            }
+        }
+
+        return buildList {
+            for (i in 0 until raw.length()) {
+                val item = raw.optJSONObject(i) ?: continue
+                val systemRef = item.optLong("systemRef").takeIf { it > 0 } ?: continue
+                val talkgroupRef = item.optLong("talkgroupRef").takeIf { it > 0 } ?: continue
+                add(
+                    AlertPreference(
+                        systemRef = systemRef,
+                        talkgroupRef = talkgroupRef,
+                        alertEnabled = item.optBoolean("alertEnabled", false),
+                        toneAlerts = item.optBoolean("toneAlerts", true),
+                        keywordAlerts = item.optBoolean("keywordAlerts", true),
+                        keywords = strings(item.opt("keywords")),
+                        keywordListIds = longs(item.opt("keywordListIds")),
+                        toneSetIds = strings(item.opt("toneSetIds")),
+                        notificationSound = item.optString("notificationSound"),
+                        toneSetSounds = stringMap(item.opt("toneSetSounds")),
+                        pagerAlert = item.optBoolean("pagerAlert", false),
+                        toneSetPagerAlerts = boolMap(item.opt("toneSetPagerAlerts"))
+                    )
+                )
+            }
+        }.sortedWith(compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef })
+    }
+
+    internal fun serializeAlertPreferences(preferences: List<AlertPreference>): JSONArray =
+        JSONArray().apply {
+            preferences.forEach { pref ->
+                put(
+                    JSONObject()
+                        .put("systemRef", pref.systemRef)
+                        .put("talkgroupRef", pref.talkgroupRef)
+                        .put("alertEnabled", pref.alertEnabled)
+                        .put("toneAlerts", pref.toneAlerts)
+                        .put("keywordAlerts", pref.keywordAlerts)
+                        .put("keywords", JSONArray(pref.keywords))
+                        .put("keywordListIds", JSONArray(pref.keywordListIds))
+                        .put("toneSetIds", JSONArray(pref.toneSetIds))
+                        .put("notificationSound", pref.notificationSound)
+                        .put("toneSetSounds", JSONObject(pref.toneSetSounds))
+                        .put("pagerAlert", pref.pagerAlert)
+                        .put("toneSetPagerAlerts", JSONObject(pref.toneSetPagerAlerts))
+                )
+            }
+        }
     internal fun mergeScanListsIntoSettings(
         current: JSONObject,
         scanLists: List<ScanList>,
@@ -604,6 +715,180 @@ object ScannerRepository {
                 refreshAlerts(session.profile.id)
             }
         }
+    }
+    fun refreshAlertPreferences(profileId: String) {
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    alertPreferencesLoading = false,
+                    alertPreferencesError = "Sign in to load alert preferences"
+                )
+            }
+            publish()
+            return
+        }
+        val shouldStart = synchronized(session) {
+            if (session.state.alertPreferencesLoading || session.state.alertPreferencesSaving) false
+            else {
+                session.state = session.state.copy(
+                    alertPreferencesLoading = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!shouldStart) return
+        publish()
+
+        scope.launch {
+            try {
+                val preferences = fetchAlertPreferences(session)
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        alertPreferences = preferences,
+                        alertPreferencesLoading = false,
+                        alertPreferencesError = null
+                    )
+                }
+                publish()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        alertPreferencesLoading = false,
+                        alertPreferencesError = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Alert preference refresh failed"
+                    )
+                }
+                publish()
+            }
+        }
+    }
+
+    fun setAlertPreference(
+        profileId: String,
+        key: ChannelKey,
+        alertEnabled: Boolean? = null,
+        toneAlerts: Boolean? = null,
+        keywordAlerts: Boolean? = null
+    ) {
+        val session = sessions[profileId] ?: return
+        val changed = synchronized(session) {
+            val existing = session.state.alertPreferences.firstOrNull { it.key == key }
+                ?: AlertPreference(systemRef = key.systemRef, talkgroupRef = key.talkgroupRef)
+            val updated = existing.copy(
+                alertEnabled = alertEnabled ?: existing.alertEnabled,
+                toneAlerts = toneAlerts ?: existing.toneAlerts,
+                keywordAlerts = keywordAlerts ?: existing.keywordAlerts
+            )
+            if (updated == existing && session.state.alertPreferences.any { it.key == key }) {
+                false
+            } else {
+                val preferences = session.state.alertPreferences
+                    .filterNot { it.key == key } + updated
+                session.alertPreferenceRevision++
+                session.state = session.state.copy(
+                    alertPreferences = preferences.sortedWith(
+                        compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }
+                    ),
+                    alertPreferencesSaving = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleAlertPreferenceSave(session)
+    }
+
+    private fun scheduleAlertPreferenceSave(session: Session) {
+        synchronized(session) {
+            session.alertPreferenceSaveJob?.cancel()
+            session.alertPreferenceSaveJob = scope.launch {
+                delay(500L)
+                persistAlertPreferences(session)
+            }
+        }
+    }
+
+    private suspend fun persistAlertPreferences(session: Session) {
+        session.alertPreferenceMutex.withLock {
+            while (isCurrent(session)) {
+                val snapshot = synchronized(session) {
+                    session.alertPreferenceRevision to session.state.alertPreferences
+                }
+                val revision = snapshot.first
+                val preferences = snapshot.second
+                val pin = session.profile.pin.trim()
+                if (pin.isBlank()) {
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            alertPreferencesSaving = false,
+                            alertPreferencesError = "Sign in to save alert preferences"
+                        )
+                        session.alertPreferenceSaveJob = null
+                    }
+                    publish()
+                    return
+                }
+
+                try {
+                    val origin = httpOrigin(session.profile.baseUrl)
+                    val request = Request.Builder()
+                        .url("$origin/api/alerts/preferences")
+                        .header("Authorization", "Bearer $pin")
+                        .put(serializeAlertPreferences(preferences).toString().toRequestBody(JSON_MEDIA_TYPE))
+                        .build()
+                    executeSuccess(request)
+
+                    val unchanged = synchronized(session) { session.alertPreferenceRevision == revision }
+                    if (!unchanged) continue
+
+                    val canonical = fetchAlertPreferences(session)
+                    val done = synchronized(session) {
+                        if (session.alertPreferenceRevision == revision) {
+                            session.state = session.state.copy(
+                                alertPreferences = canonical,
+                                alertPreferencesSaving = false,
+                                alertPreferencesError = null
+                            )
+                            session.alertPreferenceSaveJob = null
+                            true
+                        } else false
+                    }
+                    publish()
+                    if (done) return
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session)) return
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            alertPreferencesSaving = false,
+                            alertPreferencesError = error.message?.takeIf { it.isNotBlank() }
+                                ?: "Alert preference save failed"
+                        )
+                        session.alertPreferenceSaveJob = null
+                    }
+                    publish()
+                    return
+                }
+            }
+        }
+    }
+
+    private fun fetchAlertPreferences(session: Session): List<AlertPreference> {
+        val origin = httpOrigin(session.profile.baseUrl)
+        val request = Request.Builder()
+            .url("$origin/api/alerts/preferences")
+            .header("Authorization", "Bearer ${session.profile.pin.trim()}")
+            .get()
+            .build()
+        return parseAlertPreferences(executeJsonArray(request))
     }
     fun replay(profileId: String, callId: Long) {
         val session = sessions[profileId] ?: return
@@ -998,7 +1283,10 @@ object ScannerRepository {
             else sendEffectiveLivefeedLocked(session)
         }
         publish()
-        if (session.profile.pin.isNotBlank()) scheduleAlertRefresh(session)
+        if (session.profile.pin.isNotBlank()) {
+            scheduleAlertRefresh(session)
+            refreshAlertPreferences(session.profile.id)
+        }
         if (needsKeyExchange) startKeyExchange(session)
     }
 
