@@ -140,8 +140,9 @@ object ScannerRepository {
     fun setTalkgroupEnabled(profileId: String, systemRef: Long, talkgroupRef: Long, enabled: Boolean) {
         val session = sessions[profileId] ?: return
         val key = ChannelKey(systemRef, talkgroupRef)
-        channelStore?.setEnabled(profileId, key, enabled)
         synchronized(session) {
+            if (enabled && systemRef in session.state.hiddenSystemRefs) return
+            channelStore?.setEnabled(profileId, key, enabled)
             val systems = session.state.systems.map { system ->
                 if (system.systemRef != systemRef) system
                 else system.copy(talkgroups = system.talkgroups.map { tg ->
