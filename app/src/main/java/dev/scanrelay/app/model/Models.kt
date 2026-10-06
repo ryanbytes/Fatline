@@ -41,10 +41,24 @@ data class TalkgroupConfig(
         }
 }
 
+data class UnitAlias(
+    val id: Long = 0,
+    val label: String,
+    val unitRef: Long = 0,
+    val unitFrom: Long = 0,
+    val unitTo: Long = 0
+) {
+    fun matches(sourceRef: Long): Boolean =
+        (unitFrom > 0 && unitTo > 0 && sourceRef in unitFrom..unitTo) ||
+            (unitRef > 0 && unitRef == sourceRef) ||
+            (unitRef <= 0 && id > 0 && id == sourceRef)
+}
+
 data class SystemConfig(
     val systemRef: Long,
     val label: String,
-    val talkgroups: List<TalkgroupConfig>
+    val talkgroups: List<TalkgroupConfig>,
+    val units: List<UnitAlias> = emptyList()
 )
 
 data class ScanList(
@@ -69,6 +83,7 @@ data class RadioCall(
     val audioMime: String? = null,
     val audioName: String? = null,
     val sourceRef: Long? = null,
+    val sourceLabel: String? = null,
     val frequency: Long? = null,
     val durationSeconds: Double? = null,
     val encryptedAudio: Boolean = false

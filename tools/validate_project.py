@@ -152,6 +152,9 @@ require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in
 require('recentCalls' in models and 'session.state.recentCalls' in repo, 'dedicated live recent-call state missing')
 require('server.recentCalls' in ui and 'server.history.take(10)' not in ui, 'scanner recent list must not reuse archive history')
 require('durationSeconds = payload.optDouble("duration")' in repo, 'live call duration metadata must be preserved')
+require('UnitAlias' in models and 'parseUnits' in protocol, 'ThinLine unit alias parsing missing')
+require('sourceLabel = unitDisplay' in repo and 'call.sourceLabel' in ui, 'unit aliases must resolve into current-call display')
+require('systemsParseExactAndRangeUnitAliases' in protocol_tests, 'unit alias regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 

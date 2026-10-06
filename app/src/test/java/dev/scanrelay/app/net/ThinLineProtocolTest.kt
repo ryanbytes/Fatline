@@ -87,4 +87,31 @@ class ThinLineProtocolTest {
         assertEquals(102L, lists.single().channels[1].talkgroupRef)
     }
 
+    @Test fun systemsParseExactAndRangeUnitAliases() {
+        val config = JSONObject(
+            """
+            {
+              "systems": [
+                {
+                  "systemRef": 1,
+                  "label": "County",
+                  "talkgroups": [],
+                  "units": [
+                    {"id": 7, "unitRef": 12345, "unitFrom": 0, "unitTo": 0, "label": "Engine 3"},
+                    {"id": 8, "unitRef": 0, "unitFrom": 20000, "unitTo": 20099, "label": "Portable"},
+                    {"id": 45678, "unitRef": 0, "unitFrom": 0, "unitTo": 0, "label": "Legacy"}
+                  ]
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        val units = ThinLineProtocol.parseSystems(config).single().units
+
+        assertEquals("Engine 3", units.first { it.matches(12345) }.label)
+        assertEquals("Portable", units.first { it.matches(20042) }.label)
+        assertEquals("Legacy", units.first { it.matches(45678) }.label)
+    }
+
 }
