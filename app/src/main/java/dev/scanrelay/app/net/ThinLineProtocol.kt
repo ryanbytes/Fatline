@@ -1,5 +1,6 @@
 package dev.scanrelay.app.net
 
+import dev.scanrelay.app.model.AlertToneSet
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ScanList
 import dev.scanrelay.app.model.SystemConfig
@@ -165,6 +166,28 @@ object ThinLineProtocol {
             }
         }
     }
+    private fun parseToneSets(raw: Any?): List<AlertToneSet> {
+        val array = when (raw) {
+            is JSONArray -> raw
+            is String -> runCatching { JSONArray(raw) }.getOrNull()
+            else -> null
+        } ?: return emptyList()
+
+        return buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val id = item.optString("id").trim()
+                if (id.isBlank()) continue
+                add(
+                    AlertToneSet(
+                        id = id,
+                        label = item.optString("label").trim().ifBlank { id }
+                    )
+                )
+            }
+        }.distinctBy { it.id }
+    }
+
     private fun parseTalkgroups(systemRef: Long, raw: Any?): List<TalkgroupConfig> {
         val result = mutableListOf<TalkgroupConfig>()
         fun add(node: JSONObject, keyRef: Long? = null) {
@@ -178,7 +201,9 @@ object ThinLineProtocol {
                     is String -> tag
                     is JSONObject -> tag.optString("label")
                     else -> ""
-                }
+                },
+                toneDetectionEnabled = node.optBoolean("toneDetectionEnabled", false),
+                toneSets = parseToneSets(node.opt("toneSets"))
             )
         }
         when (raw) {
