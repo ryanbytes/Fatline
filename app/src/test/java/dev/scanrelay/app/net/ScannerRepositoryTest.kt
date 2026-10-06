@@ -329,6 +329,38 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun callDownloadUsesDedicatedAuthenticatedAudioEndpoint() {
+        assertEquals(
+            "https://scanner.example.com:3000/api/calls/42/audio",
+            ScannerRepository.callAudioDownloadUrl("wss://scanner.example.com:3000/path", 42)
+        )
+    }
+
+    @Test
+    fun callDownloadFilenameUsesServerNameAndSanitizesPaths() {
+        assertEquals(
+            "dispatch 42.mp3",
+            ScannerRepository.callDownloadFilename(
+                "inline; filename=\"dispatch 42.mp3\"",
+                42,
+                "audio/mpeg"
+            )
+        )
+        assertEquals(
+            "evil.wav",
+            ScannerRepository.callDownloadFilename(
+                "inline; filename=\"../../evil.wav\"",
+                43,
+                "audio/wav"
+            )
+        )
+        assertEquals(
+            "FatLine-call-44.m4a",
+            ScannerRepository.callDownloadFilename(null, 44, "audio/mp4")
+        )
+    }
+
+    @Test
     fun alertToneSetIdsTrimDropBlanksAndDeduplicate() {
         val ids = ScannerRepository.normalizeAlertToneSetIds(
             listOf(" station-1 ", "", "station-2", "station-1")

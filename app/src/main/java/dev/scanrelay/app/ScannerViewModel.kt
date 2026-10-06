@@ -202,6 +202,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         keywordAlerts: Boolean? = null
     ) = ScannerRepository.setAlertPreference(profileId, key, alertEnabled, toneAlerts, keywordAlerts)
     fun replay(profileId: String, callId: Long) = ScannerRepository.replay(profileId, callId)
+    fun downloadCall(profileId: String, callId: Long) = ScannerRepository.downloadCall(profileId, callId)
     fun skip() = ScannerRepository.skip()
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
