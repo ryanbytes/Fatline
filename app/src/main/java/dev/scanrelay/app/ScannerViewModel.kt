@@ -2,6 +2,7 @@ package dev.scanrelay.app
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
@@ -10,14 +11,31 @@ import dev.scanrelay.app.net.ScannerRepository
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.net.URI
+
+data class AccountLoginState(
+    val working: Boolean = false,
+    val message: String? = null,
+    val error: String? = null
+)
 
 class ScannerViewModel(application: Application) : AndroidViewModel(application) {
     private val profileStore = ProfileStore(application)
     private val channelStore = ChannelStore(application)
     private val _profiles = MutableStateFlow(profileStore.load())
+    private val _accountLogin = MutableStateFlow(AccountLoginState())
+    private val loginHttpClient = OkHttpClient()
 
     val profiles: StateFlow<List<ServerProfile>> = _profiles.asStateFlow()
+    val accountLogin: StateFlow<AccountLoginState> = _accountLogin.asStateFlow()
     val scannerState = ScannerRepository.state
 
     init { ScannerRepository.initialize(application) }
@@ -39,6 +57,109 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         _profiles.value = profileStore.load()
     }
 
+    fun loginAndConnect(profile: ServerProfile, username: String, password: String) {
+        if (profile.baseUrl.isBlank()) {
+            _accountLogin.value = AccountLoginState(error = "Server URL is required")
+            return
+        }
+        if (username.isBlank() || password.isBlank()) {
+            _accountLogin.value = AccountLoginState(error = "Username / email and password are required")
+            return
+        }
+
+        _accountLogin.value = AccountLoginState(working = true, message = "Signing in…")
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(profile.baseUrl)
+                val email = username.trim().lowercase()
+                val settings = runCatching { getJson("$origin/api/registration-settings") }.getOrNull()
+                val pin = if (settings?.optBoolean("centralManagementEnabled", false) == true) {
+                    val login = postJson(
+                        "$origin/api/cm-auth/login",
+                        JSONObject().put("email", email).put("password", password)
+                    )
+                    val token = login.optString("token").trim()
+                    require(token.isNotBlank()) { "Login succeeded but no account session token was returned" }
+                    val session = postJson(
+                        "$origin/api/cm-auth/session",
+                        JSONObject().put("token", token).put("returnUrl", origin)
+                    )
+                    if (session.optBoolean("needsSubscription", false)) {
+                        throw IllegalStateException(
+                            session.optString("message").takeIf { it.isNotBlank() }
+                                ?: "This account does not currently have scanner access"
+                        )
+                    }
+                    session.optString("pin").trim()
+                } else {
+                    val login = postJson(
+                        "$origin/api/user/login",
+                        JSONObject().put("email", email).put("password", password)
+                    )
+                    login.optJSONObject("user")?.optString("pin").orEmpty().trim()
+                }
+
+                require(pin.isNotBlank()) { "Login succeeded but the server did not return a scanner PIN" }
+                val saved = saveProfile(profile.copy(pin = pin))
+                ScannerService.connect(getApplication(), saved.id)
+                _accountLogin.value = AccountLoginState(message = "Signed in")
+            }.onFailure { error ->
+                _accountLogin.value = AccountLoginState(
+                    error = error.message?.takeIf { it.isNotBlank() } ?: "Login failed"
+                )
+            }
+        }
+    }
+
+    fun clearAccountLoginStatus() {
+        _accountLogin.value = AccountLoginState()
+    }
+
+    private fun getJson(url: String): JSONObject {
+        val request = Request.Builder().url(url).get().build()
+        return executeJson(request)
+    }
+
+    private fun postJson(url: String, body: JSONObject): JSONObject {
+        val request = Request.Builder()
+            .url(url)
+            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return executeJson(request)
+    }
+
+    private fun executeJson(request: Request): JSONObject =
+        loginHttpClient.newCall(request).execute().use { response ->
+            val text = response.body.string()
+            val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+            if (!response.isSuccessful) {
+                val message = json.optString("message").takeIf { it.isNotBlank() }
+                    ?: json.optString("error").takeIf { it.isNotBlank() }
+                    ?: "Login failed (HTTP ${response.code})"
+                throw IllegalStateException(message)
+            }
+            json
+        }
+
+    private fun httpOrigin(baseUrl: String): String {
+        val normalized = baseUrl.trim().let {
+            if (
+                it.startsWith("http://", true) ||
+                it.startsWith("https://", true) ||
+                it.startsWith("ws://", true) ||
+                it.startsWith("wss://", true)
+            ) it else "https://$it"
+        }
+        val uri = URI(normalized)
+        val scheme = when (uri.scheme?.lowercase()) {
+            "ws" -> "http"
+            "wss" -> "https"
+            "http", "https" -> uri.scheme.lowercase()
+            else -> error("Unsupported server URL scheme: ${uri.scheme}")
+        }
+        require(!uri.host.isNullOrBlank()) { "Server URL must include a host" }
+        return URI(scheme, null, uri.host, uri.port, null, null, null).toString().trimEnd('/')
+    }
     fun connect(profile: ServerProfile) = ScannerService.connect(getApplication(), saveProfile(profile).id)
     fun disconnect(profileId: String) = ScannerService.disconnect(getApplication(), profileId)
     fun disconnectAll() = ScannerService.disconnectAll(getApplication())
@@ -55,4 +176,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun requestHistory(profileId: String, reset: Boolean = true) = ScannerRepository.requestHistory(profileId, reset)
     fun replay(profileId: String, callId: Long) = ScannerRepository.replay(profileId, callId)
     fun skip() = ScannerRepository.skip()
+    companion object {
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+    }
+
 }
