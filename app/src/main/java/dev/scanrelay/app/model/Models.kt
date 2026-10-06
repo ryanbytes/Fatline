@@ -37,7 +37,8 @@ data class TalkgroupConfig(
     val enabled: Boolean = false,
     val favorite: Boolean = false,
     val toneDetectionEnabled: Boolean = false,
-    val toneSets: List<AlertToneSet> = emptyList()
+    val toneSets: List<AlertToneSet> = emptyList(),
+    val talkgroupId: Long? = null
 ) {
     val key: ChannelKey get() = ChannelKey(systemRef, talkgroupRef)
     val displayName: String
@@ -65,7 +66,8 @@ data class SystemConfig(
     val systemRef: Long,
     val label: String,
     val talkgroups: List<TalkgroupConfig>,
-    val units: List<UnitAlias> = emptyList()
+    val units: List<UnitAlias> = emptyList(),
+    val systemId: Long? = null
 )
 
 data class ScanList(
@@ -145,6 +147,22 @@ data class SystemHealthAlert(
     val dismissed: Boolean = false
 )
 
+data class TranscriptRecord(
+    val profileId: String,
+    val serverName: String,
+    val callId: Long,
+    val systemId: Long? = null,
+    val talkgroupId: Long? = null,
+    val systemLabel: String? = null,
+    val talkgroupLabel: String? = null,
+    val talkgroupName: String? = null,
+    val transcript: String,
+    val reviewedTranscript: String? = null,
+    val transcriptionStatus: String? = null,
+    val timestamp: Long? = null,
+    val alertSummary: String? = null
+)
+
 data class ScannerAlert(
     val profileId: String,
     val serverName: String,
@@ -194,6 +212,11 @@ data class ServerScannerState(
     val alerts: List<ScannerAlert> = emptyList(),
     val alertsLoading: Boolean = false,
     val alertsError: String? = null,
+    val transcripts: List<TranscriptRecord> = emptyList(),
+    val transcriptsLoading: Boolean = false,
+    val transcriptsError: String? = null,
+    val transcriptsOffset: Int = 0,
+    val transcriptsHasMore: Boolean = false,
     val systemAlerts: List<SystemHealthAlert> = emptyList(),
     val systemAlertsLoading: Boolean = false,
     val systemAlertsError: String? = null,
