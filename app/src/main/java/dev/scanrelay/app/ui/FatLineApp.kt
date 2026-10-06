@@ -362,6 +362,21 @@ private fun ChannelsScreen(
     modifier: Modifier
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
+    var channelQuery by remember(selectedProfileId) { mutableStateOf("") }
+    var favoritesOnly by remember(selectedProfileId) { mutableStateOf(false) }
+    val normalizedQuery = channelQuery.trim().lowercase()
+    val visibleSystems = server?.systems.orEmpty().mapNotNull { system ->
+        val systemMatches = normalizedQuery.isNotEmpty() && system.label.lowercase().contains(normalizedQuery)
+        val visibleTalkgroups = system.talkgroups.filter { talkgroup ->
+            val favoriteMatches = !favoritesOnly || talkgroup.favorite
+            val queryMatches = normalizedQuery.isEmpty() || systemMatches ||
+                talkgroup.displayName.lowercase().contains(normalizedQuery) ||
+                talkgroup.tag.lowercase().contains(normalizedQuery) ||
+                talkgroup.talkgroupRef.toString().contains(normalizedQuery)
+            favoriteMatches && queryMatches
+        }
+        system.copy(talkgroups = visibleTalkgroups).takeIf { visibleTalkgroups.isNotEmpty() }
+    }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
@@ -395,6 +410,37 @@ private fun ChannelsScreen(
                         onClick = { viewModel.clearAvoids(server.profile.id) },
                         enabled = server.avoided.isNotEmpty()
                     ) { Text("Clear avoids") }
+                }
+            }
+
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedTextField(
+                        value = channelQuery,
+                        onValueChange = { channelQuery = it },
+                        label = { Text("Search channels") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(onClick = { favoritesOnly = !favoritesOnly }) {
+                            Text(if (favoritesOnly) "★ Favorites only" else "☆ Favorites only")
+                        }
+                        if (channelQuery.isNotBlank()) {
+                            OutlinedButton(onClick = { channelQuery = "" }) { Text("Clear") }
+                        }
+                        Text(
+                            visibleSystems.sumOf { it.talkgroups.size }.toString() + " shown",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
 
@@ -444,7 +490,13 @@ private fun ChannelsScreen(
                 item { HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
             }
 
-            server.systems.forEachIndexed { systemIndex, system ->
+            if (visibleSystems.isEmpty()) {
+                item {
+                    Text("No channels match the current filter.", modifier = Modifier.padding(16.dp))
+                }
+            }
+
+            visibleSystems.forEachIndexed { systemIndex, system ->
                 item(key = "system-" + server.profile.id + "-" + systemIndex + "-" + system.systemRef) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
