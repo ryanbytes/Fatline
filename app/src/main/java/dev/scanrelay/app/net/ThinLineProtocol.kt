@@ -119,10 +119,11 @@ object ThinLineProtocol {
             val ref = node.optLong("systemRef", node.optLong("id", keyRef ?: 0L)).takeIf { it > 0 } ?: return
             val label = node.optString("label").ifBlank { "System $ref" }
             systems += SystemConfig(
-                ref,
-                label,
-                parseTalkgroups(ref, node.opt("talkgroups")),
-                parseUnits(node.opt("units"))
+                systemRef = ref,
+                label = label,
+                talkgroups = parseTalkgroups(ref, node.opt("talkgroups")),
+                units = parseUnits(node.opt("units")),
+                systemId = node.optLong("systemId").takeIf { it > 0 }
             )
         }
 
@@ -219,7 +220,8 @@ object ThinLineProtocol {
                     else -> ""
                 },
                 toneDetectionEnabled = node.optBoolean("toneDetectionEnabled", false),
-                toneSets = parseToneSets(node.opt("toneSets"))
+                toneSets = parseToneSets(node.opt("toneSets")),
+                talkgroupId = node.optLong("talkgroupId").takeIf { it > 0 }
             )
         }
         when (raw) {
