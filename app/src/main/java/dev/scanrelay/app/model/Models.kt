@@ -127,6 +127,8 @@ data class ServerScannerState(
     val profile: ServerProfile,
     val systems: List<SystemConfig> = emptyList(),
     val scanLists: List<ScanList> = emptyList(),
+    val scanListSyncing: Boolean = false,
+    val scanListError: String? = null,
     val history: List<RadioCall> = emptyList(),
     val recentCalls: List<RadioCall> = emptyList(),
     val lastCall: RadioCall? = null,
