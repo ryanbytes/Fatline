@@ -101,6 +101,10 @@ object ThinLineProtocol {
         else -> payload?.toString()?.trim()?.toIntOrNull()
     }?.takeIf { it >= 0 }
 
+    fun parsePinSet(payload: Any?): String? =
+        (payload as? String)?.trim()?.takeIf { it.isNotBlank() }
+
+
 
     fun parseSystems(configPayload: JSONObject): List<SystemConfig> {
         val raw = configPayload.opt("systems") ?: return emptyList()
