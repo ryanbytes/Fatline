@@ -220,6 +220,10 @@ require('setAlertKeywordLists' in repo and 'keywordListIds = normalizedIds' in r
 require('refreshAlertKeywordLists' in viewmodel and 'setAlertKeywordLists' in viewmodel, 'keyword-list view-model bridge missing')
 require('Loading keyword lists' in ui and 'No server keyword lists are available' in ui and 'setAlertKeywordLists' in ui, 'keyword-list selection UI missing')
 require('keywordListsParseLabelsDescriptionsAndKeywords' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'keyword-list parser regression test missing')
+require('setAlertKeywords' in repo and 'normalizeAlertKeywords' in repo, 'custom per-talkgroup keyword persistence missing')
+require('setAlertKeywords' in viewmodel, 'custom keyword view-model bridge missing')
+require('Custom keywords' in ui and 'Save keywords' in ui and 'Separate phrases with commas or new lines' in ui, 'custom keyword editor missing')
+require('customAlertKeywordsNormalizeCommaNewlineWhitespaceAndDuplicates' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'custom keyword normalization regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
