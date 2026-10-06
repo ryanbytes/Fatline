@@ -809,6 +809,7 @@ object ScannerRepository {
             val notificationId = ("connection-loss:" + session.profile.id).hashCode() and Int.MAX_VALUE
             AlertNotifier.postConnectionLoss(
                 context,
+                session.profile.id,
                 session.profile.name,
                 detail.ifBlank { "Scanner connection lost" },
                 notificationId
