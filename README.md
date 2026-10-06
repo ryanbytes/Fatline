@@ -10,6 +10,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Kotlin + Jetpack Compose
 - Multiple scanner servers connected simultaneously
 - Open and PIN-protected servers; PINs stored with Android Keystore AES-GCM and masked in the UI
+- Server-issued `PNS` PIN updates replace the live reconnect credential and refresh the encrypted saved PIN
 - ThinLine-compatible WebSocket commands including `VER`, `PIN`, `CFG`, `CAL`, `LCL`, `LFM`, `ALT`, `ERR`, `XPR`, and `MAX`
 - Public-client wire parity for root WebSocket URL, `CAL` string IDs, complete `LFM` boolean maps, challenge-driven PIN authentication, and bare `LFM` live-feed pause
 - Persistent per-server channel selections and favorites
