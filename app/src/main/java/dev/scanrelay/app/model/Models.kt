@@ -23,6 +23,11 @@ data class ChannelKey(val systemRef: Long, val talkgroupRef: Long) {
     }
 }
 
+data class AlertToneSet(
+    val id: String,
+    val label: String
+)
+
 data class TalkgroupConfig(
     val systemRef: Long,
     val talkgroupRef: Long,
@@ -30,7 +35,9 @@ data class TalkgroupConfig(
     val name: String = "",
     val tag: String = "",
     val enabled: Boolean = false,
-    val favorite: Boolean = false
+    val favorite: Boolean = false,
+    val toneDetectionEnabled: Boolean = false,
+    val toneSets: List<AlertToneSet> = emptyList()
 ) {
     val key: ChannelKey get() = ChannelKey(systemRef, talkgroupRef)
     val displayName: String

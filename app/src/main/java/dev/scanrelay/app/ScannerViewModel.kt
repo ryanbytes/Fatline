@@ -190,6 +190,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun refreshAlertKeywordLists(profileId: String) = ScannerRepository.refreshAlertKeywordLists(profileId)
     fun setAlertKeywordLists(profileId: String, key: ChannelKey, keywordListIds: Collection<Long>) =
         ScannerRepository.setAlertKeywordLists(profileId, key, keywordListIds)
+    fun setAlertToneSets(profileId: String, key: ChannelKey, toneSetIds: Collection<String>) =
+        ScannerRepository.setAlertToneSets(profileId, key, toneSetIds)
     fun setAlertKeywords(profileId: String, key: ChannelKey, rawKeywords: String) =
         ScannerRepository.setAlertKeywords(profileId, key, rawKeywords)
     fun setAlertPreference(

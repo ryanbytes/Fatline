@@ -876,6 +876,37 @@ object ScannerRepository {
             .map(String::trim)
             .filter(String::isNotBlank)
             .distinct()
+    internal fun normalizeAlertToneSetIds(toneSetIds: Collection<String>): List<String> =
+        toneSetIds
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinct()
+
+    fun setAlertToneSets(profileId: String, key: ChannelKey, toneSetIds: Collection<String>) {
+        val session = sessions[profileId] ?: return
+        val normalizedIds = normalizeAlertToneSetIds(toneSetIds)
+        val changed = synchronized(session) {
+            val existing = session.state.alertPreferences.firstOrNull { it.key == key }
+                ?: AlertPreference(systemRef = key.systemRef, talkgroupRef = key.talkgroupRef)
+            val updated = existing.copy(toneSetIds = normalizedIds)
+            if (updated == existing && session.state.alertPreferences.any { it.key == key }) {
+                false
+            } else {
+                session.alertPreferenceRevision++
+                session.state = session.state.copy(
+                    alertPreferences = (session.state.alertPreferences.filterNot { it.key == key } + updated)
+                        .sortedWith(compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }),
+                    alertPreferencesSaving = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleAlertPreferenceSave(session)
+    }
+
     fun setAlertKeywordLists(profileId: String, key: ChannelKey, keywordListIds: Collection<Long>) {
         val session = sessions[profileId] ?: return
         val normalizedIds = keywordListIds.filter { it > 0 }.distinct().sorted()
