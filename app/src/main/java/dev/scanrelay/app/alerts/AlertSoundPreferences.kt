@@ -57,12 +57,12 @@ object AlertSoundPreferences {
     }
 
     fun displayName(context: Context, profileId: String): String =
-        displayName(context, get(context, profileId))
+        formatDisplayName(context, get(context, profileId))
 
     fun displayDisconnectName(context: Context, profileId: String): String =
-        displayName(context, getDisconnect(context, profileId))
+        formatDisplayName(context, getDisconnect(context, profileId))
 
-    private fun displayName(context: Context, setting: String?): String {
+    private fun formatDisplayName(context: Context, setting: String?): String {
         if (setting == null) return "System default"
         if (setting == SILENT) return "Silent"
 
