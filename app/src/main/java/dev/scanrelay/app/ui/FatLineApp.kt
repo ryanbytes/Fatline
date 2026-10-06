@@ -252,7 +252,6 @@ private fun ScannerScreen(
                 items(recent, key = { call -> "recent-" + call.profileId + "-" + call.id }) { call ->
                     CallRow(
                         call,
-                        onContinue = { viewModel.continueHistory(call.profileId, call.id) },
                         onReplay = { viewModel.replay(call.profileId, call.id) },
                         onDownload = { viewModel.downloadCall(call.profileId, call.id) }
                     )
@@ -845,6 +844,7 @@ private fun HistoryScreen(
                 items(visibleHistory, key = { call -> "history-" + call.profileId + "-" + call.id }) { call ->
                     CallRow(
                         call,
+                        onContinue = { viewModel.continueHistory(call.profileId, call.id) },
                         onReplay = { viewModel.replay(call.profileId, call.id) },
                         onDownload = { viewModel.downloadCall(call.profileId, call.id) }
                     )
