@@ -24,6 +24,7 @@ required = [
     'app/src/main/java/dev/scanrelay/app/playback/ScannerService.kt',
     'app/src/main/java/dev/scanrelay/app/data/PinVault.kt',
     'app/src/main/java/dev/scanrelay/app/data/ChannelStore.kt',
+    'app/src/main/java/dev/scanrelay/app/alerts/AlertSoundPreferences.kt',
     'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt',
@@ -46,6 +47,8 @@ crypto = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/AudioCrypto.kt').read_
 models = (ROOT / 'app/src/main/java/dev/scanrelay/app/model/Models.kt').read_text()
 viewmodel = (ROOT / 'app/src/main/java/dev/scanrelay/app/ScannerViewModel.kt').read_text()
 ui = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt').read_text()
+alert_sound = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/AlertSoundPreferences.kt').read_text()
+alert_notifier = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/AlertNotifier.kt').read_text()
 protocol_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt').read_text()
 socket_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt').read_text()
 
@@ -188,6 +191,9 @@ require('callSourcesAreOrderedDeduplicatedAndAliasAware' in (ROOT / 'app/src/tes
 require('alertsLoading' in models and 'alertsError' in models and 'stableKey' in models, 'persisted rich-alert state missing')
 require('refreshAlerts' in repo and '/api/alerts' in repo and 'parseServerAlerts' in repo, 'server alert-history loading missing')
 require('postConnectionLoss' in (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/AlertNotifier.kt').read_text(), 'connection-loss notification helper missing')
+require('RingtoneManager.ACTION_RINGTONE_PICKER' in ui and 'Choose sound' in ui and 'System default' in ui, 'per-scanner alert sound picker missing')
+require('ALERT_CHANNEL_PREFIX' in alert_notifier and 'AlertSoundPreferences.get' in alert_notifier, 'profile alert sound channel routing missing')
+require('SILENT' in alert_sound and 'displayName' in alert_sound, 'alert sound preference persistence missing')
 require('hasConnected' in repo and 'disconnectNotified' in repo and 'notifyConnectionLoss' in repo, 'one-shot disconnect notification state missing')
 require('ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)' in repo, 'incident updates must refresh persisted alert details')
 require('AppTab.Alerts' in ui and 'Search alerts' in ui and 'Replay call' in ui, 'dedicated searchable Alerts screen missing')
