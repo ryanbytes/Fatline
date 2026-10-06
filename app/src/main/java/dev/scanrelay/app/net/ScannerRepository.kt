@@ -1891,6 +1891,12 @@ object ScannerRepository {
             ThinLineProtocol.LIST_CALL -> handleHistory(session, envelope.payload as? JSONObject ?: return)
             ThinLineProtocol.ALERT -> handleAlert(session, envelope.payload)
             ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)
+            ThinLineProtocol.LISTENER_COUNT -> ThinLineProtocol.parseListenerCount(envelope.payload)?.let { count ->
+                synchronized(session) {
+                    session.state = session.state.copy(listenerCount = count)
+                }
+                publish()
+            }
             ThinLineProtocol.ERROR -> {
                 synchronized(session) { session.state = session.state.copy(error = envelope.payload?.toString() ?: "Server error") }
                 publish()
@@ -1930,6 +1936,7 @@ object ScannerRepository {
         val encrypted = options?.optBoolean("audioEncryptionEnabled", false) == true
         val relayUrl = options?.optString("relayServerURL")?.takeIf { it.isNotBlank() }
         val token = options?.optString("audioClientToken")?.takeIf { it.isNotBlank() }
+        val showListenersCount = payload.optBoolean("showListenersCount", false)
         var needsKeyExchange = false
 
         synchronized(session) {
@@ -1958,6 +1965,8 @@ object ScannerRepository {
                 scanLists = if (session.state.scanListSyncing) session.state.scanLists else scanLists,
                 audioEncryptionEnabled = encrypted,
                 encryptionReady = !encrypted || session.masterKey != null,
+                showListenersCount = showListenersCount,
+                listenerCount = if (showListenersCount) session.state.listenerCount else 0,
                 error = null
             )
             if (session.state.paused) session.socket?.stopLivefeed()
