@@ -236,8 +236,24 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         key: ChannelKey,
         alertEnabled: Boolean? = null,
         toneAlerts: Boolean? = null,
-        keywordAlerts: Boolean? = null
-    ) = ScannerRepository.setAlertPreference(profileId, key, alertEnabled, toneAlerts, keywordAlerts)
+        keywordAlerts: Boolean? = null,
+        notificationSound: String? = null,
+        pagerAlert: Boolean? = null
+    ) = ScannerRepository.setAlertPreference(
+        profileId,
+        key,
+        alertEnabled,
+        toneAlerts,
+        keywordAlerts,
+        notificationSound,
+        pagerAlert
+    )
+
+    fun setAlertToneSetSound(profileId: String, key: ChannelKey, toneSetId: String, sound: String?) =
+        ScannerRepository.setAlertToneSetSound(profileId, key, toneSetId, sound)
+
+    fun setAlertToneSetPager(profileId: String, key: ChannelKey, toneSetId: String, enabled: Boolean) =
+        ScannerRepository.setAlertToneSetPager(profileId, key, toneSetId, enabled)
     fun replay(profileId: String, callId: Long) = ScannerRepository.replay(profileId, callId)
     fun continueHistory(profileId: String, callId: Long) = ScannerRepository.continueHistory(profileId, callId)
     fun downloadCall(profileId: String, callId: Long) = ScannerRepository.downloadCall(profileId, callId)
