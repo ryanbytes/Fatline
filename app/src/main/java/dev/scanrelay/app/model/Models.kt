@@ -216,6 +216,7 @@ data class ServerScannerState(
     val showListenersCount: Boolean = false,
     val listenerCount: Int = 0,
     val incidentMappingEnabled: Boolean = false,
+    val time12hFormat: Boolean = false,
     val historyHasMore: Boolean = false,
     val historySystemRef: Long? = null,
     val historyTalkgroupRef: Long? = null,
