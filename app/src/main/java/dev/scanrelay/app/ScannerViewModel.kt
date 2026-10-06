@@ -38,7 +38,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     val accountLogin: StateFlow<AccountLoginState> = _accountLogin.asStateFlow()
     val scannerState = ScannerRepository.state
 
-    init { ScannerRepository.initialize(application) }
+    init {
+        ScannerRepository.initialize(application)
+        viewModelScope.launch {
+            ScannerRepository.profileCredentialUpdates.collect {
+                _profiles.value = profileStore.load()
+            }
+        }
+    }
 
     fun saveProfile(profile: ServerProfile): ServerProfile {
         val clean = profile.copy(
