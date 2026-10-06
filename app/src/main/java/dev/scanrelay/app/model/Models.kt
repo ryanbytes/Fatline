@@ -110,8 +110,27 @@ data class ScannerAlert(
     val serverName: String,
     val title: String,
     val body: String,
-    val dateTime: String? = null
-)
+    val dateTime: String? = null,
+    val alertId: Long? = null,
+    val callId: Long? = null,
+    val alertType: String? = null,
+    val systemLabel: String? = null,
+    val talkgroupLabel: String? = null,
+    val talkgroupName: String? = null,
+    val matchedToneSets: List<String> = emptyList(),
+    val keywords: List<String> = emptyList(),
+    val transcript: String? = null,
+    val summary: String? = null,
+    val incidentAddress: String? = null,
+    val incidentNature: String? = null,
+    val incidentLat: Double? = null,
+    val incidentLon: Double? = null,
+    val createdAt: Long? = null
+) {
+    val stableKey: String
+        get() = alertId?.let { "alert-$it" }
+            ?: listOf(title, body, dateTime.orEmpty()).joinToString("|")
+}
 
 enum class ConnectionStatus {
     DISCONNECTED,
@@ -133,6 +152,8 @@ data class ServerScannerState(
     val recentCalls: List<RadioCall> = emptyList(),
     val lastCall: RadioCall? = null,
     val alerts: List<ScannerAlert> = emptyList(),
+    val alertsLoading: Boolean = false,
+    val alertsError: String? = null,
     val hold: ChannelKey? = null,
     val holdSystemRef: Long? = null,
     val paused: Boolean = false,

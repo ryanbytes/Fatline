@@ -11,6 +11,7 @@ import java.util.Base64
 
 object ThinLineProtocol {
     const val ALERT = "ALT"
+    const val INCIDENT = "INC"
     const val CALL = "CAL"
     const val CONFIG = "CFG"
     const val ERROR = "ERR"

@@ -8,6 +8,7 @@ import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.TalkgroupConfig
 import dev.scanrelay.app.model.UnitAlias
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -189,6 +190,50 @@ class ScannerRepositoryTest {
         val channels = encoded.getJSONObject(0).getJSONArray("channels")
 
         assertEquals(2, channels.length())
+    }
+
+    @Test
+    fun richAlertHistoryParsesAndSortsServerFields() {
+        val raw = JSONArray(
+            """
+            [
+              {
+                "alertId": 10,
+                "callId": 100,
+                "alertType": "tone",
+                "createdAt": 1000,
+                "systemLabel": "County",
+                "talkgroupLabel": "Fire Dispatch",
+                "matchedToneSetNames": ["Station 1"],
+                "keywordsMatched": "[]",
+                "transcriptSnippet": "older alert"
+              },
+              {
+                "alertId": 11,
+                "callId": 101,
+                "alertType": "keyword",
+                "createdAt": 2000,
+                "systemLabel": "County",
+                "talkgroupLabel": "Law Dispatch",
+                "keywordsMatched": "[\"pursuit\",\"vehicle\"]",
+                "alertSummary": "Vehicle pursuit",
+                "incidentAddress": "123 Main St",
+                "incidentNature": "Pursuit",
+                "incidentLat": 40.0,
+                "incidentLon": -85.0
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val alerts = ScannerRepository.parseServerAlerts(profile, raw)
+
+        assertEquals(listOf(11L, 10L), alerts.mapNotNull { it.alertId })
+        assertEquals(listOf("pursuit", "vehicle"), alerts[0].keywords)
+        assertEquals("123 Main St", alerts[0].incidentAddress)
+        assertEquals("Vehicle pursuit", alerts[0].body)
+        assertEquals(listOf("Station 1"), alerts[1].matchedToneSets)
+        assertEquals(101L, alerts[0].callId)
     }
 
 }
