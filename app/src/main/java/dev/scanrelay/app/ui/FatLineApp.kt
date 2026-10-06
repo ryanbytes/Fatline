@@ -180,9 +180,9 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                         call.transcript?.let { Text(it) }
                                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                             OutlinedButton(onClick = {
-                                                if (server.hold == call.key) viewModel.clearHold(server.profile.id)
+                                                if (server.hold == dev.scanrelay.app.model.ChannelKey(call.systemRef, call.talkgroupRef)) viewModel.clearHold(server.profile.id)
                                                 else viewModel.setHold(server.profile.id, call.systemRef, call.talkgroupRef)
-                                            }) { Text(if (server.hold == call.key) "Release TG" else "Hold TG") }
+                                            }) { Text(if (server.hold == dev.scanrelay.app.model.ChannelKey(call.systemRef, call.talkgroupRef)) "Release TG" else "Hold TG") }
                                             OutlinedButton(onClick = {
                                                 viewModel.setSystemHold(
                                                     server.profile.id,
@@ -198,7 +198,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                                     call.talkgroupRef,
                                                     call.key !in server.avoided
                                                 )
-                                            }) { Text(if (call.key in server.avoided) "Unavoid" else "Avoid") }
+                                            }) { Text(if (dev.scanrelay.app.model.ChannelKey(call.systemRef, call.talkgroupRef) in server.avoided) "Unavoid" else "Avoid") }
                                             OutlinedButton(onClick = viewModel::skip) { Text("Skip") }
                                             OutlinedButton(onClick = { viewModel.replay(call.profileId, call.id) }) { Text("Replay") }
                                         }
