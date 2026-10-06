@@ -974,6 +974,9 @@ private fun SettingsScreen(
     var alertSoundLabel by remember(editingId) {
         mutableStateOf(AlertSoundPreferences.displayName(context, editingId))
     }
+    var disconnectSoundLabel by remember(editingId) {
+        mutableStateOf(AlertSoundPreferences.displayDisconnectName(context, editingId))
+    }
     val alertSoundPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -982,6 +985,17 @@ private fun SettingsScreen(
             val picked = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             AlertSoundPreferences.set(context, editingId, picked)
             alertSoundLabel = AlertSoundPreferences.displayName(context, editingId)
+        }
+    }
+
+    val disconnectSoundPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val picked = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            AlertSoundPreferences.setDisconnect(context, editingId, picked)
+            disconnectSoundLabel = AlertSoundPreferences.displayDisconnectName(context, editingId)
         }
     }
 
@@ -1109,6 +1123,31 @@ private fun SettingsScreen(
                         OutlinedButton(onClick = {
                             AlertSoundPreferences.useSystemDefault(context, editingId)
                             alertSoundLabel = AlertSoundPreferences.displayName(context, editingId)
+                        }) { Text("System default") }
+                    }
+
+                    Text("Disconnect sound: " + disconnectSoundLabel, style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            val setting = AlertSoundPreferences.getDisconnect(context, editingId)
+                            val existing = when (setting) {
+                                null -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                                AlertSoundPreferences.SILENT -> null
+                                else -> runCatching { Uri.parse(setting) }.getOrNull()
+                            }
+                            val picker = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "FatLine disconnect sound")
+                            }
+                            disconnectSoundPicker.launch(picker)
+                        }) { Text("Choose disconnect sound") }
+
+                        OutlinedButton(onClick = {
+                            AlertSoundPreferences.useSystemDefaultDisconnect(context, editingId)
+                            disconnectSoundLabel = AlertSoundPreferences.displayDisconnectName(context, editingId)
                         }) { Text("System default") }
                     }
 
