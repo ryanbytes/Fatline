@@ -27,12 +27,14 @@ required = [
     'app/src/main/java/dev/scanrelay/app/data/ChannelStore.kt',
     'app/src/main/java/dev/scanrelay/app/alerts/AlertSoundPreferences.kt',
     'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt',
+    'app/src/main/java/dev/scanrelay/app/ui/ServerDateTime.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt',
     'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt',
+    'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt',
 ]
 for rel in required:
     require((ROOT / rel).is_file(), f'missing {rel}')
@@ -267,6 +269,10 @@ require('AlertToneSet' in models and 'toneDetectionEnabled' in models and 'toneS
 require('parseToneSets' in protocol and 'toneDetectionEnabled = node.optBoolean' in protocol, 'tone-set config parsing missing')
 require('setAlertToneSets' in repo and 'normalizeAlertToneSetIds' in repo, 'per-talkgroup tone-set persistence missing')
 require('setAlertToneSets' in viewmodel, 'tone-set view-model bridge missing')
+require('time12hFormat' in models and 'payload.optBoolean("time12hFormat", false)' in repo, 'server time-format configuration missing')
+require('formatServerDateTime' in ui and 'time12hFormat = server.time12hFormat' in ui, 'server-formatted call and alert times missing')
+require('formatsArchiveTimestampIn12HourMode' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt').read_text(), '12-hour timestamp regression test missing')
+require('formatsArchiveTimestampIn24HourMode' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt').read_text(), '24-hour timestamp regression test missing')
 require('showListenersCount' in models and 'listenerCount' in models, 'listener count state missing')
 require('ThinLineProtocol.LISTENER_COUNT' in repo and 'parseListenerCount' in protocol, 'listener count protocol handling missing')
 require('"Listeners " + server.listenerCount' in ui, 'listener count UI missing')
