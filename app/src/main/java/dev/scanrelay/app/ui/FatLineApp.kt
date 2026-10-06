@@ -311,7 +311,7 @@ private fun NowPlayingCard(server: ServerScannerState, call: RadioCall, viewMode
             InfoRow("System", call.systemLabel)
             InfoRow("TGID", call.talkgroupRef.toString())
             talkgroup?.tag?.takeIf { it.isNotBlank() }?.let { InfoRow("Tag", it) }
-            call.sourceRef?.let { InfoRow("Unit", call.sourceLabel ?: it.toString()) }
+            call.sourceDisplay?.let { InfoRow(if (call.sources.size > 1) "Units" else "Unit", it) }
             call.frequency?.let { InfoRow("Frequency", formatFrequency(it)) }
             call.durationSeconds?.let { InfoRow("Duration", String.format(Locale.US, "%.1f s", it)) }
             if (call.dateTime.isNotBlank()) InfoRow("Time", call.dateTime)
@@ -782,6 +782,7 @@ private fun CallRow(call: RadioCall, onReplay: () -> Unit) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(call.talkgroupLabel, fontWeight = FontWeight.SemiBold)
                 Text(call.systemLabel + " · TG " + call.talkgroupRef, style = MaterialTheme.typography.bodySmall)
+                call.sourceDisplay?.let { Text("Unit: " + it, style = MaterialTheme.typography.bodySmall) }
                 if (call.dateTime.isNotBlank()) Text(call.dateTime, style = MaterialTheme.typography.bodySmall)
                 call.transcript?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall)
