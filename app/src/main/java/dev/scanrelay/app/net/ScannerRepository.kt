@@ -24,6 +24,7 @@ import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.SystemHealthAlert
+import dev.scanrelay.app.model.TranscriptRecord
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +49,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.net.URI
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
@@ -803,6 +806,92 @@ object ScannerRepository {
             }
         }
     }
+
+    fun refreshTranscripts(
+        profileId: String,
+        offset: Int = 0,
+        limit: Int = 50,
+        systemId: Long? = null,
+        talkgroupId: Long? = null,
+        dateFrom: Long? = null,
+        dateTo: Long? = null,
+        search: String? = null
+    ) {
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    transcriptsLoading = false,
+                    transcriptsError = "Sign in to load transcripts"
+                )
+            }
+            publish()
+            return
+        }
+
+        synchronized(session) {
+            session.state = session.state.copy(
+                transcriptsLoading = true,
+                transcriptsError = null,
+                transcriptsOffset = offset.coerceAtLeast(0)
+            )
+        }
+        publish()
+
+        scope.launch {
+            try {
+                val origin = httpOrigin(session.profile.baseUrl)
+                val pageLimit = limit.coerceIn(1, 100)
+                val pageOffset = offset.coerceAtLeast(0)
+                val params = mutableListOf(
+                    "limit=${pageLimit}",
+                    "offset=${pageOffset}",
+                    "pin=${encodeQuery(pin)}"
+                )
+                systemId?.takeIf { it > 0 }?.let { params += "systemId=$it" }
+                talkgroupId?.takeIf { it > 0 }?.let { params += "talkgroupId=$it" }
+                dateFrom?.takeIf { it > 0 }?.let { params += "dateFrom=$it" }
+                dateTo?.takeIf { it > 0 }?.let { params += "dateTo=$it" }
+                search?.trim()?.takeIf { it.isNotBlank() }?.let { params += "search=${encodeQuery(it)}" }
+
+                val request = Request.Builder()
+                    .url("$origin/api/transcripts?${params.joinToString("&")}")
+                    .header("Authorization", "Bearer $pin")
+                    .get()
+                    .build()
+                val transcripts = parseTranscripts(
+                    session.profile,
+                    executeJsonArray(request)
+                )
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        transcripts = transcripts,
+                        transcriptsLoading = false,
+                        transcriptsError = null,
+                        transcriptsOffset = pageOffset,
+                        transcriptsHasMore = transcripts.size >= pageLimit
+                    )
+                }
+                publish()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        transcriptsLoading = false,
+                        transcriptsError = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Transcript refresh failed"
+                    )
+                }
+                publish()
+            }
+        }
+    }
+
+    private fun encodeQuery(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
 
     private fun scheduleAlertRefresh(session: Session) {
         if (session.profile.pin.isBlank()) return
@@ -2408,6 +2497,31 @@ object ScannerRepository {
         }
         scheduleAlertRefresh(session)
     }
+
+    internal fun parseTranscripts(profile: ServerProfile, raw: JSONArray): List<TranscriptRecord> =
+        buildList {
+            for (i in 0 until raw.length()) {
+                val item = raw.optJSONObject(i) ?: continue
+                val callId = item.optLong("callId").takeIf { it > 0 } ?: continue
+                add(
+                    TranscriptRecord(
+                        profileId = profile.id,
+                        serverName = profile.name,
+                        callId = callId,
+                        systemId = item.optLong("systemId").takeIf { it > 0 },
+                        talkgroupId = item.optLong("talkgroupId").takeIf { it > 0 },
+                        systemLabel = item.optString("systemLabel").trim().takeIf { it.isNotBlank() },
+                        talkgroupLabel = item.optString("talkgroupLabel").trim().takeIf { it.isNotBlank() },
+                        talkgroupName = item.optString("talkgroupName").trim().takeIf { it.isNotBlank() },
+                        transcript = item.optString("transcript"),
+                        reviewedTranscript = item.optString("reviewedTranscript").trim().takeIf { it.isNotBlank() },
+                        transcriptionStatus = item.optString("transcriptionStatus").trim().takeIf { it.isNotBlank() },
+                        timestamp = item.optLong("timestamp").takeIf { it > 0 },
+                        alertSummary = item.optString("alertSummary").trim().takeIf { it.isNotBlank() }
+                    )
+                )
+            }
+        }.sortedByDescending { it.timestamp ?: 0L }
 
     internal fun parseServerAlerts(profile: ServerProfile, raw: JSONArray): List<ScannerAlert> {
         fun stringList(value: Any?): List<String> {
