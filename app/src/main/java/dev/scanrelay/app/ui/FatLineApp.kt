@@ -85,7 +85,8 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     }
 
     val accent = selectedProfileId
-        ?.let { scanner.servers[it]?.uiAccentColor }
+        ?.let { scanner.servers[it] }
+        ?.let { server -> resolvedUiAccentColor(server.uiAccentColor, server.userUiAccentColor) }
         ?.let(::uiAccentRgb)
     val colorScheme = if (accent != null) {
         val color = Color(accent.red, accent.green, accent.blue)
