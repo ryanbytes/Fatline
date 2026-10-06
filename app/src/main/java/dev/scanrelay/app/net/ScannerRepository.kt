@@ -2073,6 +2073,7 @@ object ScannerRepository {
         val relayUrl = options?.optString("relayServerURL")?.takeIf { it.isNotBlank() }
         val token = options?.optString("audioClientToken")?.takeIf { it.isNotBlank() }
         val showListenersCount = payload.optBoolean("showListenersCount", false)
+        val time12hFormat = payload.optBoolean("time12hFormat", false)
         var needsKeyExchange = false
 
         synchronized(session) {
@@ -2104,6 +2105,7 @@ object ScannerRepository {
                 showListenersCount = showListenersCount,
                 listenerCount = if (showListenersCount) session.state.listenerCount else 0,
                 incidentMappingEnabled = incidentMappingEnabled,
+                time12hFormat = time12hFormat,
                 error = null
             )
             if (session.state.paused) session.socket?.stopLivefeed()
