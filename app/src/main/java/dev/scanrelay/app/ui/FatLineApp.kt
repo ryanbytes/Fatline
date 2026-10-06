@@ -532,13 +532,20 @@ private fun SettingsScreen(
     viewModel: ScannerViewModel,
     modifier: Modifier
 ) {
+    val loginState by viewModel.accountLogin.collectAsStateWithLifecycle()
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
     }
     val editing = profiles.firstOrNull { it.id == editingId }
     var name by remember(editingId, editing?.name) { mutableStateOf(editing?.name ?: "Scanner") }
     var url by remember(editingId, editing?.baseUrl) { mutableStateOf(editing?.baseUrl ?: "") }
+    var username by remember(editingId) { mutableStateOf("") }
+    var password by remember(editingId) { mutableStateOf("") }
     var pin by remember(editingId, editing?.pin) { mutableStateOf(editing?.pin ?: "") }
+
+    LaunchedEffect(loginState.message) {
+        if (loginState.message == "Signed in") password = ""
+    }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
@@ -558,6 +565,9 @@ private fun SettingsScreen(
                 items(profiles, key = { it.id }) { profile ->
                     OutlinedButton(onClick = {
                         editingId = profile.id
+                        username = ""
+                        password = ""
+                        viewModel.clearAccountLoginStatus()
                         onSelectProfile(profile.id)
                     }) { Text(profile.name) }
                 }
@@ -566,7 +576,10 @@ private fun SettingsScreen(
                         editingId = UUID.randomUUID().toString()
                         name = "Scanner"
                         url = ""
+                        username = ""
+                        password = ""
                         pin = ""
+                        viewModel.clearAccountLoginStatus()
                     }) { Text("New") }
                 }
             }
@@ -575,12 +588,19 @@ private fun SettingsScreen(
         item {
             Card(Modifier.padding(horizontal = 16.dp)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Scanner account", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(url, { url = it }, label = { Text("Server URL") }, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(
-                        pin,
-                        { pin = it },
-                        label = { Text("PIN (optional)") },
+                        username,
+                        { username = it },
+                        label = { Text("Username / email") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        password,
+                        { password = it },
+                        label = { Text("Password") },
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = PasswordVisualTransformation()
                     )
@@ -589,8 +609,42 @@ private fun SettingsScreen(
                         Text("HTTP does not provide transport encryption.", style = MaterialTheme.typography.bodySmall)
                     }
 
+                    Button(
+                        onClick = {
+                            viewModel.loginAndConnect(
+                                ServerProfile(editingId, name, url, pin),
+                                username,
+                                password
+                            )
+                            onSelectProfile(editingId)
+                        },
+                        enabled = url.isNotBlank() && username.isNotBlank() && password.isNotBlank() && !loginState.working
+                    ) { Text(if (loginState.working) "Signing in…" else "Sign in & connect") }
+
+                    loginState.message?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    loginState.error?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    Text(
+                        "Your password is used only for the sign-in request. FatLine stores the returned listener PIN in Android Keystore.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    HorizontalDivider()
+                    Text("Advanced", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        pin,
+                        { pin = it },
+                        label = { Text("Listener PIN (optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        visualTransformation = PasswordVisualTransformation()
+                    )
+
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 val saved = viewModel.saveProfile(ServerProfile(editingId, name, url, pin))
                                 onSelectProfile(saved.id)
@@ -598,14 +652,14 @@ private fun SettingsScreen(
                             enabled = url.isNotBlank()
                         ) { Text("Save") }
 
-                        Button(
+                        OutlinedButton(
                             onClick = {
                                 val profile = ServerProfile(editingId, name, url, pin)
                                 viewModel.connect(profile)
                                 onSelectProfile(editingId)
                             },
-                            enabled = url.isNotBlank()
-                        ) { Text("Connect") }
+                            enabled = url.isNotBlank() && pin.isNotBlank()
+                        ) { Text("Connect with PIN") }
 
                         if (editing != null) {
                             OutlinedButton(onClick = {
@@ -613,7 +667,10 @@ private fun SettingsScreen(
                                 editingId = UUID.randomUUID().toString()
                                 name = "Scanner"
                                 url = ""
+                                username = ""
+                                password = ""
                                 pin = ""
+                                viewModel.clearAccountLoginStatus()
                             }) { Text("Delete") }
                         }
                     }
