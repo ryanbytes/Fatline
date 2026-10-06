@@ -160,6 +160,7 @@ object ScannerRepository {
                 else session.socket?.sendLivefeed(session.state.systems)
             }
         }
+        appContext?.let { ScannerService.setProfilePaused(it, profileId, paused) }
         publish()
     }
 
