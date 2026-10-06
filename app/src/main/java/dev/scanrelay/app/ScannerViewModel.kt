@@ -174,7 +174,12 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun clearHold(profileId: String) = ScannerRepository.clearHold(profileId)
     fun avoid(profileId: String, systemRef: Long, talkgroupRef: Long, avoided: Boolean = true) = ScannerRepository.avoid(profileId, ChannelKey(systemRef, talkgroupRef), avoided)
     fun clearAvoids(profileId: String) = ScannerRepository.clearAvoids(profileId)
-    fun requestHistory(profileId: String, reset: Boolean = true) = ScannerRepository.requestHistory(profileId, reset)
+    fun requestHistory(
+        profileId: String,
+        reset: Boolean = true,
+        systemRef: Long? = null,
+        talkgroupRef: Long? = null
+    ) = ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)
     fun replay(profileId: String, callId: Long) = ScannerRepository.replay(profileId, callId)
     fun skip() = ScannerRepository.skip()
     companion object {

@@ -286,13 +286,20 @@ object ScannerRepository {
         synchronized(session) {
             if (reset) {
                 session.historyOffset = 0
-                session.state = session.state.copy(history = emptyList(), historyHasMore = false)
+                session.state = session.state.copy(
+                    history = emptyList(),
+                    historyHasMore = false,
+                    historySystemRef = systemRef,
+                    historyTalkgroupRef = talkgroupRef
+                )
             }
+            val activeSystemRef = session.state.historySystemRef
+            val activeTalkgroupRef = session.state.historyTalkgroupRef
             session.socket?.requestHistory(
                 limit = 100,
                 offset = session.historyOffset,
-                systemRef = systemRef,
-                talkgroups = talkgroupRef?.let(::listOf).orEmpty()
+                systemRef = activeSystemRef,
+                talkgroups = activeTalkgroupRef?.let(::listOf).orEmpty()
             )
         }
         publish()
@@ -872,7 +879,11 @@ object ScannerRepository {
             val systemHoldAllows = session.state.holdSystemRef?.let { it == systemRef } ?: true
             val avoided = key in session.state.avoided
             shouldPlay = replayRequested || (!session.state.paused && enabled && talkgroupHoldAllows && systemHoldAllows && !avoided)
-            val merged = (session.state.history + call).associateBy { it.id }.values.sortedByDescending(::callSortKey).take(500)
+            val merged = if (matchesHistoryFilter(session.state, call)) {
+                (session.state.history + call).associateBy { it.id }.values.sortedByDescending(::callSortKey).take(500)
+            } else {
+                session.state.history
+            }
             val recent = if (replayRequested) {
                 session.state.recentCalls
             } else {
@@ -1016,6 +1027,11 @@ object ScannerRepository {
         return alias?.let { "$it | $sourceText" } ?: sourceText
     }
 
+    internal fun matchesHistoryFilter(state: ServerScannerState, call: RadioCall): Boolean {
+        val systemMatches = state.historySystemRef?.let { call.systemRef == it } ?: true
+        val talkgroupMatches = state.historyTalkgroupRef?.let { call.talkgroupRef == it } ?: true
+        return systemMatches && talkgroupMatches
+    }
     private fun callSortKey(call: RadioCall): Long = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
 
     private fun publish() {

@@ -1,6 +1,7 @@
 package dev.scanrelay.app.net
 
 import dev.scanrelay.app.model.ChannelKey
+import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
@@ -107,6 +108,30 @@ class ScannerRepositoryTest {
         assertEquals(1, sources.size)
         assertEquals(12345L, sources.single().sourceRef)
         assertEquals("12345", sources.single().display)
+    }
+
+    @Test
+    fun liveCallsRespectActiveHistoryFilter() {
+        val state = ServerScannerState(
+            profile = profile,
+            systems = systems,
+            historySystemRef = 1,
+            historyTalkgroupRef = 11
+        )
+        fun call(systemRef: Long, talkgroupRef: Long) = RadioCall(
+            profileId = profile.id,
+            serverName = profile.name,
+            id = systemRef * 100 + talkgroupRef,
+            systemRef = systemRef,
+            talkgroupRef = talkgroupRef,
+            systemLabel = "System",
+            talkgroupLabel = "Talkgroup",
+            dateTime = ""
+        )
+
+        assertTrue(ScannerRepository.matchesHistoryFilter(state, call(1, 11)))
+        assertFalse(ScannerRepository.matchesHistoryFilter(state, call(1, 12)))
+        assertFalse(ScannerRepository.matchesHistoryFilter(state, call(2, 11)))
     }
 
 }
