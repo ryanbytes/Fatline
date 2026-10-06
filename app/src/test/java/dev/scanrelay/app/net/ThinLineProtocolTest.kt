@@ -87,6 +87,39 @@ class ThinLineProtocolTest {
         assertEquals(102L, lists.single().channels[1].talkgroupRef)
     }
 
+    @Test fun systemsParseToneDetectionAndToneSets() {
+        val config = JSONObject(
+            """
+            {
+              "systems": [
+                {
+                  "systemRef": 1,
+                  "label": "County",
+                  "talkgroups": [
+                    {
+                      "talkgroupRef": 101,
+                      "label": "Fire Dispatch",
+                      "toneDetectionEnabled": true,
+                      "toneSets": [
+                        {"id": "station-1", "label": "Station 1"},
+                        {"id": "station-2", "label": ""},
+                        {"id": "station-1", "label": "Duplicate"}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        val talkgroup = ThinLineProtocol.parseSystems(config).single().talkgroups.single()
+
+        assertTrue(talkgroup.toneDetectionEnabled)
+        assertEquals(listOf("station-1", "station-2"), talkgroup.toneSets.map { it.id })
+        assertEquals(listOf("Station 1", "station-2"), talkgroup.toneSets.map { it.label })
+    }
+
     @Test fun systemsParseExactAndRangeUnitAliases() {
         val config = JSONObject(
             """
