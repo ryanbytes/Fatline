@@ -1184,9 +1184,7 @@ private fun AlertsScreen(
                                             talkgroup.key,
                                             customKeywordsText
                                         )
-                                    },
-                                    enabled = ScannerRepositoryKeywordPreview.normalize(customKeywordsText) !=
-                                        preference?.keywords.orEmpty()
+                                    }
                                 ) { Text("Save keywords") }
                             }
 
@@ -1616,15 +1614,6 @@ internal fun incidentMapUri(alert: ScannerAlert): String? {
 
     val address = alert.incidentAddress?.trim()?.takeIf { it.isNotBlank() } ?: return null
     return "geo:0,0?q=" + URLEncoder.encode(address, "UTF-8").replace("+", "%20")
-}
-
-private object ScannerRepositoryKeywordPreview {
-    fun normalize(raw: String): List<String> =
-        raw.replace('\n', ',')
-            .split(',')
-            .map(String::trim)
-            .filter(String::isNotBlank)
-            .distinct()
 }
 
 private fun formatFrequency(frequency: Long): String =
