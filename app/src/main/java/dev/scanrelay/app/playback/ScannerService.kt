@@ -6,6 +6,10 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -30,10 +34,44 @@ import dev.scanrelay.app.net.ScannerRepository
 class ScannerService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
+    private lateinit var connectivityManager: ConnectivityManager
+    private val networkHandler = Handler(Looper.getMainLooper())
+    private var currentNetworkHandle: Long? = null
+
+    private val networkLossCheck = Runnable {
+        val active = connectivityManager.activeNetwork
+        when {
+            active == null -> {
+                if (currentNetworkHandle != null) {
+                    currentNetworkHandle = null
+                    ScannerRepository.networkUnavailable()
+                    updateNotification("FatLine", "Waiting for network")
+                }
+            }
+            active.networkHandle != currentNetworkHandle -> handleNetworkAvailable(active)
+        }
+    }
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            networkHandler.post { handleNetworkAvailable(network) }
+        }
+
+        override fun onLost(network: Network) {
+            networkHandler.post {
+                if (network.networkHandle != currentNetworkHandle) return@post
+                // Android often announces the replacement default network immediately before
+                // or after this callback. Give the handoff a short window before declaring offline.
+                networkHandler.removeCallbacks(networkLossCheck)
+                networkHandler.postDelayed(networkLossCheck, NETWORK_LOSS_GRACE_MS)
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         ScannerRepository.initialize(this)
+        startNetworkTracking()
         createChannel()
         player = ExoPlayer.Builder(this).build().apply {
             setAudioAttributes(
@@ -81,10 +119,42 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        stopNetworkTracking()
         session.release()
         player.release()
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnectAll() }
         super.onDestroy()
+    }
+
+    private fun startNetworkTracking() {
+        connectivityManager = getSystemService(ConnectivityManager::class.java)
+        currentNetworkHandle = connectivityManager.activeNetwork?.networkHandle
+        if (currentNetworkHandle == null) ScannerRepository.networkUnavailable()
+        runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+    }
+
+    private fun stopNetworkTracking() {
+        networkHandler.removeCallbacks(networkLossCheck)
+        if (::connectivityManager.isInitialized) {
+            runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+        }
+    }
+
+    private fun handleNetworkAvailable(network: Network) {
+        networkHandler.removeCallbacks(networkLossCheck)
+        val newHandle = network.networkHandle
+        val previous = currentNetworkHandle
+        currentNetworkHandle = newHandle
+        when {
+            previous == null -> {
+                ScannerRepository.networkChanged("Network restored")
+                updateMonitoringNotification(activeProfileIds().size)
+            }
+            previous != newHandle -> {
+                ScannerRepository.networkChanged("Network switched")
+                updateMonitoringNotification(activeProfileIds().size)
+            }
+        }
     }
 
     private fun connectProfile(profileId: String) {
@@ -153,6 +223,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun updateMonitoringNotification(count: Int) {
+        if (count <= 0) return
         updateNotification("FatLine", "Monitoring $count server${if (count == 1) "" else "s"}")
     }
 
@@ -341,6 +412,7 @@ class ScannerService : MediaLibraryService() {
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
         private const val ROOT_ID = "fatline_root"
         private const val MAX_QUEUE_ITEMS = 30
+        private const val NETWORK_LOSS_GRACE_MS = 650L
 
         @Volatile private var suppressRepositoryServiceCallbacks = false
 

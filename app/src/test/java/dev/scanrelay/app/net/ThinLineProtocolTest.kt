@@ -4,6 +4,7 @@ import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.TalkgroupConfig
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -12,17 +13,29 @@ class ThinLineProtocolTest {
         assertEquals("[\"PIN\",\"MTIzNA==\"]", ThinLineProtocol.pin("1234"))
     }
 
-    @Test fun livefeedUses64BitRadioReferences() {
+    @Test fun livefeedUses64BitRadioReferencesAndExplicitBooleans() {
+        val systemRef = 4_294_967_299L
+        val enabledRef = 8_589_934_599L
+        val disabledRef = 8_589_934_600L
         val systems = listOf(
             SystemConfig(
-                4_294_967_299L,
+                systemRef,
                 "Large",
-                listOf(TalkgroupConfig(4_294_967_299L, 8_589_934_599L, "Dispatch", enabled = true))
+                listOf(
+                    TalkgroupConfig(systemRef, enabledRef, "Dispatch", enabled = true),
+                    TalkgroupConfig(systemRef, disabledRef, "Tac", enabled = false)
+                )
             )
         )
         val parsed = ThinLineProtocol.parseEnvelope(ThinLineProtocol.livefeed(systems))
         val map = parsed.payload as JSONObject
-        assertTrue(map.getJSONObject("4294967299").getBoolean("8589934599"))
+        val talkgroups = map.getJSONObject(systemRef.toString())
+        assertTrue(talkgroups.getBoolean(enabledRef.toString()))
+        assertFalse(talkgroups.getBoolean(disabledRef.toString()))
+    }
+
+    @Test fun bareLivefeedCommandMatchesThinLinePauseWireType() {
+        assertEquals("[\"LFM\"]", ThinLineProtocol.command(ThinLineProtocol.LIVEFEED_MAP))
     }
 
     @Test fun listCallUsesDocumentedFields() {
@@ -35,7 +48,11 @@ class ThinLineProtocolTest {
         assertEquals(2, payload.getJSONArray("talkgroups").length())
     }
 
+    @Test fun callIdMatchesThinLineStringWireType() {
+        assertEquals("[\"CAL\",\"42\"]", ThinLineProtocol.call(42))
+    }
+
     @Test fun callDownloadFlagIsThirdEnvelopeElement() {
-        assertEquals("[\"CAL\",42,\"d\"]", ThinLineProtocol.call(42, true))
+        assertEquals("[\"CAL\",\"42\",\"d\"]", ThinLineProtocol.call(42, true))
     }
 }

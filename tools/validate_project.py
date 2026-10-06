@@ -25,17 +25,28 @@ required = [
     'app/src/main/java/dev/scanrelay/app/data/PinVault.kt',
     'app/src/main/java/dev/scanrelay/app/data/ChannelStore.kt',
     'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt',
+    'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt',
+    'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt',
+    'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
 ]
 for rel in required:
     require((ROOT / rel).is_file(), f'missing {rel}')
 
 app_gradle = (ROOT / 'app/build.gradle.kts').read_text()
 root_gradle = (ROOT / 'build.gradle.kts').read_text()
+manifest_text = (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
 protocol = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/ThinLineProtocol.kt').read_text()
+socket = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/ThinLineSocket.kt').read_text()
 service = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/ScannerService.kt').read_text()
 vault = (ROOT / 'app/src/main/java/dev/scanrelay/app/data/PinVault.kt').read_text()
+channel_store = (ROOT / 'app/src/main/java/dev/scanrelay/app/data/ChannelStore.kt').read_text()
 repo = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/ScannerRepository.kt').read_text()
 crypto = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/AudioCrypto.kt').read_text()
+models = (ROOT / 'app/src/main/java/dev/scanrelay/app/model/Models.kt').read_text()
+viewmodel = (ROOT / 'app/src/main/java/dev/scanrelay/app/ScannerViewModel.kt').read_text()
+ui = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt').read_text()
+protocol_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt').read_text()
+socket_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt').read_text()
 
 require('compileSdk = 36' in app_gradle, 'compileSdk must be 36')
 require('targetSdk = 36' in app_gradle, 'targetSdk must be 36')
@@ -53,9 +64,23 @@ for cmd in ['ALT','CAL','CFG','ERR','XPR','LCL','LSC','LFM','MAX','PIN','PNS','P
     require(f'= "{cmd}"' in protocol, f'protocol constant {cmd} missing')
 
 require(json.dumps(['PIN','MTIzNA=='], separators=(',', ':')) == '["PIN","MTIzNA=="]', 'PIN fixture malformed')
-livefeed = ['LFM', {'4294967299': {'8589934599': True}}]
+livefeed = ['LFM', {'4294967299': {'8589934599': True, '8589934600': False}}]
 round_trip = json.loads(json.dumps(livefeed, separators=(',', ':')))
 require(round_trip[1]['4294967299']['8589934599'] is True, '64-bit LFM fixture malformed')
+require(round_trip[1]['4294967299']['8589934600'] is False, 'explicit false LFM fixture malformed')
+
+# Public ThinLine client wire parity.
+require('webSocket.send(ThinLineProtocol.command(ThinLineProtocol.VERSION))' in socket, 'VER websocket negotiation missing')
+require('webSocket.send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))' in socket, 'CFG websocket negotiation missing')
+require('savedPinAttempted.compareAndSet(false, true)' in socket, 'saved PIN must be challenge-driven and single-attempt')
+require('profile.pin.isNotBlank()' in socket and 'ThinLineProtocol.pin(profile.pin)' in socket, 'saved PIN challenge response missing')
+require('return URI(scheme, uri.userInfo, uri.host, uri.port, "/", null, null).toString()' in socket, 'ThinLine websocket must normalize to server root')
+require('system.talkgroups.forEach' in protocol and 'talkgroup.enabled' in protocol, 'LFM must send complete boolean map')
+require('callId.toString()' in protocol, 'CAL call id must use ThinLine string wire type')
+require('stopLivefeed()' in socket and 'command(ThinLineProtocol.LIVEFEED_MAP)' in socket, 'bare LFM pause command missing')
+require('ExplicitBooleans' in protocol_tests and 'callIdMatchesThinLineStringWireType' in protocol_tests, 'protocol parity regression tests missing')
+require('bareLivefeedCommandMatchesThinLinePauseWireType' in protocol_tests, 'bare LFM pause regression test missing')
+require('httpServerUrlUsesRootWebsocketEndpoint' in socket_tests, 'websocket URL regression test missing')
 
 try:
     tree = ET.parse(ROOT / 'app/src/main/AndroidManifest.xml')
@@ -63,6 +88,7 @@ try:
     android = '{http://schemas.android.com/apk/res/android}'
     perms = {p.attrib.get(android+'name') for p in manifest.findall('uses-permission')}
     require('android.permission.INTERNET' in perms, 'INTERNET permission missing')
+    require('android.permission.ACCESS_NETWORK_STATE' in perms, 'ACCESS_NETWORK_STATE permission missing')
     require('android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' in perms, 'media playback FGS permission missing')
     services = manifest.findall('application/service')
     scanner = next((s for s in services if s.attrib.get(android+'name') == '.playback.ScannerService'), None)
@@ -77,21 +103,41 @@ except Exception as e:
 require('AndroidKeyStore' in vault and 'AES/GCM/NoPadding' in vault, 'PIN vault is not Android Keystore AES-GCM')
 require('tlr-audio-key-wrap-v1' in crypto and 'ECDH' in crypto and 'AES/GCM/NoPadding' in crypto, 'ThinLine encrypted audio primitives missing')
 require('ConcurrentHashMap' in repo and 'sessions' in repo, 'multi-server session map missing')
-require('CallKey' in (ROOT / 'app/src/main/java/dev/scanrelay/app/model/Models.kt').read_text(), 'per-server call identity missing')
+require('CallKey' in models, 'per-server call identity missing')
 require('pendingEncrypted' in repo and '20' in repo, 'bounded encrypted-call buffering missing')
 require('requestHistory' in repo and 'LIST_CALL' in protocol, 'server history support missing')
-require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'hold/avoid/skip support missing')
 require('callMutex = Mutex()' in repo and 'callMutex.withLock' in repo, 'per-server call ordering mutex missing')
 require('keyHttpClient = OkHttpClient()' in repo, 'shared encrypted-audio key exchange client missing')
 require('refreshing audio key' in repo and 'bufferEncryptedCallLocked' in repo, 'encrypted-audio key rotation recovery missing')
 require('ScannerService.removeProfile' not in repo and 'ScannerService::stopAudio' not in repo, 'repository must not control service disconnect lifecycle')
+
+# Network handoff / connection-loss hardening.
+require('pingInterval(15' in socket and 'terminalDelivered' in socket and 'fun abort()' in socket, 'fast terminal socket handling missing')
+require('registerDefaultNetworkCallback' in service, 'Android default-network callback missing')
+require('network.networkHandle' in service and 'NETWORK_LOSS_GRACE_MS = 650L' in service, 'network handoff identity/grace handling missing')
+require('networkUnavailable()' in repo and 'networkChanged(' in repo, 'network-aware repository recovery missing')
+require('socketGeneration' in repo and 'isCurrent(session, generation)' in repo, 'stale socket callback suppression missing')
+require('handshakeJob' in repo and 'armHandshakeWatchdog' in repo and 'Handshake stalled; reconnecting' in repo, 'CFG/auth handshake watchdog missing')
+require('Waiting for network' in repo, 'offline retry suspension state missing')
+require('30_000L' in repo, 'bounded reconnect backoff missing')
+
+# Background playback / Auto / service lifecycle.
 require('MediaLibraryService' in service and 'MediaLibrarySession' in service and 'ExoPlayer' in service, 'Media3 Android Auto/media service missing')
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
 require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
 require('MAX_QUEUE_ITEMS = 30' in service and 'trimQueueForIncomingCall' in service, 'bounded playback queue handling missing')
 require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
-require('30_000L' in repo, 'bounded reconnect backoff missing')
+
+# User-visible ThinLine parity / enhancements.
+require('setMany' in channel_store and 'setSystemEnabled' in repo, 'batched system-level channel update missing')
+require('setSystemTalkgroups' in viewmodel and 'setSystemTalkgroups' in ui, 'system-level enable/disable control missing')
+require('setPaused' in repo and 'Pause live' in ui and 'Resume live' in ui, 'pause/live-feed toggle missing')
+require('holdSystemRef' in models and 'setSystemHold' in repo and 'Hold system' in ui, 'system hold parity missing')
+require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'talkgroup hold/avoid/skip support missing')
+require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
+require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
+require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
@@ -115,4 +161,4 @@ if errors:
 
 print('VALIDATION PASSED')
 print(f'Kotlin source files: {len(list(ROOT.glob("app/src/main/java/**/*.kt")))}')
-print('Features: multi-server / relay crypto+rotation / ordered calls / persistent selections+favorites / LCL history / hold-skip-avoid / alerts / Media3 Auto / lifecycle hardening')
+print('Features: ThinLine wire parity / multi-server / resilient network handoff / pause-live / system+TG hold / batch controls / relay crypto+rotation / ordered calls / paged history / alerts / Media3 Auto')
