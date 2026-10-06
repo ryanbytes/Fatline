@@ -16,6 +16,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Persistent per-server channel selections and favorites
 - New server profiles default to all authorized talkgroups enabled; an intentional **None** selection stays empty
 - Call and alert timestamps follow ThinLine's server-provided 12/24-hour format in the device's local timezone
+- The selected scanner uses ThinLine's server-provided UI accent color when available
 - Newly authorized/re-scoped talkgroups follow ThinLine's `autoEnableNewTalkgroups` policy without disturbing existing saved selections
 - Per-talkgroup and per-system All/None controls; system bulk changes persist in one batch and emit one live-feed update
 - Pause / resume live scanning without losing channel selections
