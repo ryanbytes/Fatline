@@ -23,6 +23,22 @@ class UiAccentTest {
     }
 
     @Test
+    fun userAccentOverridesSiteAccent() {
+        assertEquals(
+            "#38e0a4",
+            resolvedUiAccentColor(siteColor = "#ff5b2e", userColor = "#38e0a4")
+        )
+    }
+
+    @Test
+    fun blankUserAccentFallsBackToSiteAccent() {
+        assertEquals(
+            "#ff5b2e",
+            resolvedUiAccentColor(siteColor = "#ff5b2e", userColor = "   ")
+        )
+    }
+
+    @Test
     fun convertsNormalizedAccentToRgb() {
         assertEquals(UiAccentRgb(255, 91, 46), uiAccentRgb("#ff5b2e"))
     }
