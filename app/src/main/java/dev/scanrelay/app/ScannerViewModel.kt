@@ -187,6 +187,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     ) = ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)
     fun refreshAlerts(profileId: String) = ScannerRepository.refreshAlerts(profileId)
     fun refreshAlertPreferences(profileId: String) = ScannerRepository.refreshAlertPreferences(profileId)
+    fun refreshAlertKeywordLists(profileId: String) = ScannerRepository.refreshAlertKeywordLists(profileId)
+    fun setAlertKeywordLists(profileId: String, key: ChannelKey, keywordListIds: Collection<Long>) =
+        ScannerRepository.setAlertKeywordLists(profileId, key, keywordListIds)
     fun setAlertPreference(
         profileId: String,
         key: ChannelKey,

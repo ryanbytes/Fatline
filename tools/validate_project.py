@@ -214,6 +214,12 @@ require('refreshAlertPreferences' in viewmodel and 'setAlertPreference' in viewm
 require('Alert settings' in ui and 'Search alert channels' in ui and 'Keyword off' in ui, 'per-talkgroup alert preference UI missing')
 require('alertPreferencesRoundTripPreservesServerExtras' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'alert preference round-trip regression test missing')
 require('newAlertPreferenceUsesServerCompatibleDefaults' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'new alert preference default regression test missing')
+require('AlertKeywordList' in models and 'alertKeywordListsLoading' in models, 'server keyword-list state missing')
+require('refreshAlertKeywordLists' in repo and '/api/keyword-lists' in repo and 'parseAlertKeywordLists' in repo, 'server keyword-list loading missing')
+require('setAlertKeywordLists' in repo and 'keywordListIds = normalizedIds' in repo, 'per-talkgroup keyword-list selection missing')
+require('refreshAlertKeywordLists' in viewmodel and 'setAlertKeywordLists' in viewmodel, 'keyword-list view-model bridge missing')
+require('Loading keyword lists' in ui and 'No server keyword lists are available' in ui and 'setAlertKeywordLists' in ui, 'keyword-list selection UI missing')
+require('keywordListsParseLabelsDescriptionsAndKeywords' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'keyword-list parser regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 

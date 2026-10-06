@@ -884,6 +884,7 @@ private fun AlertsScreen(
         if (server != null && server.status == ConnectionStatus.CONNECTED && server.profile.pin.isNotBlank()) {
             viewModel.refreshAlerts(server.profile.id)
             viewModel.refreshAlertPreferences(server.profile.id)
+            viewModel.refreshAlertKeywordLists(server.profile.id)
         }
     }
 
@@ -955,7 +956,10 @@ private fun AlertsScreen(
                         OutlinedButton(
                             onClick = {
                                 showAlertPreferences = !showAlertPreferences
-                                if (showAlertPreferences) viewModel.refreshAlertPreferences(server.profile.id)
+                                if (showAlertPreferences) {
+                                    viewModel.refreshAlertPreferences(server.profile.id)
+                                    viewModel.refreshAlertKeywordLists(server.profile.id)
+                                }
                             },
                             enabled = server.profile.pin.isNotBlank()
                         ) {
@@ -969,6 +973,12 @@ private fun AlertsScreen(
                     }
                     server.alertPreferencesError?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    server.alertKeywordListsError?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (showAlertPreferences && server.alertKeywordListsLoading) {
+                        Text("Loading keyword lists…", style = MaterialTheme.typography.bodySmall)
                     }
                     if (showAlertPreferences) {
                         OutlinedTextField(
@@ -1002,6 +1012,11 @@ private fun AlertsScreen(
                     val alertEnabled = preference?.alertEnabled == true
                     val toneAlerts = preference?.toneAlerts ?: true
                     val keywordAlerts = preference?.keywordAlerts ?: true
+                    var showKeywordLists by remember(
+                        server.profile.id,
+                        talkgroup.systemRef,
+                        talkgroup.talkgroupRef
+                    ) { mutableStateOf(false) }
 
                     Card(Modifier.padding(horizontal = 16.dp)) {
                         Column(
@@ -1083,7 +1098,68 @@ private fun AlertsScreen(
                                         ) { Text("Keyword off") }
                                     }
                                 }
+                                item {
+                                    OutlinedButton(onClick = { showKeywordLists = !showKeywordLists }) {
+                                        Text(
+                                            "Lists " +
+                                                (preference?.keywordListIds?.size ?: 0) +
+                                                "/" + server.alertKeywordLists.size
+                                        )
+                                    }
+                                }
                             }
+                            if (showKeywordLists) {
+                                if (server.alertKeywordLists.isEmpty() && !server.alertKeywordListsLoading) {
+                                    Text(
+                                        "No server keyword lists are available.",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                } else {
+                                    val selectedIds = preference?.keywordListIds.orEmpty().toSet()
+                                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        items(server.alertKeywordLists, key = { it.id }) { keywordList ->
+                                            val selected = keywordList.id in selectedIds
+                                            if (selected) {
+                                                Button(
+                                                    onClick = {
+                                                        viewModel.setAlertKeywordLists(
+                                                            server.profile.id,
+                                                            talkgroup.key,
+                                                            selectedIds - keywordList.id
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text(keywordList.label + " ✓")
+                                                }
+                                            } else {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        viewModel.setAlertKeywordLists(
+                                                            server.profile.id,
+                                                            talkgroup.key,
+                                                            selectedIds + keywordList.id
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text(keywordList.label)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    server.alertKeywordLists
+                                        .filter { it.id in selectedIds }
+                                        .takeIf { it.isNotEmpty() }
+                                        ?.let { selected ->
+                                            Text(
+                                                selected.joinToString(" · ") {
+                                                    it.label + " (" + it.keywords.size + " words)"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                }
+                            }
+
                             if (preference != null) {
                                 val detail = buildList {
                                     if (preference.toneSetIds.isNotEmpty()) {
