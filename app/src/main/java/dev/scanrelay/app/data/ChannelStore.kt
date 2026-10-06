@@ -4,6 +4,12 @@ import android.content.Context
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.SystemConfig
 
+internal fun filterHiddenChannelSelection(
+    selected: Set<ChannelKey>,
+    hiddenSystems: Set<Long>
+): Set<ChannelKey> =
+    selected.filterNotTo(mutableSetOf()) { it.systemRef in hiddenSystems }
+
 internal fun reconcileChannelSelection(
     currentScope: Set<ChannelKey>,
     savedSelection: Set<ChannelKey>,
@@ -51,7 +57,7 @@ class ChannelStore(context: Context) {
             all
         }
         val hiddenSystems = hiddenSystems(profileId)
-        val visibleSelection = selected.filterNotTo(mutableSetOf()) { key -> key.systemRef in hiddenSystems }
+        val visibleSelection = filterHiddenChannelSelection(selected, hiddenSystems)
         if (visibleSelection != selected) writeKeys(selectedKey(profileId), visibleSelection)
         val favorites = readKeys(favoritesKey(profileId))
         return systems.map { system ->
