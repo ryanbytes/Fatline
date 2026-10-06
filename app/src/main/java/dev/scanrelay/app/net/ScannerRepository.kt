@@ -672,7 +672,7 @@ object ScannerRepository {
         session.socket?.sendLivefeed(effectiveLivefeedSystems(session.state))
     }
 
-    private fun effectiveLivefeedSystems(state: ServerScannerState): List<SystemConfig> =
+    internal fun effectiveLivefeedSystems(state: ServerScannerState): List<SystemConfig> =
         state.systems.map { system ->
             val systemAllowed = state.holdSystemRef?.let { it == system.systemRef } ?: true
             system.copy(
