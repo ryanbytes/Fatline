@@ -50,7 +50,7 @@ GitHub Actions is the authoritative Android build environment:
 .github/workflows/android.yml
 ```
 
-It installs Android API 36, runs the structural validator and JVM unit tests, builds the debug APK, and uploads the **FatLine-debug** artifact.
+It installs Android API 36, runs the structural validator and JVM unit tests, builds the debug APK, verifies its signing certificate, and uploads the **FatLine-debug** artifact. CI builds use one dedicated FatLine **test-only** signing key and a monotonically increasing CI version code so successive APKs can be installed as updates instead of requiring an uninstall.
 
 Local commands with JDK 21, Android SDK 36, and Gradle 9.4.1:
 
@@ -60,6 +60,8 @@ gradle testDebugUnitTest assembleDebug
 ```
 
 ## Security
+
+The CI debug signing key is intentionally repository-visible and is only for personal/test builds of `dev.scanrelay.app`; it must never be reused for a production/release package. Its purpose is stable sideload updates across GitHub Actions runners.
 
 - Saved PINs are encrypted with per-profile keys in Android Keystore.
 - HTTPS/WSS uses normal Android/OkHttp certificate validation; no trust-all or pin-bypass code exists.
