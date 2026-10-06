@@ -40,4 +40,15 @@ class IncidentMapUriTest {
     fun missingLocationReturnsNull() {
         assertNull(incidentMapUri(alert()))
     }
+
+    @Test
+    fun serverMappingSwitchHidesMapAction() {
+        assertNull(
+            incidentMapUri(
+                alert(address = "123 Main St", lat = 40.7654321, lon = -85.8123454),
+                mappingEnabled = false
+            )
+        )
+    }
+
 }
