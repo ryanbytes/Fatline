@@ -160,8 +160,11 @@ require('recentCalls' in models and 'session.state.recentCalls' in repo, 'dedica
 require('server.recentCalls' in ui and 'server.history.take(10)' not in ui, 'scanner recent list must not reuse archive history')
 require('durationSeconds = payload.optDouble("duration")' in repo, 'live call duration metadata must be preserved')
 require('UnitAlias' in models and 'parseUnits' in protocol, 'ThinLine unit alias parsing missing')
-require('sourceLabel = unitDisplay' in repo and 'call.sourceLabel' in ui, 'unit aliases must resolve into current-call display')
+require('resolveCallSources' in repo and 'formatUnitDisplay' in repo, 'multi-source unit alias resolution missing')
+require('sources: List<CallSource>' in models and 'sourceDisplay' in models, 'ordered call source model/display missing')
+require('call.sourceDisplay' in ui and 'call.sources.size > 1' in ui, 'scanner must display all resolved call sources')
 require('systemsParseExactAndRangeUnitAliases' in protocol_tests, 'unit alias regression test missing')
+require('callSourcesAreOrderedDeduplicatedAndAliasAware' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'multi-source parser regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
