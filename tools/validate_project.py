@@ -257,7 +257,7 @@ require('requestPlaybackCall' in socket and 'session.socket?.requestPlaybackCall
 require('callFlag == ThinLineProtocol.PLAY_FLAG' in repo, 'CAL play responses must be classified as replay')
 require('playbackCallUsesPublicClientPlayFlag' in protocol_tests, 'CAL playback flag regression test missing')
 require('continueHistory' in repo and 'continueReplayQueue' in repo and 'requestNextContinueReplay' in repo, 'continuous archive playback engine missing')
-require('PlaybackQueuePolicy.removalIndex' in scanner_service and 'trimQueueForIncomingCall(liveFeed)' in scanner_service, 'playback queue trimming must be media-type aware')
+require('PlaybackQueuePolicy.removalIndex' in service and 'trimQueueForIncomingCall(liveFeed)' in service, 'playback queue trimming must be media-type aware')
 require((ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').exists(), 'playback queue policy missing')
 require('liveOverflowRemovesOnlyLiveItems' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'live queue isolation regression test missing')
 require('replayOverflowDoesNotDiscardQueuedLiveTraffic' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'replay queue isolation regression test missing')
