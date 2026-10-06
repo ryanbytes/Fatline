@@ -252,6 +252,7 @@ private fun ScannerScreen(
                 items(recent, key = { call -> "recent-" + call.profileId + "-" + call.id }) { call ->
                     CallRow(
                         call,
+                        onContinue = { viewModel.continueHistory(call.profileId, call.id) },
                         onReplay = { viewModel.replay(call.profileId, call.id) },
                         onDownload = { viewModel.downloadCall(call.profileId, call.id) }
                     )
@@ -1800,7 +1801,12 @@ private fun InfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun CallRow(call: RadioCall, onReplay: () -> Unit, onDownload: () -> Unit) {
+private fun CallRow(
+    call: RadioCall,
+    onReplay: () -> Unit,
+    onDownload: () -> Unit,
+    onContinue: (() -> Unit)? = null
+) {
     Card(Modifier.padding(horizontal = 16.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(12.dp),
@@ -1816,6 +1822,9 @@ private fun CallRow(call: RadioCall, onReplay: () -> Unit, onDownload: () -> Uni
                 }
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                onContinue?.let {
+                    OutlinedButton(onClick = it) { Text("Continue") }
+                }
                 OutlinedButton(onClick = onReplay) { Text("Replay") }
                 OutlinedButton(onClick = onDownload) { Text("Download") }
             }
