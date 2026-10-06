@@ -31,10 +31,28 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
+      - name: Prepare stable CI debug signing
+        shell: bash
+        run: |
+          KEYSTORE="$RUNNER_TEMP/fatline-ci-debug.p12"
+          base64 --decode tools/fatline-ci-debug.p12.b64 > "$KEYSTORE"
+          echo "FATLINE_CI_KEYSTORE=$KEYSTORE" >> "$GITHUB_ENV"
+          echo "FATLINE_CI_KEYSTORE_PASSWORD=fatline-ci-debug" >> "$GITHUB_ENV"
+          echo "FATLINE_CI_KEY_ALIAS=fatline-ci-debug" >> "$GITHUB_ENV"
+          echo "FATLINE_CI_KEY_PASSWORD=fatline-ci-debug" >> "$GITHUB_ENV"
+          keytool -list -keystore "$KEYSTORE" -storetype PKCS12 \
+            -storepass fatline-ci-debug -alias fatline-ci-debug >/dev/null
       - name: Static validation
         run: python3 tools/validate_project.py
       - name: Unit tests and debug APK
         run: gradle --no-daemon testDebugUnitTest assembleDebug --stacktrace
+      - name: Verify stable APK signing certificate
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          APKSIGNER="$SDK_ROOT/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee "$RUNNER_TEMP/apk-certs.txt"
+          grep -Fqi "f032d1d5659ff4a10756e0518a29c2f61462ede84a86e87571517f740c704763" "$RUNNER_TEMP/apk-certs.txt"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
