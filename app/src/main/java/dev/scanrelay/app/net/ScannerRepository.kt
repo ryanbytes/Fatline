@@ -2063,6 +2063,7 @@ object ScannerRepository {
         val options = payload.optJSONObject("options")
         val autoEnableNewTalkgroups = options?.optBoolean("autoEnableNewTalkgroups", false) == true
         val incidentMappingEnabled = options?.optBoolean("incidentMappingEnabled", false) == true
+        val uiAccentColor = options?.optString("uiAccentColor")?.trim()?.takeIf { it.isNotBlank() }
         val systems = channelStore?.apply(
             session.profile.id,
             parsed,
@@ -2106,6 +2107,7 @@ object ScannerRepository {
                 listenerCount = if (showListenersCount) session.state.listenerCount else 0,
                 incidentMappingEnabled = incidentMappingEnabled,
                 time12hFormat = time12hFormat,
+                uiAccentColor = uiAccentColor,
                 error = null
             )
             if (session.state.paused) session.socket?.stopLivefeed()
