@@ -184,6 +184,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun reorderScanList(profileId: String, fromIndex: Int, toIndex: Int) =
         ScannerRepository.reorderScanList(profileId, fromIndex, toIndex)
     fun setPaused(profileId: String, paused: Boolean) = ScannerRepository.setPaused(profileId, paused)
+    fun setLivefeedBacklogMinutes(profileId: String, minutes: Int) =
+        ScannerRepository.setLivefeedBacklogMinutes(profileId, minutes)
     fun setFavorite(profileId: String, systemRef: Long, talkgroupRef: Long, favorite: Boolean) =
         ScannerRepository.setFavorite(profileId, systemRef, talkgroupRef, favorite)
     fun setSystemFavorite(profileId: String, systemRef: Long, favorite: Boolean) =
