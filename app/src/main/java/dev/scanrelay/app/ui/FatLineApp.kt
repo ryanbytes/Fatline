@@ -63,6 +63,40 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
 
+private val SERVER_ALERT_SOUNDS = listOf(
+    "" to "Default",
+    "alert" to "Alert",
+    "beep" to "Beep",
+    "chirp_long" to "Chirp Long",
+    "classic" to "Classic",
+    "click" to "Click",
+    "ding" to "Ding",
+    "door_bell" to "Door Bell",
+    "double_pulse" to "Double Pulse",
+    "fast_beep_long" to "Fast Beep Long",
+    "fast_beep_short" to "Fast Beep Short",
+    "five_beep" to "Five Beep",
+    "mdc_1200" to "MDC-1200",
+    "modern" to "Modern",
+    "pluck" to "Pluck",
+    "pop" to "Pop",
+    "quick_beep" to "Quick Beep",
+    "quiet" to "Quiet",
+    "relaxed" to "Relaxed",
+    "settle_alert" to "Settle Alert",
+    "simple" to "Simple",
+    "smoke_alarm" to "Smoke Alarm",
+    "startup" to "Startup",
+    "tone" to "Tone"
+)
+
+private fun serverAlertSoundLabel(name: String?): String {
+    val key = name?.trim().orEmpty()
+    return SERVER_ALERT_SOUNDS.firstOrNull { it.first == key }?.second
+        ?: key.takeIf { it.isNotBlank() }
+        ?: "Default"
+}
+
 private enum class AppTab(val label: String, val glyph: String) {
     Scanner("Scanner", "●"),
     Channels("Channels", "≡"),
