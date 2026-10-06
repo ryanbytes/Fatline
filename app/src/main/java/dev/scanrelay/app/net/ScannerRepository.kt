@@ -8,6 +8,7 @@ import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ConnectionStatus
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerAlert
+import dev.scanrelay.app.model.ScanList
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
@@ -25,10 +26,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.URI
 import java.time.Instant
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
@@ -51,6 +56,9 @@ object ScannerRepository {
         val pendingEncrypted = ArrayDeque<JSONObject>()
         val pendingReplay = mutableSetOf<Long>()
         val callMutex = Mutex()
+        val settingsMutex = Mutex()
+        @Volatile var scanListSaveJob: Job? = null
+        @Volatile var scanListRevision = 0L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -167,6 +175,214 @@ object ScannerRepository {
         pruneQueuedLiveCalls(profileId)
     }
 
+    fun createScanList(profileId: String, name: String) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return
+        mutateScanLists(profileId) { lists ->
+            lists + ScanList(
+                id = "list-" + System.currentTimeMillis(),
+                name = cleanName,
+                channels = emptyList()
+            )
+        }
+    }
+
+    fun renameScanList(profileId: String, listId: String, name: String) {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return
+        mutateScanLists(profileId) { lists ->
+            lists.map { if (it.id == listId) it.copy(name = cleanName) else it }
+        }
+    }
+
+    fun deleteScanList(profileId: String, listId: String) {
+        mutateScanLists(profileId) { lists -> lists.filterNot { it.id == listId } }
+    }
+
+    fun setScanListChannel(profileId: String, listId: String, key: ChannelKey, included: Boolean) {
+        mutateScanLists(profileId) { lists ->
+            lists.map { list ->
+                if (list.id != listId) list
+                else {
+                    val channels = if (included) {
+                        (list.channels + key).distinct()
+                    } else {
+                        list.channels.filterNot { it == key }
+                    }
+                    list.copy(channels = channels)
+                }
+            }
+        }
+    }
+
+    private fun mutateScanLists(profileId: String, transform: (List<ScanList>) -> List<ScanList>) {
+        val session = sessions[profileId] ?: return
+        val changed = synchronized(session) {
+            val updated = transform(session.state.scanLists)
+            if (updated == session.state.scanLists) {
+                false
+            } else {
+                session.scanListRevision++
+                session.state = session.state.copy(
+                    scanLists = updated,
+                    scanListSyncing = true,
+                    scanListError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleScanListSave(session)
+    }
+
+    private fun scheduleScanListSave(session: Session) {
+        synchronized(session) {
+            session.scanListSaveJob?.cancel()
+            session.scanListSaveJob = scope.launch {
+                delay(650L)
+                persistScanLists(session)
+            }
+        }
+    }
+
+    private suspend fun persistScanLists(session: Session) {
+        session.settingsMutex.withLock {
+            while (isCurrent(session)) {
+                val snapshot = synchronized(session) {
+                    Triple(session.scanListRevision, session.state.scanLists, session.state.systems)
+                }
+                val revision = snapshot.first
+                val lists = snapshot.second
+                val systems = snapshot.third
+                val pin = session.profile.pin.trim()
+                if (pin.isBlank()) {
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            scanListSyncing = false,
+                            scanListError = "Sign in to sync Scan Lists with the server"
+                        )
+                        session.scanListSaveJob = null
+                    }
+                    publish()
+                    return
+                }
+
+                try {
+                    val origin = httpOrigin(session.profile.baseUrl)
+                    val auth = "Bearer $pin"
+                    val currentRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .get()
+                        .build()
+                    val current = executeSettingsJson(currentRequest)
+                    val updated = mergeScanListsIntoSettings(current, lists, systems)
+                    val saveRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .post(updated.toString().toRequestBody(JSON_MEDIA_TYPE))
+                        .build()
+                    executeSettingsJson(saveRequest)
+
+                    val done = synchronized(session) {
+                        if (session.scanListRevision == revision) {
+                            session.state = session.state.copy(scanListSyncing = false, scanListError = null)
+                            session.scanListSaveJob = null
+                            true
+                        } else false
+                    }
+                    publish()
+                    if (done) return
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session)) return
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            scanListSyncing = false,
+                            scanListError = error.message?.takeIf { it.isNotBlank() } ?: "Scan List sync failed"
+                        )
+                        session.scanListSaveJob = null
+                    }
+                    publish()
+                    return
+                }
+            }
+        }
+    }
+
+    private fun executeSettingsJson(request: Request): JSONObject =
+        keyHttpClient.newCall(request).execute().use { response ->
+            val text = response.body.string()
+            val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+            if (!response.isSuccessful) {
+                val message = json.optString("message").takeIf { it.isNotBlank() }
+                    ?: json.optString("error").takeIf { it.isNotBlank() }
+                    ?: "Settings request failed (HTTP ${response.code})"
+                throw IllegalStateException(message)
+            }
+            json
+        }
+
+    internal fun mergeScanListsIntoSettings(
+        current: JSONObject,
+        scanLists: List<ScanList>,
+        systems: List<SystemConfig>
+    ): JSONObject {
+        val updated = JSONObject(current.toString())
+        updated.put("scanLists", serializeScanLists(scanLists, systems))
+        updated.put("activeScanListIds", JSONArray())
+        updated.put("activeScanListId", JSONObject.NULL)
+        return updated
+    }
+
+    internal fun serializeScanLists(scanLists: List<ScanList>, systems: List<SystemConfig>): JSONArray {
+        val output = JSONArray()
+        scanLists.forEach { list ->
+            val channels = JSONArray()
+            list.channels.distinct().forEach { key ->
+                val system = systems.firstOrNull { it.systemRef == key.systemRef }
+                val talkgroup = system?.talkgroups?.firstOrNull { it.talkgroupRef == key.talkgroupRef }
+                channels.put(
+                    JSONObject()
+                        .put("systemId", key.systemRef.toString())
+                        .put("talkgroupId", key.talkgroupRef.toString())
+                        .put("talkgroupLabel", talkgroup?.label.orEmpty())
+                        .put("talkgroupName", talkgroup?.name.orEmpty())
+                        .put("systemLabel", system?.label.orEmpty())
+                        .put("tag", talkgroup?.tag.orEmpty())
+                        .put("isEnabled", talkgroup?.enabled == true)
+                )
+            }
+            output.put(
+                JSONObject()
+                    .put("id", list.id)
+                    .put("name", list.name)
+                    .put("channels", channels)
+            )
+        }
+        return output
+    }
+
+    private fun httpOrigin(baseUrl: String): String {
+        val normalized = baseUrl.trim().let {
+            if (
+                it.startsWith("http://", true) ||
+                it.startsWith("https://", true) ||
+                it.startsWith("ws://", true) ||
+                it.startsWith("wss://", true)
+            ) it else "https://$it"
+        }
+        val uri = URI(normalized)
+        val scheme = when (uri.scheme?.lowercase()) {
+            "ws" -> "http"
+            "wss" -> "https"
+            "http", "https" -> uri.scheme.lowercase()
+            else -> error("Unsupported server URL scheme: ${uri.scheme}")
+        }
+        require(!uri.host.isNullOrBlank()) { "Server URL must include a host" }
+        return URI(scheme, null, uri.host, uri.port, null, null, null).toString().trimEnd('/')
+    }
     fun setPaused(profileId: String, paused: Boolean) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
@@ -357,6 +573,7 @@ object ScannerRepository {
         session.reconnectJob?.cancel()
         session.handshakeJob?.cancel()
         session.keyJob?.cancel()
+        session.scanListSaveJob?.cancel()
         session.socketGeneration++
         val old = session.socket
         session.socket = null
@@ -367,6 +584,7 @@ object ScannerRepository {
             session.masterKey?.fill(0)
             session.masterKey = null
             session.keyJob = null
+            session.scanListSaveJob = null
             session.handshakeJob = null
             session.relayUrl = null
             session.clientToken = null
@@ -648,7 +866,7 @@ object ScannerRepository {
                     else -> "Connected"
                 },
                 systems = systems,
-                scanLists = scanLists,
+                scanLists = if (session.state.scanListSyncing) session.state.scanLists else scanLists,
                 audioEncryptionEnabled = encrypted,
                 encryptionReady = !encrypted || session.masterKey != null,
                 error = null
@@ -1033,6 +1251,8 @@ object ScannerRepository {
         return systemMatches && talkgroupMatches
     }
     private fun callSortKey(call: RadioCall): Long = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
+
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     private fun publish() {
         val serverMap = sessions.values.associate { it.profile.id to it.state }

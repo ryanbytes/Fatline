@@ -2,6 +2,7 @@ package dev.scanrelay.app.net
 
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
+import dev.scanrelay.app.model.ScanList
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
@@ -132,6 +133,62 @@ class ScannerRepositoryTest {
         assertTrue(ScannerRepository.matchesHistoryFilter(state, call(1, 11)))
         assertFalse(ScannerRepository.matchesHistoryFilter(state, call(1, 12)))
         assertFalse(ScannerRepository.matchesHistoryFilter(state, call(2, 11)))
+    }
+
+    @Test
+    fun scanListSettingsMergePreservesUnrelatedPreferences() {
+        val current = JSONObject(
+            """
+            {
+              "autoLivefeed": true,
+              "livefeedBacklogMinutes": 3,
+              "theme": "dark",
+              "activeScanListId": "old",
+              "activeScanListIds": ["old"]
+            }
+            """.trimIndent()
+        )
+        val lists = listOf(
+            ScanList(
+                id = "fire",
+                name = "Fire",
+                channels = listOf(ChannelKey(1, 11))
+            )
+        )
+
+        val updated = ScannerRepository.mergeScanListsIntoSettings(current, lists, systems)
+
+        assertTrue(updated.getBoolean("autoLivefeed"))
+        assertEquals(3, updated.getInt("livefeedBacklogMinutes"))
+        assertEquals("dark", updated.getString("theme"))
+        assertTrue(updated.isNull("activeScanListId"))
+        assertEquals(0, updated.getJSONArray("activeScanListIds").length())
+
+        val savedList = updated.getJSONArray("scanLists").getJSONObject(0)
+        val savedChannel = savedList.getJSONArray("channels").getJSONObject(0)
+        assertEquals("fire", savedList.getString("id"))
+        assertEquals("Fire", savedList.getString("name"))
+        assertEquals("1", savedChannel.getString("systemId"))
+        assertEquals("11", savedChannel.getString("talkgroupId"))
+        assertEquals("One", savedChannel.getString("systemLabel"))
+        assertEquals("One-A", savedChannel.getString("talkgroupLabel"))
+        assertTrue(savedChannel.getBoolean("isEnabled"))
+    }
+
+    @Test
+    fun scanListSerializationDeduplicatesMembership() {
+        val lists = listOf(
+            ScanList(
+                id = "dup",
+                name = "Duplicate test",
+                channels = listOf(ChannelKey(1, 11), ChannelKey(1, 11), ChannelKey(2, 21))
+            )
+        )
+
+        val encoded = ScannerRepository.serializeScanLists(lists, systems)
+        val channels = encoded.getJSONObject(0).getJSONArray("channels")
+
+        assertEquals(2, channels.length())
     }
 
 }
