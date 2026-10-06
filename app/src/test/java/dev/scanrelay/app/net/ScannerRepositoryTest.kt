@@ -300,4 +300,32 @@ class ScannerRepositoryTest {
         assertEquals(0, encoded.getJSONArray("toneSetIds").length())
     }
 
+    @Test
+    fun keywordListsParseLabelsDescriptionsAndKeywords() {
+        val raw = JSONArray(
+            """
+            [
+              {
+                "id": 9,
+                "label": "Priority",
+                "description": "High-priority phrases",
+                "keywords": ["pursuit", "shots fired", "pursuit"]
+              },
+              {
+                "id": 10,
+                "label": "Medical",
+                "keywords": ["cardiac arrest"]
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val lists = ScannerRepository.parseAlertKeywordLists(raw)
+
+        assertEquals(listOf("Medical", "Priority"), lists.map { it.label })
+        val priority = lists.first { it.id == 9L }
+        assertEquals("High-priority phrases", priority.description)
+        assertEquals(listOf("pursuit", "shots fired"), priority.keywords)
+    }
+
 }
