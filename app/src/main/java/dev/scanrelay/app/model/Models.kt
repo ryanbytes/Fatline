@@ -203,6 +203,7 @@ data class ServerScannerState(
     val statusText: String = "Disconnected",
     val profile: ServerProfile,
     val systems: List<SystemConfig> = emptyList(),
+    val hiddenSystemRefs: Set<Long> = emptySet(),
     val scanLists: List<ScanList> = emptyList(),
     val scanListSyncing: Boolean = false,
     val scanListError: String? = null,
