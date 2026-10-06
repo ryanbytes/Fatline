@@ -13,7 +13,7 @@ import dev.scanrelay.app.MainActivity
 
 object AlertNotifier {
     private const val ALERT_CHANNEL_PREFIX = "fatline_alerts_"
-    private const val CONNECTION_CHANNEL_ID = "fatline_connection"
+    private const val CONNECTION_CHANNEL_PREFIX = "fatline_connection_"
 
     fun post(context: Context, profileId: String, profileName: String, title: String, body: String, notificationId: Int) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -50,22 +50,41 @@ object AlertNotifier {
         manager.notify(notificationId, notification)
     }
 
-    fun postConnectionLoss(context: Context, serverName: String, detail: String, notificationId: Int) {
+    fun postConnectionLoss(
+        context: Context,
+        profileId: String,
+        serverName: String,
+        detail: String,
+        notificationId: Int
+    ) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CONNECTION_CHANNEL_ID,
-                "Scanner connection",
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
+        val soundSetting = AlertSoundPreferences.getDisconnect(context, profileId)
+        val profileChannelPrefix = CONNECTION_CHANNEL_PREFIX + profileId.hashCode() + "_"
+        val channelId = profileChannelPrefix + (soundSetting ?: "default").hashCode()
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .build()
+        val channel = NotificationChannel(
+            channelId,
+            "$serverName disconnects",
+            NotificationManager.IMPORTANCE_DEFAULT
         )
+        when (soundSetting) {
+            AlertSoundPreferences.SILENT -> channel.setSound(null, null)
+            null -> channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttributes)
+            else -> channel.setSound(Uri.parse(soundSetting), audioAttributes)
+        }
+        manager.createNotificationChannel(channel)
+        manager.notificationChannels
+            .filter { it.id.startsWith(profileChannelPrefix) && it.id != channelId }
+            .forEach { manager.deleteNotificationChannel(it.id) }
         val open = PendingIntent.getActivity(
             context,
             0,
             Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(context, CONNECTION_CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.stat_notify_error)
             .setContentTitle("$serverName disconnected")
             .setContentText(detail)
