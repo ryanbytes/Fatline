@@ -1143,7 +1143,7 @@ private fun SettingsScreen(
                                 putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "FatLine disconnect sound")
                             }
                             disconnectSoundPicker.launch(picker)
-                        }) { Text("Choose disconnect sound") }
+                        }) { Text("Choose") }
 
                         OutlinedButton(onClick = {
                             AlertSoundPreferences.useSystemDefaultDisconnect(context, editingId)
