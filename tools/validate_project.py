@@ -28,6 +28,7 @@ required = [
     'app/src/main/java/dev/scanrelay/app/alerts/AlertSoundPreferences.kt',
     'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt',
     'app/src/main/java/dev/scanrelay/app/ui/ServerDateTime.kt',
+    'app/src/main/java/dev/scanrelay/app/ui/UiAccent.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
@@ -35,6 +36,7 @@ required = [
     'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt',
     'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt',
+    'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt',
 ]
 for rel in required:
     require((ROOT / rel).is_file(), f'missing {rel}')
@@ -269,6 +271,10 @@ require('AlertToneSet' in models and 'toneDetectionEnabled' in models and 'toneS
 require('parseToneSets' in protocol and 'toneDetectionEnabled = node.optBoolean' in protocol, 'tone-set config parsing missing')
 require('setAlertToneSets' in repo and 'normalizeAlertToneSetIds' in repo, 'per-talkgroup tone-set persistence missing')
 require('setAlertToneSets' in viewmodel, 'tone-set view-model bridge missing')
+require('uiAccentColor' in models and 'options?.optString("uiAccentColor")' in repo, 'server accent configuration missing')
+require('uiAccentRgb' in ui and 'darkColorScheme(primary = color, secondary = color, tertiary = color)' in ui, 'server accent theme application missing')
+require('normalizesThreeAndSixDigitHex' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt').read_text(), 'accent normalization regression test missing')
+require('invalidServerAccentFallsBackToThinLineDefault' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt').read_text(), 'accent fallback regression test missing')
 require('time12hFormat' in models and 'payload.optBoolean("time12hFormat", false)' in repo, 'server time-format configuration missing')
 require('formatServerDateTime' in ui and 'time12hFormat = server.time12hFormat' in ui, 'server-formatted call and alert times missing')
 require('formatsArchiveTimestampIn12HourMode' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt').read_text(), '12-hour timestamp regression test missing')
