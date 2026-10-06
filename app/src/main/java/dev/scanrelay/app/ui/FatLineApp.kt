@@ -226,7 +226,7 @@ private fun ScannerScreen(
                     )
                 }
                 itemsIndexed(server.alerts.take(3), key = { index, alert -> "preview-alert-" + index + "-" + alert.stableKey }) { _, alert ->
-                    AlertCard(alert)
+                    AlertCard(alert, mappingEnabled = server.incidentMappingEnabled)
                 }
             }
 
@@ -1507,6 +1507,7 @@ private fun AlertsScreen(
                 ) { _, alert ->
                     AlertCard(
                         alert,
+                        mappingEnabled = server.incidentMappingEnabled,
                         onReplay = alert.callId?.let { callId ->
                             { viewModel.replay(server.profile.id, callId) }
                         }
@@ -1823,9 +1824,13 @@ private fun CallRow(call: RadioCall, onReplay: () -> Unit, onDownload: () -> Uni
 }
 
 @Composable
-private fun AlertCard(alert: ScannerAlert, onReplay: (() -> Unit)? = null) {
+private fun AlertCard(
+    alert: ScannerAlert,
+    mappingEnabled: Boolean,
+    onReplay: (() -> Unit)? = null
+) {
     val context = LocalContext.current
-    val mapUri = incidentMapUri(alert)
+    val mapUri = incidentMapUri(alert, mappingEnabled)
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(alert.title, fontWeight = FontWeight.SemiBold)
@@ -1881,7 +1886,8 @@ private fun AlertCard(alert: ScannerAlert, onReplay: (() -> Unit)? = null) {
     }
 }
 
-internal fun incidentMapUri(alert: ScannerAlert): String? {
+internal fun incidentMapUri(alert: ScannerAlert, mappingEnabled: Boolean = true): String? {
+    if (!mappingEnabled) return null
     val lat = alert.incidentLat
     val lon = alert.incidentLon
     if (lat != null && lon != null) {
