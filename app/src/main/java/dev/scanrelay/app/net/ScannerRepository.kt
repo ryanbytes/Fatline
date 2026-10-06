@@ -824,6 +824,7 @@ object ScannerRepository {
             audioName = audioName,
             sourceRef = payload.optLong("source").takeIf { it > 0 },
             frequency = payload.optLong("frequency").takeIf { it > 0 },
+            durationSeconds = payload.optDouble("duration").takeIf { !it.isNaN() && it > 0 },
             encryptedAudio = encrypted
         )
 

@@ -147,6 +147,7 @@ require('talkgroup.key !in state.avoided' in repo, 'avoided channels must be exc
 require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
 require('recentCalls' in models and 'session.state.recentCalls' in repo, 'dedicated live recent-call state missing')
 require('server.recentCalls' in ui and 'server.history.take(10)' not in ui, 'scanner recent list must not reuse archive history')
+require('durationSeconds = payload.optDouble("duration")' in repo, 'live call duration metadata must be preserved')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
