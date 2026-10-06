@@ -1,5 +1,7 @@
 package dev.scanrelay.app.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -45,6 +48,7 @@ import dev.scanrelay.app.model.ScannerAlert
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
+import java.net.URLEncoder
 import java.util.Locale
 import java.util.UUID
 
@@ -1164,6 +1168,8 @@ private fun CallRow(call: RadioCall, onReplay: () -> Unit) {
 
 @Composable
 private fun AlertCard(alert: ScannerAlert, onReplay: (() -> Unit)? = null) {
+    val context = LocalContext.current
+    val mapUri = incidentMapUri(alert)
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(alert.title, fontWeight = FontWeight.SemiBold)
@@ -1200,11 +1206,41 @@ private fun AlertCard(alert: ScannerAlert, onReplay: (() -> Unit)? = null) {
             alert.dateTime?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall)
             }
-            onReplay?.let {
-                OutlinedButton(onClick = it) { Text("Replay call") }
+            if (onReplay != null || mapUri != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    onReplay?.let {
+                        OutlinedButton(onClick = it) { Text("Replay call") }
+                    }
+                    mapUri?.let { uri ->
+                        OutlinedButton(onClick = {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                            if (intent.resolveActivity(context.packageManager) != null) {
+                                context.startActivity(intent)
+                            }
+                        }) { Text("Open map") }
+                    }
+                }
             }
         }
     }
+}
+
+internal fun incidentMapUri(alert: ScannerAlert): String? {
+    val lat = alert.incidentLat
+    val lon = alert.incidentLon
+    if (lat != null && lon != null) {
+        return String.format(
+            Locale.US,
+            "geo:%.6f,%.6f?q=%.6f,%.6f",
+            lat,
+            lon,
+            lat,
+            lon
+        )
+    }
+
+    val address = alert.incidentAddress?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return "geo:0,0?q=" + URLEncoder.encode(address, "UTF-8").replace("+", "%20")
 }
 
 private fun formatFrequency(frequency: Long): String =
