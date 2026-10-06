@@ -105,6 +105,7 @@ class ScannerService : MediaLibraryService() {
             ACTION_SET_PROFILE_PAUSED -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let { profileId ->
                 setProfilePausedInternal(profileId, intent.getBooleanExtra(EXTRA_PAUSED, false))
             }
+            ACTION_FILTER_PROFILE_MEDIA -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::filterProfileMedia)
             ACTION_SKIP -> {
                 skipInternal()
                 stopIfIdle()
@@ -253,10 +254,14 @@ class ScannerService : MediaLibraryService() {
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
         if (profileId in pausedProfiles) return
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
+        val systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L)
+        val talkgroupRef = intent.getLongExtra(EXTRA_TALKGROUP_REF, 0L)
+        val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Radio traffic" }
         val subtitle = intent.getStringExtra(EXTRA_SUBTITLE).orEmpty()
+        val mediaKind = if (liveFeed) "live" else "replay"
         val item = MediaItem.Builder()
-            .setMediaId("call:$profileId:$callId:${System.nanoTime()}")
+            .setMediaId("call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:${System.nanoTime()}")
             .setUri(path.toUri())
             .setMediaMetadata(
                 MediaMetadata.Builder()
@@ -275,6 +280,17 @@ class ScannerService : MediaLibraryService() {
         if (!player.playWhenReady) player.play()
     }
 
+    private fun filterProfileMedia(profileId: String) {
+        for (index in player.mediaItemCount - 1 downTo 0) {
+            val parts = player.getMediaItemAt(index).mediaId.split(':')
+            if (parts.size < 7 || parts[0] != "call" || parts[1] != profileId || parts[2] != "live") continue
+            val systemRef = parts[4].toLongOrNull() ?: continue
+            val talkgroupRef = parts[5].toLongOrNull() ?: continue
+            if (!ScannerRepository.isChannelSubscribed(profileId, systemRef, talkgroupRef)) {
+                player.removeMediaItem(index)
+            }
+        }
+    }
     private fun setProfilePausedInternal(profileId: String, paused: Boolean) {
         if (paused) {
             pausedProfiles += profileId
@@ -439,11 +455,15 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_DISCONNECT_ALL = "dev.scanrelay.DISCONNECT_ALL"
         const val ACTION_ENQUEUE = "dev.scanrelay.ENQUEUE"
         const val ACTION_SET_PROFILE_PAUSED = "dev.scanrelay.SET_PROFILE_PAUSED"
+        const val ACTION_FILTER_PROFILE_MEDIA = "dev.scanrelay.FILTER_PROFILE_MEDIA"
         const val ACTION_SKIP = "dev.scanrelay.SKIP"
         const val ACTION_STOP_AUDIO = "dev.scanrelay.STOP_AUDIO"
         const val ACTION_REMOVE_PROFILE = "dev.scanrelay.REMOVE_PROFILE"
         const val EXTRA_PROFILE_ID = "profile_id"
         const val EXTRA_CALL_ID = "call_id"
+        const val EXTRA_SYSTEM_REF = "system_ref"
+        const val EXTRA_TALKGROUP_REF = "talkgroup_ref"
+        const val EXTRA_LIVE_FEED = "live_feed"
         const val EXTRA_PAUSED = "paused"
         const val EXTRA_AUDIO_PATH = "audio_path"
         const val EXTRA_TITLE = "title"
@@ -464,18 +484,27 @@ class ScannerService : MediaLibraryService() {
             context.startService(Intent(context, ScannerService::class.java).setAction(ACTION_DISCONNECT_ALL))
         }
 
-        fun enqueue(context: Context, call: RadioCall) {
+        fun enqueue(context: Context, call: RadioCall, liveFeed: Boolean = true) {
             val path = call.audioPath ?: return
             val intent = Intent(context, ScannerService::class.java)
                 .setAction(ACTION_ENQUEUE)
                 .putExtra(EXTRA_PROFILE_ID, call.profileId)
                 .putExtra(EXTRA_CALL_ID, call.id)
+                .putExtra(EXTRA_SYSTEM_REF, call.systemRef)
+                .putExtra(EXTRA_TALKGROUP_REF, call.talkgroupRef)
+                .putExtra(EXTRA_LIVE_FEED, liveFeed)
                 .putExtra(EXTRA_AUDIO_PATH, path)
                 .putExtra(EXTRA_TITLE, call.talkgroupLabel)
                 .putExtra(EXTRA_SUBTITLE, "${call.serverName} · ${call.systemLabel}")
             runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
+        fun filterProfileMedia(context: Context, profileId: String) {
+            val intent = Intent(context, ScannerService::class.java)
+                .setAction(ACTION_FILTER_PROFILE_MEDIA)
+                .putExtra(EXTRA_PROFILE_ID, profileId)
+            runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
         fun setProfilePaused(context: Context, profileId: String, paused: Boolean) {
             val intent = Intent(context, ScannerService::class.java)
                 .setAction(ACTION_SET_PROFILE_PAUSED)
