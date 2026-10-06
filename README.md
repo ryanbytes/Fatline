@@ -20,6 +20,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Avoid / unavoid, clear avoids, and skip current audio
 - Server archive/history through `LCL`, paged results, and `CAL` replay
 - Local scanner-alert notifications and transcript display when supplied by the server
+- One-shot scanner connection-loss notifications after a previously healthy connection drops
 - Per-server ordered call processing while different servers remain concurrent
 - ThinLine relay encrypted audio: P-256 ECDH, HKDF-SHA256 (`tlr-audio-key-wrap-v1`), AES-256-GCM
 - Bounded encrypted-call buffering while relay key exchange is pending
