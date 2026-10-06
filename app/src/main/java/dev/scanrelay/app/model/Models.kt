@@ -105,6 +105,22 @@ data class RadioCall(
             ?: sourceRef?.toString()
 }
 
+data class AlertPreference(
+    val systemRef: Long,
+    val talkgroupRef: Long,
+    val alertEnabled: Boolean = false,
+    val toneAlerts: Boolean = true,
+    val keywordAlerts: Boolean = true,
+    val keywords: List<String> = emptyList(),
+    val keywordListIds: List<Long> = emptyList(),
+    val toneSetIds: List<String> = emptyList(),
+    val notificationSound: String = "",
+    val toneSetSounds: Map<String, String> = emptyMap(),
+    val pagerAlert: Boolean = false,
+    val toneSetPagerAlerts: Map<String, Boolean> = emptyMap()
+) {
+    val key: ChannelKey get() = ChannelKey(systemRef, talkgroupRef)
+}
 data class ScannerAlert(
     val profileId: String,
     val serverName: String,
@@ -154,6 +170,10 @@ data class ServerScannerState(
     val alerts: List<ScannerAlert> = emptyList(),
     val alertsLoading: Boolean = false,
     val alertsError: String? = null,
+    val alertPreferences: List<AlertPreference> = emptyList(),
+    val alertPreferencesLoading: Boolean = false,
+    val alertPreferencesSaving: Boolean = false,
+    val alertPreferencesError: String? = null,
     val hold: ChannelKey? = null,
     val holdSystemRef: Long? = null,
     val paused: Boolean = false,
