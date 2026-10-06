@@ -756,6 +756,7 @@ object ScannerRepository {
         val systemRef = payload.optLong("system")
         val talkgroupRef = payload.optLong("talkgroup")
         val (systemLabel, talkgroupLabel) = labels(session.state.systems, systemRef, talkgroupRef)
+        val sourceRef = payload.optLong("source").takeIf { it > 0 }
         return RadioCall(
             profileId = session.profile.id,
             serverName = session.profile.name,
@@ -765,7 +766,8 @@ object ScannerRepository {
             systemLabel = systemLabel,
             talkgroupLabel = talkgroupLabel,
             dateTime = payload.optString("dateTime"),
-            sourceRef = payload.optLong("source").takeIf { it > 0 },
+            sourceRef = sourceRef,
+            sourceLabel = unitDisplay(session.state.systems, systemRef, sourceRef),
             frequency = payload.optLong("frequency").takeIf { it > 0 },
             durationSeconds = payload.optDouble("duration").takeIf { !it.isNaN() && it > 0 }
         )
@@ -831,6 +833,7 @@ object ScannerRepository {
         val audioName = payload.optString("audioName").takeIf { it.isNotBlank() }
         val path = if (audioBytes.isNotEmpty()) writeAudio(context, session.profile.id, id, audioName, mime, audioBytes) else null
         val (systemLabel, talkgroupLabel) = labels(session.state.systems, systemRef, talkgroupRef)
+        val sourceRef = payload.optLong("source").takeIf { it > 0 }
         val call = RadioCall(
             profileId = session.profile.id,
             serverName = session.profile.name,
@@ -844,7 +847,8 @@ object ScannerRepository {
             audioPath = path,
             audioMime = mime,
             audioName = audioName,
-            sourceRef = payload.optLong("source").takeIf { it > 0 },
+            sourceRef = sourceRef,
+            sourceLabel = unitDisplay(session.state.systems, systemRef, sourceRef),
             frequency = payload.optLong("frequency").takeIf { it > 0 },
             durationSeconds = payload.optDouble("duration").takeIf { !it.isNaN() && it > 0 },
             encryptedAudio = encrypted
@@ -932,6 +936,18 @@ object ScannerRepository {
         val system = systems.firstOrNull { it.systemRef == systemRef }
         val talkgroup = system?.talkgroups?.firstOrNull { it.talkgroupRef == talkgroupRef }
         return (system?.label ?: "System $systemRef") to (talkgroup?.displayName ?: "TG $talkgroupRef")
+    }
+
+    private fun unitDisplay(systems: List<SystemConfig>, systemRef: Long, sourceRef: Long?): String? {
+        val source = sourceRef ?: return null
+        val alias = systems
+            .firstOrNull { it.systemRef == systemRef }
+            ?.units
+            ?.firstOrNull { it.matches(source) }
+            ?.label
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it != source.toString() }
+        return alias?.let { "$it | $source" }
     }
 
     private fun callSortKey(call: RadioCall): Long = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
