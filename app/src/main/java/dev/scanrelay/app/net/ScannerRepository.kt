@@ -228,6 +228,18 @@ object ScannerRepository {
         mutateScanLists(profileId) { lists -> lists.filterNot { it.id == listId } }
     }
 
+    internal fun reorderedScanLists(lists: List<ScanList>, fromIndex: Int, toIndex: Int): List<ScanList> {
+        if (fromIndex !in lists.indices || toIndex !in lists.indices || fromIndex == toIndex) return lists
+        return lists.toMutableList().apply {
+            val moved = removeAt(fromIndex)
+            add(toIndex, moved)
+        }
+    }
+
+    fun reorderScanList(profileId: String, fromIndex: Int, toIndex: Int) {
+        mutateScanLists(profileId) { lists -> reorderedScanLists(lists, fromIndex, toIndex) }
+    }
+
     fun setScanListChannel(profileId: String, listId: String, key: ChannelKey, included: Boolean) {
         mutateScanLists(profileId) { lists ->
             lists.map { list ->
