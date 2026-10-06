@@ -132,8 +132,8 @@ require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' i
 # User-visible ThinLine parity / enhancements.
 require('setMany' in channel_store and 'setSystemEnabled' in repo, 'batched system-level channel update missing')
 require('setSystemTalkgroups' in viewmodel and 'setSystemTalkgroups' in ui, 'system-level enable/disable control missing')
-require('setPaused' in repo and 'Pause live' in ui and 'Resume live' in ui, 'pause/live-feed toggle missing')
-require('holdSystemRef' in models and 'setSystemHold' in repo and 'Hold system' in ui, 'system hold parity missing')
+require('setPaused' in repo and 'viewModel.setPaused' in ui and 'Resume' in ui and 'Pause' in ui, 'pause/live-feed toggle missing')
+require('holdSystemRef' in models and 'setSystemHold' in repo and 'viewModel.setSystemHold' in ui, 'system hold parity missing')
 require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'talkgroup hold/avoid/skip support missing')
 require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
