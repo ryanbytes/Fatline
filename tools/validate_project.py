@@ -60,6 +60,11 @@ require('compose-bom:2026.08.00' not in app_gradle, 'Compose 1.12 BOM requires c
 require('okhttp-bom:5.3.0' in app_gradle, 'OkHttp BOM not pinned')
 require('lifecycle-runtime-compose:2.10.0' in app_gradle, 'Lifecycle Compose dependency missing')
 require('media3-session:1.11.0' in app_gradle and 'media3-exoplayer:1.11.0' in app_gradle, 'Media3 1.11.0 dependencies missing')
+require('FATLINE_CI_KEYSTORE' in app_gradle and 'ciDebug' in app_gradle, 'stable CI signing config missing')
+require('GITHUB_RUN_NUMBER' in app_gradle and '10_000 + it' in app_gradle, 'monotonic CI version code missing')
+require('fatline-ci-debug.p12.b64' in (ROOT / '.github/workflows/android.yml').read_text(), 'stable CI signing key decode missing')
+require('Verify stable APK signing certificate' in (ROOT / '.github/workflows/android.yml').read_text(), 'APK certificate verification missing')
+require((ROOT / 'tools/fatline-ci-debug.p12.b64').is_file(), 'stable CI debug key material missing')
 
 for cmd in ['ALT','CAL','CFG','ERR','XPR','LCL','LSC','LFM','MAX','PIN','PNS','PNG','VER']:
     require(f'= "{cmd}"' in protocol, f'protocol constant {cmd} missing')

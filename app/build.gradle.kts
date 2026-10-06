@@ -3,6 +3,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+val ciKeystorePath = System.getenv("FATLINE_CI_KEYSTORE")
+
 android {
     namespace = "dev.scanrelay.app"
     compileSdk = 36
@@ -11,12 +14,27 @@ android {
         applicationId = "dev.scanrelay.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = ciRunNumber?.let { 10_000 + it } ?: 2
+        versionName = ciRunNumber?.let { "0.2.0-ci.$it" } ?: "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    if (!ciKeystorePath.isNullOrBlank()) {
+        signingConfigs {
+            create("ciDebug") {
+                storeFile = file(ciKeystorePath)
+                storePassword = System.getenv("FATLINE_CI_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("FATLINE_CI_KEY_ALIAS")
+                keyPassword = System.getenv("FATLINE_CI_KEY_PASSWORD")
+            }
+        }
+        buildTypes {
+            getByName("debug") {
+                signingConfig = signingConfigs.getByName("ciDebug")
+            }
+        }
+    }
     buildFeatures {
         compose = true
         buildConfig = true
