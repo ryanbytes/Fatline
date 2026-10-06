@@ -1510,8 +1510,8 @@ object ScannerRepository {
                 }
             }
 
-            cachedCall?.let {
-                ScannerService.enqueue(context, it, liveFeed = false)
+            if (cachedCall != null) {
+                ScannerService.enqueue(context, cachedCall!!, liveFeed = false)
                 continue
             }
 
