@@ -397,6 +397,49 @@ private fun ChannelsScreen(
                 }
             }
 
+            if (server.scanLists.isNotEmpty()) {
+                item {
+                    Text(
+                        "Scan Lists",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                items(server.scanLists, key = { scanList -> "scan-list-" + server.profile.id + "-" + scanList.id }) { scanList ->
+                    val enabledKeys = server.systems
+                        .flatMap { it.talkgroups }
+                        .filter { it.enabled }
+                        .map { it.key }
+                        .toSet()
+                    val enabledCount = scanList.channels.count { it in enabledKeys }
+
+                    Card(Modifier.padding(horizontal = 16.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(scanList.name, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    enabledCount.toString() + "/" + scanList.channels.size + " enabled",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.setChannels(server.profile.id, scanList.channels, true) },
+                                enabled = scanList.channels.isNotEmpty()
+                            ) { Text("Enable") }
+                            OutlinedButton(
+                                onClick = { viewModel.setChannels(server.profile.id, scanList.channels, false) },
+                                enabled = scanList.channels.isNotEmpty()
+                            ) { Text("Disable") }
+                        }
+                    }
+                }
+                item { HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
+            }
+
             server.systems.forEach { system ->
                 item(key = "system-" + server.profile.id + "-" + system.systemRef) {
                     Row(

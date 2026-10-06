@@ -55,4 +55,36 @@ class ThinLineProtocolTest {
     @Test fun callDownloadFlagIsThirdEnvelopeElement() {
         assertEquals("[\"CAL\",\"42\",\"d\"]", ThinLineProtocol.call(42, true))
     }
+    @Test fun scanListsParseFromUserSettingsWithStringAndNumericRefs() {
+        val config = JSONObject(
+            """
+            {
+              "userSettings": {
+                "scanLists": [
+                  {
+                    "id": "fire",
+                    "name": "Fire",
+                    "channels": [
+                      {"systemId": "1", "talkgroupId": "101"},
+                      {"systemId": 1, "talkgroupId": 102},
+                      {"systemId": "1", "talkgroupId": "101"}
+                    ]
+                  }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+
+        val lists = ThinLineProtocol.parseScanLists(config)
+
+        assertEquals(1, lists.size)
+        assertEquals("fire", lists.single().id)
+        assertEquals("Fire", lists.single().name)
+        assertEquals(2, lists.single().channels.size)
+        assertEquals(1L, lists.single().channels[0].systemRef)
+        assertEquals(101L, lists.single().channels[0].talkgroupRef)
+        assertEquals(102L, lists.single().channels[1].talkgroupRef)
+    }
+
 }

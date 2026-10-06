@@ -133,6 +133,10 @@ require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' i
 # User-visible ThinLine parity / enhancements.
 require('setMany' in channel_store and 'setSystemEnabled' in repo, 'batched system-level channel update missing')
 require('setSystemTalkgroups' in viewmodel and 'setSystemTalkgroups' in ui, 'system-level enable/disable control missing')
+require('parseScanLists' in protocol and 'scanLists' in models, 'server scan-list parsing/state missing')
+require('setChannelsEnabled' in repo and 'setChannels' in viewmodel, 'batched scan-list channel toggles missing')
+require('server.scanLists' in ui and '"Scan Lists"' in ui, 'scan-list UI missing')
+require('scanListsParseFromUserSettingsWithStringAndNumericRefs' in protocol_tests, 'scan-list parser regression test missing')
 require('setPaused' in repo and 'viewModel.setPaused' in ui and 'Resume' in ui and 'Pause' in ui, 'pause/live-feed toggle missing')
 require('ACTION_SET_PROFILE_PAUSED' in service and 'pausedProfiles' in service, 'per-profile playback pause suppression missing')
 require('ScannerService.setProfilePaused' in repo, 'repository pause must silence queued profile audio')
