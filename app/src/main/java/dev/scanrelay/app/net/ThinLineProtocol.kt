@@ -4,6 +4,7 @@ import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ScanList
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.TalkgroupConfig
+import dev.scanrelay.app.model.UnitAlias
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Base64
@@ -99,7 +100,12 @@ object ThinLineProtocol {
         fun parseSystem(node: JSONObject, keyRef: Long? = null) {
             val ref = node.optLong("systemRef", node.optLong("id", keyRef ?: 0L)).takeIf { it > 0 } ?: return
             val label = node.optString("label").ifBlank { "System $ref" }
-            systems += SystemConfig(ref, label, parseTalkgroups(ref, node.opt("talkgroups")))
+            systems += SystemConfig(
+                ref,
+                label,
+                parseTalkgroups(ref, node.opt("talkgroups")),
+                parseUnits(node.opt("units"))
+            )
         }
 
         when (raw) {
@@ -107,6 +113,27 @@ object ThinLineProtocol {
             is JSONArray -> for (i in 0 until raw.length()) raw.optJSONObject(i)?.let { parseSystem(it) }
         }
         return systems.sortedBy { it.label.lowercase() }
+    }
+
+    private fun parseUnits(raw: Any?): List<UnitAlias> {
+        val result = mutableListOf<UnitAlias>()
+
+        fun add(node: JSONObject, keyRef: Long? = null) {
+            val unitRef = node.optLong("unitRef", 0L)
+            val id = node.optLong("id", keyRef ?: 0L)
+            val from = node.optLong("unitFrom", 0L)
+            val to = node.optLong("unitTo", 0L)
+            val label = node.optString("label").trim()
+            if (label.isBlank()) return
+            if (unitRef <= 0 && id <= 0 && (from <= 0 || to <= 0)) return
+            result += UnitAlias(id = id, label = label, unitRef = unitRef, unitFrom = from, unitTo = to)
+        }
+
+        when (raw) {
+            is JSONObject -> raw.keys().forEach { key -> raw.optJSONObject(key)?.let { add(it, key.toLongOrNull()) } }
+            is JSONArray -> for (i in 0 until raw.length()) raw.optJSONObject(i)?.let { add(it) }
+        }
+        return result
     }
 
     fun parseScanLists(configPayload: JSONObject): List<ScanList> {
