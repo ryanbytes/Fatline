@@ -52,6 +52,7 @@ private enum class AppTab(val label: String, val glyph: String) {
     Scanner("Scanner", "●"),
     Channels("Channels", "≡"),
     History("History", "H"),
+    Alerts("Alerts", "!"),
     Settings("Settings", "S")
 }
 
@@ -107,6 +108,14 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                         modifier = Modifier.fillMaxSize().padding(padding)
                     )
                     AppTab.History -> HistoryScreen(
+                        scanner = scanner,
+                        profiles = profiles,
+                        selectedProfileId = selectedProfileId,
+                        onSelectProfile = { selectedProfileId = it },
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize().padding(padding)
+                    )
+                    AppTab.Alerts -> AlertsScreen(
                         scanner = scanner,
                         profiles = profiles,
                         selectedProfileId = selectedProfileId,
@@ -207,7 +216,7 @@ private fun ScannerScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                 }
-                items(server.alerts.take(3), key = { alert -> alert.title + alert.body + alert.dateTime.orEmpty() }) { alert ->
+                itemsIndexed(server.alerts.take(3), key = { index, alert -> "preview-alert-" + index + "-" + alert.stableKey }) { _, alert ->
                     AlertCard(alert)
                 }
             }
@@ -823,6 +832,118 @@ private fun HistoryScreen(
 }
 
 @Composable
+private fun AlertsScreen(
+    scanner: ScannerState,
+    profiles: List<ServerProfile>,
+    selectedProfileId: String?,
+    onSelectProfile: (String) -> Unit,
+    viewModel: ScannerViewModel,
+    modifier: Modifier
+) {
+    val server = selectedProfileId?.let { scanner.servers[it] }
+    var alertQuery by remember(selectedProfileId) { mutableStateOf("") }
+    val normalizedQuery = alertQuery.trim().lowercase()
+    val visibleAlerts = server?.alerts.orEmpty().filter { alert ->
+        normalizedQuery.isEmpty() ||
+            alert.title.lowercase().contains(normalizedQuery) ||
+            alert.body.lowercase().contains(normalizedQuery) ||
+            alert.systemLabel?.lowercase()?.contains(normalizedQuery) == true ||
+            alert.talkgroupLabel?.lowercase()?.contains(normalizedQuery) == true ||
+            alert.talkgroupName?.lowercase()?.contains(normalizedQuery) == true ||
+            alert.alertType?.lowercase()?.contains(normalizedQuery) == true ||
+            alert.matchedToneSets.any { it.lowercase().contains(normalizedQuery) } ||
+            alert.keywords.any { it.lowercase().contains(normalizedQuery) } ||
+            alert.transcript?.lowercase()?.contains(normalizedQuery) == true ||
+            alert.summary?.lowercase()?.contains(normalizedQuery) == true ||
+            alert.incidentAddress?.lowercase()?.contains(normalizedQuery) == true ||
+            alert.incidentNature?.lowercase()?.contains(normalizedQuery) == true
+    }
+
+    LaunchedEffect(server?.profile?.id) {
+        if (server != null && server.status == ConnectionStatus.CONNECTED && server.profile.pin.isNotBlank()) {
+            viewModel.refreshAlerts(server.profile.id)
+        }
+    }
+
+    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Column(Modifier.padding(top = 16.dp)) {
+                Text(
+                    "Alerts",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                ProfileStrip(profiles, selectedProfileId, onSelectProfile)
+            }
+        }
+
+        if (server == null) {
+            item { Text("Connect the selected scanner to load alerts.", modifier = Modifier.padding(16.dp)) }
+        } else {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Button(
+                        onClick = { viewModel.refreshAlerts(server.profile.id) },
+                        enabled = server.status == ConnectionStatus.CONNECTED &&
+                            server.profile.pin.isNotBlank() &&
+                            !server.alertsLoading
+                    ) { Text(if (server.alertsLoading) "Refreshing…" else "Refresh") }
+                    Text(
+                        visibleAlerts.size.toString() + "/" + server.alerts.size + " shown",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            server.alertsError?.takeIf { it.isNotBlank() }?.let { message ->
+                item {
+                    Text(
+                        message,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            item {
+                OutlinedTextField(
+                    value = alertQuery,
+                    onValueChange = { alertQuery = it },
+                    label = { Text("Search alerts") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                )
+            }
+
+            if (server.alerts.isEmpty() && !server.alertsLoading) {
+                item { Text("No alerts loaded.", modifier = Modifier.padding(16.dp)) }
+            } else if (visibleAlerts.isEmpty() && alertQuery.isNotBlank()) {
+                item { Text("No alerts match the search.", modifier = Modifier.padding(16.dp)) }
+            } else {
+                itemsIndexed(
+                    visibleAlerts,
+                    key = { index, alert -> "alert-" + server.profile.id + "-" + index + "-" + alert.stableKey }
+                ) { _, alert ->
+                    AlertCard(
+                        alert,
+                        onReplay = alert.callId?.let { callId ->
+                            { viewModel.replay(server.profile.id, callId) }
+                        }
+                    )
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(16.dp)) }
+    }
+}
+
+@Composable
 private fun SettingsScreen(
     profiles: List<ServerProfile>,
     selectedProfileId: String?,
@@ -1042,13 +1163,45 @@ private fun CallRow(call: RadioCall, onReplay: () -> Unit) {
 }
 
 @Composable
-private fun AlertCard(alert: ScannerAlert) {
+private fun AlertCard(alert: ScannerAlert, onReplay: (() -> Unit)? = null) {
     Card(Modifier.padding(horizontal = 16.dp)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(alert.title, fontWeight = FontWeight.SemiBold)
             Text(alert.body)
+
+            alert.systemLabel?.takeIf { it.isNotBlank() }?.let { system ->
+                val talkgroup = alert.talkgroupLabel ?: alert.talkgroupName
+                Text(
+                    if (talkgroup.isNullOrBlank()) system else system + " · " + talkgroup,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            alert.matchedToneSets.takeIf { it.isNotEmpty() }?.let {
+                Text("Tone: " + it.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+            }
+            alert.keywords.takeIf { it.isNotEmpty() }?.let {
+                Text("Keywords: " + it.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+            }
+            alert.incidentNature?.takeIf { it.isNotBlank() && it != alert.body }?.let {
+                Text("Incident: " + it, style = MaterialTheme.typography.bodySmall)
+            }
+            alert.incidentAddress?.takeIf { it.isNotBlank() }?.let {
+                Text("Address: " + it, style = MaterialTheme.typography.bodySmall)
+            }
+            if (alert.incidentLat != null && alert.incidentLon != null) {
+                Text(
+                    String.format(Locale.US, "%.5f, %.5f", alert.incidentLat, alert.incidentLon),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            alert.transcript?.takeIf { it.isNotBlank() && it != alert.body }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
             alert.dateTime?.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            onReplay?.let {
+                OutlinedButton(onClick = it) { Text("Replay call") }
             }
         }
     }
