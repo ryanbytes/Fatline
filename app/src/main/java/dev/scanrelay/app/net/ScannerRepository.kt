@@ -1411,7 +1411,9 @@ object ScannerRepository {
         key: ChannelKey,
         alertEnabled: Boolean? = null,
         toneAlerts: Boolean? = null,
-        keywordAlerts: Boolean? = null
+        keywordAlerts: Boolean? = null,
+        notificationSound: String? = null,
+        pagerAlert: Boolean? = null
     ) {
         val session = sessions[profileId] ?: return
         val changed = synchronized(session) {
@@ -1420,7 +1422,9 @@ object ScannerRepository {
             val updated = existing.copy(
                 alertEnabled = alertEnabled ?: existing.alertEnabled,
                 toneAlerts = toneAlerts ?: existing.toneAlerts,
-                keywordAlerts = keywordAlerts ?: existing.keywordAlerts
+                keywordAlerts = keywordAlerts ?: existing.keywordAlerts,
+                notificationSound = notificationSound ?: existing.notificationSound,
+                pagerAlert = pagerAlert ?: existing.pagerAlert
             )
             if (updated == existing && session.state.alertPreferences.any { it.key == key }) {
                 false
@@ -1432,6 +1436,73 @@ object ScannerRepository {
                     alertPreferences = preferences.sortedWith(
                         compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }
                     ),
+                    alertPreferencesSaving = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleAlertPreferenceSave(session)
+    }
+
+    fun setAlertToneSetSound(
+        profileId: String,
+        key: ChannelKey,
+        toneSetId: String,
+        sound: String?
+    ) {
+        val cleanId = toneSetId.trim()
+        if (cleanId.isBlank()) return
+        val session = sessions[profileId] ?: return
+        val changed = synchronized(session) {
+            val existing = session.state.alertPreferences.firstOrNull { it.key == key }
+                ?: AlertPreference(systemRef = key.systemRef, talkgroupRef = key.talkgroupRef)
+            val sounds = existing.toneSetSounds.toMutableMap().apply {
+                val cleanSound = sound?.trim().orEmpty()
+                if (cleanSound.isBlank()) remove(cleanId) else put(cleanId, cleanSound)
+            }
+            val updated = existing.copy(toneSetSounds = sounds)
+            if (updated == existing && session.state.alertPreferences.any { it.key == key }) false
+            else {
+                session.alertPreferenceRevision++
+                session.state = session.state.copy(
+                    alertPreferences = (session.state.alertPreferences.filterNot { it.key == key } + updated)
+                        .sortedWith(compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }),
+                    alertPreferencesSaving = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleAlertPreferenceSave(session)
+    }
+
+    fun setAlertToneSetPager(
+        profileId: String,
+        key: ChannelKey,
+        toneSetId: String,
+        enabled: Boolean
+    ) {
+        val cleanId = toneSetId.trim()
+        if (cleanId.isBlank()) return
+        val session = sessions[profileId] ?: return
+        val changed = synchronized(session) {
+            val existing = session.state.alertPreferences.firstOrNull { it.key == key }
+                ?: AlertPreference(systemRef = key.systemRef, talkgroupRef = key.talkgroupRef)
+            val pager = existing.toneSetPagerAlerts.toMutableMap().apply {
+                if (enabled) put(cleanId, true) else remove(cleanId)
+            }
+            val updated = existing.copy(toneSetPagerAlerts = pager)
+            if (updated == existing && session.state.alertPreferences.any { it.key == key }) false
+            else {
+                session.alertPreferenceRevision++
+                session.state = session.state.copy(
+                    alertPreferences = (session.state.alertPreferences.filterNot { it.key == key } + updated)
+                        .sortedWith(compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }),
                     alertPreferencesSaving = true,
                     alertPreferencesError = null
                 )
