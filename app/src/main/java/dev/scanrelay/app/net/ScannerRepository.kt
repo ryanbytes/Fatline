@@ -22,6 +22,7 @@ import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
+import dev.scanrelay.app.model.SystemHealthAlert
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -354,6 +355,21 @@ object ScannerRepository {
                 throw IllegalStateException("Server returned invalid alert history")
             }
         }
+    private fun executeJsonObject(request: Request): JSONObject =
+        keyHttpClient.newCall(request).execute().use { response ->
+            val text = response.body.string()
+            if (!response.isSuccessful) {
+                val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+                val message = json.optString("message").takeIf { it.isNotBlank() }
+                    ?: json.optString("error").takeIf { it.isNotBlank() }
+                    ?: "Request failed (HTTP ${response.code})"
+                throw IllegalStateException(message)
+            }
+            runCatching { JSONObject(text) }.getOrElse {
+                throw IllegalStateException("Server returned invalid JSON")
+            }
+        }
+
     private fun executeSuccess(request: Request) {
         keyHttpClient.newCall(request).execute().use { response ->
             val text = response.body.string()
@@ -365,6 +381,47 @@ object ScannerRepository {
                 throw IllegalStateException(message)
             }
         }
+    }
+
+    internal data class ParsedSystemAlerts(
+        val alerts: List<SystemHealthAlert>,
+        val canViewSystemAlerts: Boolean
+    )
+
+    internal fun parseSystemAlerts(raw: JSONObject): ParsedSystemAlerts {
+        val parsed = buildList {
+            val alerts = raw.optJSONArray("alerts") ?: JSONArray()
+            for (i in 0 until alerts.length()) {
+                val item = alerts.optJSONObject(i) ?: continue
+                val id = item.optLong("id").takeIf { it > 0 } ?: continue
+                add(
+                    SystemHealthAlert(
+                        id = id,
+                        alertType = item.optString("alertType").trim(),
+                        severity = item.optString("severity").trim(),
+                        title = item.optString("title").trim().ifBlank {
+                            item.optString("alertType").trim().ifBlank { "System alert" }
+                        },
+                        message = item.optString("message").trim(),
+                        data = item.opt("data")
+                            ?.takeUnless { it == JSONObject.NULL }
+                            ?.toString()
+                            ?.takeIf { it.isNotBlank() },
+                        createdAt = item.opt("createdAt")?.toString()?.toLongOrNull() ?: 0L,
+                        dismissed = item.optBoolean("dismissed", false)
+                    )
+                )
+            }
+        }.sortedByDescending { it.createdAt }
+
+        return ParsedSystemAlerts(
+            alerts = parsed,
+            canViewSystemAlerts = if (raw.has("canViewSystemAlerts")) {
+                raw.optBoolean("canViewSystemAlerts", false)
+            } else {
+                parsed.isNotEmpty()
+            }
+        )
     }
 
     internal fun parseAlertKeywordLists(raw: JSONArray): List<AlertKeywordList> = buildList {
@@ -799,6 +856,127 @@ object ScannerRepository {
         }
     }
 
+    internal fun systemAlertsUrl(baseUrl: String, alertId: Long? = null): String {
+        val base = "${httpOrigin(baseUrl)}/api/system-alerts"
+        return alertId?.takeIf { it > 0 }?.let { "$base/$it" }
+            ?: "$base?limit=50&includeDismissed=false"
+    }
+
+    fun refreshSystemAlerts(profileId: String) {
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    systemAlertsLoading = false,
+                    systemAlertsError = "Sign in to load system alerts"
+                )
+            }
+            publish()
+            return
+        }
+        val shouldStart = synchronized(session) {
+            if (session.state.systemAlertsLoading) false
+            else {
+                session.state = session.state.copy(
+                    systemAlertsLoading = true,
+                    systemAlertsError = null
+                )
+                true
+            }
+        }
+        if (!shouldStart) return
+        publish()
+
+        scope.launch {
+            try {
+                val result = fetchSystemAlerts(session)
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        systemAlerts = result.alerts,
+                        systemAlertsLoading = false,
+                        systemAlertsError = null,
+                        canViewSystemAlerts = result.canViewSystemAlerts
+                    )
+                }
+                publish()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        systemAlertsLoading = false,
+                        systemAlertsError = error.message?.takeIf { it.isNotBlank() }
+                            ?: "System alert refresh failed"
+                    )
+                }
+                publish()
+            }
+        }
+    }
+
+    fun dismissSystemAlert(profileId: String, alertId: Long) {
+        if (alertId <= 0) return
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    systemAlertsLoading = false,
+                    systemAlertsError = "Sign in to dismiss system alerts"
+                )
+            }
+            publish()
+            return
+        }
+        val shouldStart = synchronized(session) {
+            if (session.state.systemAlertsLoading) false
+            else {
+                session.state = session.state.copy(
+                    systemAlertsLoading = true,
+                    systemAlertsError = null
+                )
+                true
+            }
+        }
+        if (!shouldStart) return
+        publish()
+
+        scope.launch {
+            try {
+                val request = Request.Builder()
+                    .url(systemAlertsUrl(session.profile.baseUrl, alertId))
+                    .header("Authorization", "Bearer $pin")
+                    .delete()
+                    .build()
+                executeSuccess(request)
+                val result = fetchSystemAlerts(session)
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        systemAlerts = result.alerts,
+                        systemAlertsLoading = false,
+                        systemAlertsError = null,
+                        canViewSystemAlerts = result.canViewSystemAlerts
+                    )
+                }
+                publish()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        systemAlertsLoading = false,
+                        systemAlertsError = error.message?.takeIf { it.isNotBlank() }
+                            ?: "System alert dismissal failed"
+                    )
+                }
+                publish()
+            }
+        }
+    }
+
     fun refreshAlertKeywordLists(profileId: String) {
         val session = sessions[profileId] ?: return
         val pin = session.profile.pin.trim()
@@ -1225,6 +1403,15 @@ object ScannerRepository {
                 }
             }
         }
+    }
+
+    private fun fetchSystemAlerts(session: Session): ParsedSystemAlerts {
+        val request = Request.Builder()
+            .url(systemAlertsUrl(session.profile.baseUrl))
+            .header("Authorization", "Bearer ${session.profile.pin.trim()}")
+            .get()
+            .build()
+        return parseSystemAlerts(executeJsonObject(request))
     }
 
     private fun fetchAlertPreferences(session: Session): List<AlertPreference> {

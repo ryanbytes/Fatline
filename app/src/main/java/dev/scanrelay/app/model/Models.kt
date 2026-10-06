@@ -134,6 +134,17 @@ data class AlertPreference(
 ) {
     val key: ChannelKey get() = ChannelKey(systemRef, talkgroupRef)
 }
+data class SystemHealthAlert(
+    val id: Long,
+    val alertType: String,
+    val severity: String,
+    val title: String,
+    val message: String,
+    val data: String? = null,
+    val createdAt: Long = 0L,
+    val dismissed: Boolean = false
+)
+
 data class ScannerAlert(
     val profileId: String,
     val serverName: String,
@@ -183,6 +194,10 @@ data class ServerScannerState(
     val alerts: List<ScannerAlert> = emptyList(),
     val alertsLoading: Boolean = false,
     val alertsError: String? = null,
+    val systemAlerts: List<SystemHealthAlert> = emptyList(),
+    val systemAlertsLoading: Boolean = false,
+    val systemAlertsError: String? = null,
+    val canViewSystemAlerts: Boolean = false,
     val alertPreferences: List<AlertPreference> = emptyList(),
     val alertPreferencesLoading: Boolean = false,
     val alertPreferencesSaving: Boolean = false,

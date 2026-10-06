@@ -895,6 +895,7 @@ private fun AlertsScreen(
     LaunchedEffect(server?.profile?.id) {
         if (server != null && server.status == ConnectionStatus.CONNECTED && server.profile.pin.isNotBlank()) {
             viewModel.refreshAlerts(server.profile.id)
+            viewModel.refreshSystemAlerts(server.profile.id)
             viewModel.refreshAlertPreferences(server.profile.id)
             viewModel.refreshAlertKeywordLists(server.profile.id)
         }
@@ -923,11 +924,20 @@ private fun AlertsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
-                        onClick = { viewModel.refreshAlerts(server.profile.id) },
+                        onClick = {
+                            viewModel.refreshAlerts(server.profile.id)
+                            viewModel.refreshSystemAlerts(server.profile.id)
+                        },
                         enabled = server.status == ConnectionStatus.CONNECTED &&
                             server.profile.pin.isNotBlank() &&
-                            !server.alertsLoading
-                    ) { Text(if (server.alertsLoading) "Refreshing…" else "Refresh") }
+                            !server.alertsLoading &&
+                            !server.systemAlertsLoading
+                    ) {
+                        Text(
+                            if (server.alertsLoading || server.systemAlertsLoading) "Refreshing…"
+                            else "Refresh"
+                        )
+                    }
                     Text(
                         visibleAlerts.size.toString() + "/" + server.alerts.size + " shown",
                         style = MaterialTheme.typography.bodySmall
@@ -942,6 +952,64 @@ private fun AlertsScreen(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         style = MaterialTheme.typography.bodySmall
                     )
+                }
+            }
+
+            server.systemAlertsError?.takeIf { it.isNotBlank() }?.let { message ->
+                item {
+                    Text(
+                        message,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            if (
+                server.canViewSystemAlerts ||
+                server.systemAlerts.isNotEmpty() ||
+                server.systemAlertsLoading
+            ) {
+                item {
+                    Card(Modifier.padding(horizontal = 16.dp)) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("System health alerts", fontWeight = FontWeight.SemiBold)
+                            if (server.systemAlertsLoading) {
+                                Text("Refreshing system alerts…", style = MaterialTheme.typography.bodySmall)
+                            } else if (server.systemAlerts.isEmpty()) {
+                                Text("No active system alerts.", style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                server.systemAlerts.forEachIndexed { index, systemAlert ->
+                                    if (index > 0) HorizontalDivider()
+                                    Text(
+                                        listOf(systemAlert.severity, systemAlert.alertType)
+                                            .filter { it.isNotBlank() }
+                                            .joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                    Text(systemAlert.title, fontWeight = FontWeight.Medium)
+                                    if (systemAlert.message.isNotBlank()) {
+                                        Text(systemAlert.message, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    systemAlert.data?.takeIf { it.isNotBlank() }?.let { data ->
+                                        Text(data, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.dismissSystemAlert(
+                                                server.profile.id,
+                                                systemAlert.id
+                                            )
+                                        },
+                                        enabled = !server.systemAlertsLoading
+                                    ) { Text("Dismiss") }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
