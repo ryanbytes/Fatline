@@ -1,5 +1,7 @@
 package dev.scanrelay.app.net
 
+import dev.scanrelay.app.model.ChannelKey
+import dev.scanrelay.app.model.ScanList
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.TalkgroupConfig
 import org.json.JSONArray
@@ -107,6 +109,34 @@ object ThinLineProtocol {
         return systems.sortedBy { it.label.lowercase() }
     }
 
+    fun parseScanLists(configPayload: JSONObject): List<ScanList> {
+        val lists = configPayload
+            .optJSONObject("userSettings")
+            ?.optJSONArray("scanLists")
+            ?: return emptyList()
+
+        return buildList {
+            for (i in 0 until lists.length()) {
+                val item = lists.optJSONObject(i) ?: continue
+                val channels = item.optJSONArray("channels") ?: JSONArray()
+                val keys = buildList {
+                    for (j in 0 until channels.length()) {
+                        val channel = channels.optJSONObject(j) ?: continue
+                        val systemRef = channel.opt("systemId")?.toString()?.toLongOrNull() ?: continue
+                        val talkgroupRef = channel.opt("talkgroupId")?.toString()?.toLongOrNull() ?: continue
+                        if (systemRef > 0 && talkgroupRef > 0) add(ChannelKey(systemRef, talkgroupRef))
+                    }
+                }.distinct()
+                add(
+                    ScanList(
+                        id = item.optString("id").ifBlank { "scan-list-$i" },
+                        name = item.optString("name").ifBlank { "Scan List ${i + 1}" },
+                        channels = keys
+                    )
+                )
+            }
+        }
+    }
     private fun parseTalkgroups(systemRef: Long, raw: Any?): List<TalkgroupConfig> {
         val result = mutableListOf<TalkgroupConfig>()
         fun add(node: JSONObject, keyRef: Long? = null) {
