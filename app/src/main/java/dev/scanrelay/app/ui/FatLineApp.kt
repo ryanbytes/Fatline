@@ -578,6 +578,18 @@ private fun HistoryScreen(
     modifier: Modifier
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
+    var historyQuery by remember(selectedProfileId) { mutableStateOf("") }
+    val normalizedHistoryQuery = historyQuery.trim().lowercase()
+    val visibleHistory = server?.history.orEmpty().filter { call ->
+        normalizedHistoryQuery.isEmpty() ||
+            call.systemLabel.lowercase().contains(normalizedHistoryQuery) ||
+            call.talkgroupLabel.lowercase().contains(normalizedHistoryQuery) ||
+            call.talkgroupRef.toString().contains(normalizedHistoryQuery) ||
+            call.id.toString().contains(normalizedHistoryQuery) ||
+            call.dateTime.lowercase().contains(normalizedHistoryQuery) ||
+            call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery) == true ||
+            call.transcript?.lowercase()?.contains(normalizedHistoryQuery) == true
+    }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -613,10 +625,40 @@ private fun HistoryScreen(
                 }
             }
 
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedTextField(
+                        value = historyQuery,
+                        onValueChange = { historyQuery = it },
+                        label = { Text("Search loaded history") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            visibleHistory.size.toString() + "/" + server.history.size + " shown",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        if (historyQuery.isNotBlank()) {
+                            OutlinedButton(onClick = { historyQuery = "" }) { Text("Clear") }
+                        }
+                    }
+                }
+            }
+
             if (server.history.isEmpty()) {
                 item { Text("No calls loaded.", modifier = Modifier.padding(16.dp)) }
+            } else if (visibleHistory.isEmpty()) {
+                item { Text("No loaded calls match the search.", modifier = Modifier.padding(16.dp)) }
             } else {
-                items(server.history, key = { call -> "history-" + call.profileId + "-" + call.id }) { call ->
+                items(visibleHistory, key = { call -> "history-" + call.profileId + "-" + call.id }) { call ->
                     CallRow(call, onReplay = { viewModel.replay(call.profileId, call.id) })
                 }
             }
