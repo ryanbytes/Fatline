@@ -47,6 +47,12 @@ data class SystemConfig(
     val talkgroups: List<TalkgroupConfig>
 )
 
+data class ScanList(
+    val id: String,
+    val name: String,
+    val channels: List<ChannelKey>
+)
+
 data class CallKey(val profileId: String, val callId: Long)
 
 data class RadioCall(
@@ -91,6 +97,7 @@ data class ServerScannerState(
     val statusText: String = "Disconnected",
     val profile: ServerProfile,
     val systems: List<SystemConfig> = emptyList(),
+    val scanLists: List<ScanList> = emptyList(),
     val history: List<RadioCall> = emptyList(),
     val recentCalls: List<RadioCall> = emptyList(),
     val lastCall: RadioCall? = null,
