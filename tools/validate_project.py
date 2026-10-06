@@ -141,7 +141,7 @@ require('MediaLibraryService' in service and 'MediaLibrarySession' in service an
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
 require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
-require('MAX_QUEUE_ITEMS = 30' in service and 'trimQueueForIncomingCall' in service, 'bounded playback queue handling missing')
+require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIndex' in service, 'bounded playback queue handling missing')
 require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
 
 # User-visible ThinLine parity / enhancements.
