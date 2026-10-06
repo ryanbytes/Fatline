@@ -186,6 +186,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         talkgroupRef: Long? = null
     ) = ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)
     fun refreshAlerts(profileId: String) = ScannerRepository.refreshAlerts(profileId)
+    fun refreshAlertPreferences(profileId: String) = ScannerRepository.refreshAlertPreferences(profileId)
+    fun setAlertPreference(
+        profileId: String,
+        key: ChannelKey,
+        alertEnabled: Boolean? = null,
+        toneAlerts: Boolean? = null,
+        keywordAlerts: Boolean? = null
+    ) = ScannerRepository.setAlertPreference(profileId, key, alertEnabled, toneAlerts, keywordAlerts)
     fun replay(profileId: String, callId: Long) = ScannerRepository.replay(profileId, callId)
     fun skip() = ScannerRepository.skip()
     companion object {
