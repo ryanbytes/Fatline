@@ -49,6 +49,7 @@ import dev.scanrelay.app.ScannerViewModel
 import dev.scanrelay.app.alerts.AlertSoundPreferences
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ConnectionStatus
+import dev.scanrelay.app.model.FavoriteTagKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerAlert
 import dev.scanrelay.app.model.ScannerState
@@ -451,6 +452,11 @@ private fun ChannelsScreen(
         }
         system.copy(talkgroups = visibleTalkgroups).takeIf { visibleTalkgroups.isNotEmpty() }
     }
+    val favoriteKeys = server?.systems.orEmpty()
+        .flatMap { it.talkgroups }
+        .filter { it.favorite }
+        .map { it.key }
+        .toSet()
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
@@ -478,8 +484,19 @@ private fun ChannelsScreen(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(onClick = { viewModel.setAllTalkgroups(server.profile.id, true) }) { Text("Enable all") }
-                    OutlinedButton(onClick = { viewModel.setAllTalkgroups(server.profile.id, false) }) { Text("Disable all") }
+                    if (favoritesOnly) {
+                        Button(
+                            onClick = { viewModel.setChannels(server.profile.id, favoriteKeys, true) },
+                            enabled = favoriteKeys.isNotEmpty()
+                        ) { Text("Enable favorites") }
+                        OutlinedButton(
+                            onClick = { viewModel.setChannels(server.profile.id, favoriteKeys, false) },
+                            enabled = favoriteKeys.isNotEmpty()
+                        ) { Text("Disable favorites") }
+                    } else {
+                        Button(onClick = { viewModel.setAllTalkgroups(server.profile.id, true) }) { Text("Enable all") }
+                        OutlinedButton(onClick = { viewModel.setAllTalkgroups(server.profile.id, false) }) { Text("Disable all") }
+                    }
                     OutlinedButton(
                         onClick = { viewModel.clearAvoids(server.profile.id) },
                         enabled = server.avoided.isNotEmpty()
@@ -700,6 +717,8 @@ private fun ChannelsScreen(
             }
 
             visibleSystems.forEachIndexed { systemIndex, system ->
+                val fullSystem = server.systems.firstOrNull { it.systemRef == system.systemRef } ?: system
+                val systemFavorite = system.systemRef in server.favoriteSystemRefs
                 item(key = "system-" + server.profile.id + "-" + systemIndex + "-" + system.systemRef) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -714,6 +733,16 @@ private fun ChannelsScreen(
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.setSystemFavorite(
+                                        server.profile.id,
+                                        system.systemRef,
+                                        !systemFavorite
+                                    )
+                                },
+                                enabled = fullSystem.talkgroups.isNotEmpty()
+                            ) { Text(if (systemFavorite) "★" else "☆") }
                             OutlinedButton(
                                 onClick = {
                                     viewModel.setSystemHold(
@@ -742,6 +771,8 @@ private fun ChannelsScreen(
                 }
 
                 groupTalkgroupsByTag(system.talkgroups).forEachIndexed { tagIndex, tagGroup ->
+                    val tagFavorite =
+                        FavoriteTagKey(system.systemRef, tagGroup.tag) in server.favoriteTags
                     item(key = "tag-" + server.profile.id + "-" + systemIndex + "-" + tagIndex + "-" + tagGroup.tag) {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
@@ -757,6 +788,17 @@ private fun ChannelsScreen(
                                 )
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setTagFavorite(
+                                            server.profile.id,
+                                            system.systemRef,
+                                            tagGroup.tag,
+                                            !tagFavorite
+                                        )
+                                    },
+                                    enabled = tagGroup.talkgroups.isNotEmpty()
+                                ) { Text(if (tagFavorite) "★" else "☆") }
                                 OutlinedButton(
                                     onClick = {
                                         viewModel.setChannels(

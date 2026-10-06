@@ -23,6 +23,8 @@ data class ChannelKey(val systemRef: Long, val talkgroupRef: Long) {
     }
 }
 
+data class FavoriteTagKey(val systemRef: Long, val tag: String)
+
 data class AlertToneSet(
     val id: String,
     val label: String
@@ -204,6 +206,8 @@ data class ServerScannerState(
     val profile: ServerProfile,
     val systems: List<SystemConfig> = emptyList(),
     val hiddenSystemRefs: Set<Long> = emptySet(),
+    val favoriteSystemRefs: Set<Long> = emptySet(),
+    val favoriteTags: Set<FavoriteTagKey> = emptySet(),
     val scanLists: List<ScanList> = emptyList(),
     val scanListSyncing: Boolean = false,
     val scanListError: String? = null,

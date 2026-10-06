@@ -87,9 +87,17 @@ class ChannelStore(context: Context) {
         prefs.edit().putBoolean(initializedKey(profileId), true).apply()
     }
 
-    fun setFavorite(profileId: String, key: ChannelKey, favorite: Boolean) {
+    fun setFavorite(profileId: String, key: ChannelKey, favorite: Boolean) =
+        setFavorites(profileId, setOf(key), favorite)
+
+    fun setFavorites(profileId: String, keys: Collection<ChannelKey>, favorite: Boolean) {
+        if (keys.isEmpty()) return
         val favorites = readKeys(favoritesKey(profileId)).toMutableSet()
-        if (favorite) favorites += key else favorites -= key
+        if (favorite) favorites.addAll(keys) else favorites.removeAll(keys.toSet())
+        writeKeys(favoritesKey(profileId), favorites)
+    }
+
+    fun replaceFavorites(profileId: String, favorites: Set<ChannelKey>) {
         writeKeys(favoritesKey(profileId), favorites)
     }
 
