@@ -325,6 +325,20 @@ object ScannerRepository {
             json
         }
 
+    private fun executeJsonArray(request: Request): JSONArray =
+        keyHttpClient.newCall(request).execute().use { response ->
+            val text = response.body.string()
+            if (!response.isSuccessful) {
+                val json = runCatching { JSONObject(text) }.getOrElse { JSONObject() }
+                val message = json.optString("message").takeIf { it.isNotBlank() }
+                    ?: json.optString("error").takeIf { it.isNotBlank() }
+                    ?: "Request failed (HTTP ${response.code})"
+                throw IllegalStateException(message)
+            }
+            runCatching { JSONArray(text) }.getOrElse {
+                throw IllegalStateException("Server returned invalid alert history")
+            }
+        }
     internal fun mergeScanListsIntoSettings(
         current: JSONObject,
         scanLists: List<ScanList>,
@@ -1214,6 +1228,77 @@ object ScannerRepository {
         scheduleAlertRefresh(session)
     }
 
+    internal fun parseServerAlerts(profile: ServerProfile, raw: JSONArray): List<ScannerAlert> {
+        fun stringList(value: Any?): List<String> {
+            val array = when (value) {
+                is JSONArray -> value
+                is String -> runCatching { JSONArray(value) }.getOrNull()
+                else -> null
+            } ?: return emptyList()
+            return buildList {
+                for (i in 0 until array.length()) {
+                    array.optString(i).trim().takeIf { it.isNotBlank() }?.let(::add)
+                }
+            }.distinct()
+        }
+
+        return buildList {
+            for (i in 0 until raw.length()) {
+                val item = raw.optJSONObject(i) ?: continue
+                val alertId = item.optLong("alertId").takeIf { it > 0 }
+                val callId = item.optLong("callId").takeIf { it > 0 }
+                val alertType = item.optString("alertType").trim().takeIf { it.isNotBlank() }
+                val systemLabel = item.optString("systemLabel").trim().takeIf { it.isNotBlank() }
+                val talkgroupLabel = item.optString("talkgroupLabel").trim().takeIf { it.isNotBlank() }
+                val talkgroupName = item.optString("talkgroupName").trim().takeIf { it.isNotBlank() }
+                val toneSets = stringList(item.opt("matchedToneSetNames")).ifEmpty {
+                    item.optString("matchedToneSetName").trim().takeIf { it.isNotBlank() }?.let(::listOf).orEmpty()
+                }
+                val keywords = stringList(item.opt("keywordsMatched"))
+                val transcript = item.optString("transcript").trim().takeIf { it.isNotBlank() }
+                    ?: item.optString("transcriptSnippet").trim().takeIf { it.isNotBlank() }
+                val summary = item.optString("alertSummary").trim().takeIf { it.isNotBlank() }
+                val incidentAddress = item.optString("incidentAddress").trim().takeIf { it.isNotBlank() }
+                val incidentNature = item.optString("incidentNature").trim().takeIf { it.isNotBlank() }
+                val createdAt = item.optLong("createdAt").takeIf { it > 0 }
+                val lat = item.optDouble("incidentLat", Double.NaN).takeIf { !it.isNaN() }
+                val lon = item.optDouble("incidentLon", Double.NaN).takeIf { !it.isNaN() }
+                val titleBase = talkgroupLabel ?: talkgroupName ?: systemLabel ?: "Scanner alert"
+                val title = alertType?.let { "$titleBase · $it" } ?: titleBase
+                val body = summary
+                    ?: transcript
+                    ?: incidentNature
+                    ?: toneSets.takeIf { it.isNotEmpty() }?.joinToString(", ")
+                    ?: keywords.takeIf { it.isNotEmpty() }?.joinToString(", ")
+                    ?: "Alert received"
+
+                add(
+                    ScannerAlert(
+                        profileId = profile.id,
+                        serverName = profile.name,
+                        title = title,
+                        body = body,
+                        dateTime = createdAt?.let { Instant.ofEpochMilli(it).toString() },
+                        alertId = alertId,
+                        callId = callId,
+                        alertType = alertType,
+                        systemLabel = systemLabel,
+                        talkgroupLabel = talkgroupLabel,
+                        talkgroupName = talkgroupName,
+                        matchedToneSets = toneSets,
+                        keywords = keywords,
+                        transcript = transcript,
+                        summary = summary,
+                        incidentAddress = incidentAddress,
+                        incidentNature = incidentNature,
+                        incidentLat = lat,
+                        incidentLon = lon,
+                        createdAt = createdAt
+                    )
+                )
+            }
+        }.sortedByDescending { it.createdAt ?: 0L }
+    }
     private fun decodeBuffer(raw: Any?): ByteArray {
         val array = raw as? JSONArray ?: return byteArrayOf()
         return ByteArray(array.length()) { index -> (array.optInt(index) and 0xff).toByte() }
@@ -1329,7 +1414,7 @@ object ScannerRepository {
     private fun publish() {
         val serverMap = sessions.values.associate { it.profile.id to it.state }
         val history = serverMap.values.flatMap { it.history }.sortedByDescending(::callSortKey).take(500)
-        val alerts = serverMap.values.flatMap { it.alerts }.take(200)
+        val alerts = serverMap.values.flatMap { it.alerts }.sortedByDescending { it.createdAt ?: 0L }.take(500)
         _state.value = ScannerState(serverMap, history, alerts)
     }
 }
