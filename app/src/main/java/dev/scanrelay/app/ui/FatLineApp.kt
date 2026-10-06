@@ -437,7 +437,9 @@ private fun ChannelsScreen(
     var editingScanListId by remember(selectedProfileId) { mutableStateOf<String?>(null) }
     val editingScanList = server?.scanLists?.firstOrNull { it.id == editingScanListId }
     val normalizedQuery = channelQuery.trim().lowercase()
-    val visibleSystems = server?.systems.orEmpty().mapNotNull { system ->
+    val visibleSystems = server?.systems.orEmpty()
+        .filterNot { it.systemRef in server?.hiddenSystemRefs.orEmpty() }
+        .mapNotNull { system ->
         val systemMatches = normalizedQuery.isNotEmpty() && system.label.lowercase().contains(normalizedQuery)
         val visibleTalkgroups = system.talkgroups.filter { talkgroup ->
             val favoriteMatches = !favoritesOnly || talkgroup.favorite
@@ -640,6 +642,33 @@ private fun ChannelsScreen(
             }
             item { HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
 
+            if (server.hiddenSystemRefs.isNotEmpty()) {
+                item {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Hidden systems", fontWeight = FontWeight.SemiBold)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(
+                                server.systems.filter { it.systemRef in server.hiddenSystemRefs },
+                                key = { "hidden-system-" + it.systemRef }
+                            ) { hiddenSystem ->
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setSystemHidden(
+                                            server.profile.id,
+                                            hiddenSystem.systemRef,
+                                            false
+                                        )
+                                    }
+                                ) { Text("Show " + hiddenSystem.label) }
+                            }
+                        }
+                    }
+                }
+            }
+
             if (visibleSystems.isEmpty()) {
                 item {
                     Text("No channels match the current filter.", modifier = Modifier.padding(16.dp))
@@ -675,6 +704,15 @@ private fun ChannelsScreen(
                             OutlinedButton(
                                 onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, false) }
                             ) { Text("None") }
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.setSystemHidden(
+                                        server.profile.id,
+                                        system.systemRef,
+                                        true
+                                    )
+                                }
+                            ) { Text("Hide") }
                         }
                     }
                 }
