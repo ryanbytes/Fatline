@@ -55,6 +55,11 @@ import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import java.net.URLEncoder
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
 
@@ -63,6 +68,7 @@ private enum class AppTab(val label: String, val glyph: String) {
     Channels("Channels", "≡"),
     History("History", "H"),
     Alerts("Alerts", "!"),
+    Transcripts("Transcripts", "T"),
     Settings("Settings", "S")
 }
 
@@ -137,6 +143,14 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                         modifier = Modifier.fillMaxSize().padding(padding)
                     )
                     AppTab.Alerts -> AlertsScreen(
+                        scanner = scanner,
+                        profiles = profiles,
+                        selectedProfileId = selectedProfileId,
+                        onSelectProfile = { selectedProfileId = it },
+                        viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize().padding(padding)
+                    )
+                    AppTab.Transcripts -> TranscriptsScreen(
                         scanner = scanner,
                         profiles = profiles,
                         selectedProfileId = selectedProfileId,
@@ -875,6 +889,221 @@ private fun HistoryScreen(
                         onReplay = { viewModel.replay(call.profileId, call.id) },
                         onDownload = { viewModel.downloadCall(call.profileId, call.id) }
                     )
+                }
+            }
+        }
+
+        item { Spacer(Modifier.height(16.dp)) }
+    }
+}
+
+@Composable
+private fun TranscriptsScreen(
+    scanner: ScannerState,
+    profiles: List<ServerProfile>,
+    selectedProfileId: String?,
+    onSelectProfile: (String) -> Unit,
+    viewModel: ScannerViewModel,
+    modifier: Modifier
+) {
+    val server = selectedProfileId?.let { scanner.servers[it] }
+    var search by remember(selectedProfileId) { mutableStateOf("") }
+    var systemId by remember(selectedProfileId) { mutableStateOf<Long?>(null) }
+    var talkgroupId by remember(selectedProfileId) { mutableStateOf<Long?>(null) }
+    var dateFrom by remember(selectedProfileId) { mutableStateOf("") }
+    var dateTo by remember(selectedProfileId) { mutableStateOf("") }
+
+    fun loadPage(offset: Int) {
+        val current = server ?: return
+        viewModel.refreshTranscripts(
+            profileId = current.profile.id,
+            offset = offset,
+            systemId = systemId,
+            talkgroupId = talkgroupId,
+            dateFrom = transcriptDateBoundary(dateFrom, endOfDay = false),
+            dateTo = transcriptDateBoundary(dateTo, endOfDay = true),
+            search = search
+        )
+    }
+
+    LaunchedEffect(server?.profile?.id) {
+        if (server != null && server.profile.pin.isNotBlank()) {
+            loadPage(0)
+        }
+    }
+
+    val availableSystems = server?.systems.orEmpty().filter { it.systemId != null }
+    val availableTalkgroups = availableSystems
+        .filter { systemId == null || it.systemId == systemId }
+        .flatMap { it.talkgroups }
+        .filter { it.talkgroupId != null }
+
+    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Column(Modifier.padding(top = 16.dp)) {
+                Text(
+                    "Transcripts",
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                ProfileStrip(profiles, selectedProfileId, onSelectProfile)
+            }
+        }
+
+        if (server == null) {
+            item { Text("Connect the selected scanner to load transcripts.", modifier = Modifier.padding(16.dp)) }
+        } else if (server.profile.pin.isBlank()) {
+            item { Text("Sign in to this scanner to load transcripts.", modifier = Modifier.padding(16.dp)) }
+        } else {
+            item {
+                OutlinedTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    label = { Text("Search transcript text") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                )
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = dateFrom,
+                        onValueChange = { dateFrom = it },
+                        label = { Text("From YYYY-MM-DD") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = dateTo,
+                        onValueChange = { dateTo = it },
+                        label = { Text("To YYYY-MM-DD") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            if (availableSystems.isNotEmpty()) {
+                item { Text("System", modifier = Modifier.padding(horizontal = 16.dp), fontWeight = FontWeight.SemiBold) }
+                item {
+                    LazyRow(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            if (systemId == null) {
+                                Button(onClick = { systemId = null; talkgroupId = null }) { Text("All") }
+                            } else {
+                                OutlinedButton(onClick = { systemId = null; talkgroupId = null }) { Text("All") }
+                            }
+                        }
+                        items(availableSystems, key = { "transcript-system-" + (it.systemId ?: it.systemRef) }) { system ->
+                            if (systemId == system.systemId) {
+                                Button(onClick = { systemId = system.systemId; talkgroupId = null }) { Text(system.label) }
+                            } else {
+                                OutlinedButton(onClick = { systemId = system.systemId; talkgroupId = null }) { Text(system.label) }
+                            }
+                        }
+                    }
+                }
+            }
+            if (availableTalkgroups.isNotEmpty()) {
+                item { Text("Talkgroup", modifier = Modifier.padding(horizontal = 16.dp), fontWeight = FontWeight.SemiBold) }
+                item {
+                    LazyRow(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            if (talkgroupId == null) {
+                                Button(onClick = { talkgroupId = null }) { Text("All") }
+                            } else {
+                                OutlinedButton(onClick = { talkgroupId = null }) { Text("All") }
+                            }
+                        }
+                        items(availableTalkgroups, key = { "transcript-talkgroup-" + (it.talkgroupId ?: it.talkgroupRef) }) { talkgroup ->
+                            if (talkgroupId == talkgroup.talkgroupId) {
+                                Button(onClick = { talkgroupId = talkgroup.talkgroupId }) { Text(talkgroup.displayName) }
+                            } else {
+                                OutlinedButton(onClick = { talkgroupId = talkgroup.talkgroupId }) { Text(talkgroup.displayName) }
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { loadPage(0) },
+                        enabled = !server.transcriptsLoading
+                    ) { Text(if (server.transcriptsLoading) "Loading…" else "Search") }
+                    OutlinedButton(
+                        onClick = {
+                            search = ""
+                            systemId = null
+                            talkgroupId = null
+                            dateFrom = ""
+                            dateTo = ""
+                            viewModel.refreshTranscripts(server.profile.id, offset = 0)
+                        },
+                        enabled = !server.transcriptsLoading
+                    ) { Text("Clear") }
+                }
+            }
+
+            server.transcriptsError?.let { error ->
+                item { Text(error, modifier = Modifier.padding(horizontal = 16.dp)) }
+            }
+
+            if (!server.transcriptsLoading && server.transcripts.isEmpty()) {
+                item { Text("No transcripts found.", modifier = Modifier.padding(horizontal = 16.dp)) }
+            }
+
+            items(server.transcripts, key = { "transcript-" + it.profileId + "-" + it.callId }) { transcript ->
+                Card(Modifier.padding(horizontal = 16.dp)) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            transcript.talkgroupLabel ?: transcript.talkgroupName ?: "Call ${transcript.callId}",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        transcript.systemLabel?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        transcript.timestamp?.let {
+                            Text(
+                                formatTranscriptTimestamp(it, server.time12hFormat),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        transcript.alertSummary?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        Text(
+                            transcript.reviewedTranscript?.takeIf { it.isNotBlank() } ?: transcript.transcript,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        transcript.transcriptionStatus?.let {
+                            Text("Status: $it", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { loadPage((server.transcriptsOffset - 50).coerceAtLeast(0)) },
+                        enabled = server.transcriptsOffset > 0 && !server.transcriptsLoading
+                    ) { Text("Previous") }
+                    OutlinedButton(
+                        onClick = { loadPage(server.transcriptsOffset + 50) },
+                        enabled = server.transcriptsHasMore && !server.transcriptsLoading
+                    ) { Text("Next") }
                 }
             }
         }
@@ -1796,6 +2025,25 @@ private fun SettingsScreen(
 
         item { Spacer(Modifier.height(16.dp)) }
     }
+}
+
+private fun transcriptDateBoundary(value: String, endOfDay: Boolean): Long? {
+    val text = value.trim()
+    if (text.isBlank()) return null
+    return runCatching {
+        val date = LocalDate.parse(text)
+        val time = if (endOfDay) LocalTime.of(23, 59, 59) else LocalTime.MIDNIGHT
+        date.atTime(time).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }.getOrNull()
+}
+
+private fun formatTranscriptTimestamp(timestamp: Long, time12hFormat: Boolean): String {
+    val pattern = if (time12hFormat) "MMM d, yyyy h:mm a" else "MMM d, yyyy HH:mm"
+    return runCatching {
+        Instant.ofEpochMilli(timestamp)
+            .atZone(ZoneId.systemDefault())
+            .format(DateTimeFormatter.ofPattern(pattern))
+    }.getOrDefault(timestamp.toString())
 }
 
 @Composable
