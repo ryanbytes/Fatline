@@ -63,6 +63,13 @@ class ThinLineProtocolTest {
         assertEquals(null, ThinLineProtocol.parseListenerCount("not-a-count"))
     }
 
+    @Test fun pinSetAcceptsOnlyNonBlankStringPayloads() {
+        assertEquals("123456", ThinLineProtocol.parsePinSet(" 123456 "))
+        assertEquals(null, ThinLineProtocol.parsePinSet(""))
+        assertEquals(null, ThinLineProtocol.parsePinSet(123456))
+    }
+
+
     @Test fun scanListsParseFromUserSettingsWithStringAndNumericRefs() {
         val config = JSONObject(
             """

@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.widget.Toast
 import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.data.ChannelStore
+import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.AlertKeywordList
 import dev.scanrelay.app.model.AlertPreference
 import dev.scanrelay.app.model.CallSource
@@ -30,8 +31,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -50,7 +54,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.absoluteValue
 
 object ScannerRepository {
-    private class Session(val profile: ServerProfile) {
+    private class Session(profile: ServerProfile) {
+        @Volatile var profile: ServerProfile = profile
         @Volatile var state = ServerScannerState(profile = profile, status = ConnectionStatus.CONNECTING, statusText = "Connecting")
         @Volatile var socket: ThinLineSocket? = null
         @Volatile var socketGeneration = 0L
@@ -83,9 +88,12 @@ object ScannerRepository {
     private val keyHttpClient = OkHttpClient()
     private val _state = MutableStateFlow(ScannerState())
     val state: StateFlow<ScannerState> = _state.asStateFlow()
+    private val _profileCredentialUpdates = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val profileCredentialUpdates: SharedFlow<String> = _profileCredentialUpdates.asSharedFlow()
 
     @Volatile private var appContext: Context? = null
     @Volatile private var channelStore: ChannelStore? = null
+    @Volatile private var profileStore: ProfileStore? = null
     @Volatile private var networkAvailable = true
 
     fun initialize(context: Context) {
@@ -94,6 +102,7 @@ object ScannerRepository {
             if (appContext == null) {
                 appContext = context.applicationContext
                 channelStore = ChannelStore(context.applicationContext)
+                profileStore = ProfileStore(context.applicationContext)
             }
         }
     }
@@ -1897,6 +1906,7 @@ object ScannerRepository {
                 }
                 publish()
             }
+            ThinLineProtocol.PIN_SET -> syncServerPin(session, envelope.payload)
             ThinLineProtocol.ERROR -> {
                 synchronized(session) { session.state = session.state.copy(error = envelope.payload?.toString() ?: "Server error") }
                 publish()
@@ -1926,6 +1936,35 @@ object ScannerRepository {
                 publish()
             }
         }
+    }
+
+    private fun syncServerPin(session: Session, payload: Any?) {
+        val pin = ThinLineProtocol.parsePinSet(payload) ?: return
+        val updated = synchronized(session) {
+            if (pin == session.profile.pin) {
+                null
+            } else {
+                val profile = session.profile.copy(pin = pin)
+                session.profile = profile
+                session.state = session.state.copy(profile = profile)
+                profile
+            }
+        } ?: return
+
+        val saved = runCatching {
+            profileStore?.updatePin(updated.id, pin)
+                ?: throw IllegalStateException("Profile store is unavailable")
+        }
+        if (saved.isFailure) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    error = "Server updated the PIN, but secure local storage failed"
+                )
+            }
+        } else {
+            _profileCredentialUpdates.tryEmit(updated.id)
+        }
+        publish()
     }
 
     private fun handleConfig(session: Session, payload: JSONObject) {

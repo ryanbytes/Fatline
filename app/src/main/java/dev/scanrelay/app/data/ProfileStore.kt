@@ -36,6 +36,10 @@ class ProfileStore(context: Context) {
         pinVault.put(profile.id, profile.pin)
     }
 
+    fun updatePin(profileId: String, pin: String) {
+        pinVault.put(profileId, pin)
+    }
+
     fun delete(profileId: String) {
         persist(load().filterNot { it.id == profileId })
         pinVault.remove(profileId)

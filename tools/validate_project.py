@@ -23,6 +23,7 @@ required = [
     'app/src/main/java/dev/scanrelay/app/net/AudioCrypto.kt',
     'app/src/main/java/dev/scanrelay/app/playback/ScannerService.kt',
     'app/src/main/java/dev/scanrelay/app/data/PinVault.kt',
+    'app/src/main/java/dev/scanrelay/app/data/ProfileStore.kt',
     'app/src/main/java/dev/scanrelay/app/data/ChannelStore.kt',
     'app/src/main/java/dev/scanrelay/app/alerts/AlertSoundPreferences.kt',
     'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt',
@@ -255,6 +256,11 @@ require('showListenersCount' in models and 'listenerCount' in models, 'listener 
 require('ThinLineProtocol.LISTENER_COUNT' in repo and 'parseListenerCount' in protocol, 'listener count protocol handling missing')
 require('"Listeners " + server.listenerCount' in ui, 'listener count UI missing')
 require('listenerCountAcceptsNumericAndStringPayloads' in protocol_tests, 'listener count regression test missing')
+require('parsePinSet' in protocol and 'ThinLineProtocol.PIN_SET -> syncServerPin' in repo, 'server PIN synchronization handling missing')
+require('@Volatile var profile: ServerProfile' in repo and 'profileCredentialUpdates' in repo, 'live session PIN replacement/event missing')
+require('updatePin' in (ROOT / 'app/src/main/java/dev/scanrelay/app/data/ProfileStore.kt').read_text(), 'secure profile PIN refresh missing')
+require('profileCredentialUpdates.collect' in viewmodel, 'profile list must refresh after server PIN synchronization')
+require('pinSetAcceptsOnlyNonBlankStringPayloads' in protocol_tests, 'server PIN synchronization regression test missing')
 require('Tones all' in ui and 'Leave all unselected to alert on every tone set.' in ui and 'Tone unavailable' in ui, 'tone-set selection UI missing')
 require('systemsParseToneDetectionAndToneSets' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt').read_text(), 'tone-set config regression test missing')
 require('alertToneSetIdsTrimDropBlanksAndDeduplicate' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'tone-set selection normalization regression test missing')
