@@ -70,6 +70,7 @@ object ScannerRepository {
         @Volatile var scanListRevision = 0L
         @Volatile var alertRefreshJob: Job? = null
         val alertPreferenceMutex = Mutex()
+        val alertKeywordListMutex = Mutex()
         @Volatile var alertPreferenceSaveJob: Job? = null
         @Volatile var alertPreferenceRevision = 0L
         @Volatile var hasConnected = false
@@ -851,6 +852,182 @@ object ScannerRepository {
         }
     }
 
+    internal fun keywordListUrl(baseUrl: String, listId: Long? = null): String {
+        val base = "${httpOrigin(baseUrl)}/api/keyword-lists"
+        return listId?.takeIf { it > 0 }?.let { "$base/$it" } ?: base
+    }
+
+    internal fun keywordListPayload(
+        label: String,
+        description: String,
+        rawKeywords: String
+    ): JSONObject = JSONObject()
+        .put("label", label.trim())
+        .put("description", description.trim())
+        .put("keywords", JSONArray(normalizeAlertKeywords(rawKeywords)))
+
+    fun createAlertKeywordList(
+        profileId: String,
+        label: String,
+        description: String,
+        rawKeywords: String
+    ) = saveAlertKeywordList(profileId, null, label, description, rawKeywords)
+
+    fun updateAlertKeywordList(
+        profileId: String,
+        listId: Long,
+        label: String,
+        description: String,
+        rawKeywords: String
+    ) {
+        if (listId <= 0) return
+        saveAlertKeywordList(profileId, listId, label, description, rawKeywords)
+    }
+
+    private fun saveAlertKeywordList(
+        profileId: String,
+        listId: Long?,
+        label: String,
+        description: String,
+        rawKeywords: String
+    ) {
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        val normalizedLabel = label.trim()
+        val validationError = when {
+            pin.isBlank() -> "Sign in to save keyword lists"
+            normalizedLabel.isBlank() -> "Keyword list name is required"
+            else -> null
+        }
+        if (validationError != null) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    alertKeywordListsSaving = false,
+                    alertKeywordListsError = validationError
+                )
+            }
+            publish()
+            return
+        }
+
+        val shouldStart = synchronized(session) {
+            if (session.state.alertKeywordListsSaving) false
+            else {
+                session.state = session.state.copy(
+                    alertKeywordListsSaving = true,
+                    alertKeywordListsError = null
+                )
+                true
+            }
+        }
+        if (!shouldStart) return
+        publish()
+
+        scope.launch {
+            session.alertKeywordListMutex.withLock {
+                try {
+                    val body = keywordListPayload(normalizedLabel, description, rawKeywords)
+                        .toString()
+                        .toRequestBody(JSON_MEDIA_TYPE)
+                    val builder = Request.Builder()
+                        .url(keywordListUrl(session.profile.baseUrl, listId))
+                        .header("Authorization", "Bearer $pin")
+                    val request = if (listId == null) {
+                        builder.post(body).build()
+                    } else {
+                        builder.put(body).build()
+                    }
+                    executeSuccess(request)
+                    val canonical = fetchAlertKeywordLists(session)
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            alertKeywordLists = canonical,
+                            alertKeywordListsSaving = false,
+                            alertKeywordListsError = null
+                        )
+                    }
+                    publish()
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            alertKeywordListsSaving = false,
+                            alertKeywordListsError = error.message?.takeIf { it.isNotBlank() }
+                                ?: "Keyword list save failed"
+                        )
+                    }
+                    publish()
+                }
+            }
+        }
+    }
+
+    fun deleteAlertKeywordList(profileId: String, listId: Long) {
+        if (listId <= 0) return
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    alertKeywordListsSaving = false,
+                    alertKeywordListsError = "Sign in to delete keyword lists"
+                )
+            }
+            publish()
+            return
+        }
+        val shouldStart = synchronized(session) {
+            if (session.state.alertKeywordListsSaving) false
+            else {
+                session.state = session.state.copy(
+                    alertKeywordListsSaving = true,
+                    alertKeywordListsError = null
+                )
+                true
+            }
+        }
+        if (!shouldStart) return
+        publish()
+
+        scope.launch {
+            session.alertKeywordListMutex.withLock {
+                try {
+                    val request = Request.Builder()
+                        .url(keywordListUrl(session.profile.baseUrl, listId))
+                        .header("Authorization", "Bearer $pin")
+                        .delete()
+                        .build()
+                    executeSuccess(request)
+                    val canonicalLists = fetchAlertKeywordLists(session)
+                    val canonicalPreferences = fetchAlertPreferences(session)
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            alertKeywordLists = canonicalLists,
+                            alertKeywordListsSaving = false,
+                            alertKeywordListsError = null,
+                            alertPreferences = canonicalPreferences
+                        )
+                    }
+                    publish()
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            alertKeywordListsSaving = false,
+                            alertKeywordListsError = error.message?.takeIf { it.isNotBlank() }
+                                ?: "Keyword list delete failed"
+                        )
+                    }
+                    publish()
+                }
+            }
+        }
+    }
+
     fun setAlertKeywords(profileId: String, key: ChannelKey, rawKeywords: String) {
         val session = sessions[profileId] ?: return
         val normalizedKeywords = normalizeAlertKeywords(rawKeywords)
@@ -1060,9 +1237,8 @@ object ScannerRepository {
         return parseAlertPreferences(executeJsonArray(request))
     }
     private fun fetchAlertKeywordLists(session: Session): List<AlertKeywordList> {
-        val origin = httpOrigin(session.profile.baseUrl)
         val request = Request.Builder()
-            .url("$origin/api/keyword-lists")
+            .url(keywordListUrl(session.profile.baseUrl))
             .header("Authorization", "Bearer ${session.profile.pin.trim()}")
             .get()
             .build()
