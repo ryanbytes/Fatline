@@ -37,6 +37,7 @@ class ScannerService : MediaLibraryService() {
     private lateinit var connectivityManager: ConnectivityManager
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
+    private val pausedProfiles = mutableSetOf<String>()
 
     private val networkLossCheck = Runnable {
         val active = connectivityManager.activeNetwork
@@ -101,6 +102,9 @@ class ScannerService : MediaLibraryService() {
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
             ACTION_DISCONNECT_ALL -> disconnectAll()
             ACTION_ENQUEUE -> addMediaFromIntent(intent)
+            ACTION_SET_PROFILE_PAUSED -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let { profileId ->
+                setProfilePausedInternal(profileId, intent.getBooleanExtra(EXTRA_PAUSED, false))
+            }
             ACTION_SKIP -> {
                 skipInternal()
                 stopIfIdle()
@@ -173,6 +177,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun disconnectProfile(profileId: String) {
+        pausedProfiles -= profileId
         val active = activeProfileIds().apply { remove(profileId) }
         persistActiveProfiles(active)
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnect(profileId) }
@@ -185,6 +190,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun disconnectAll() {
+        pausedProfiles.clear()
         persistActiveProfiles(emptySet())
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnectAll() }
         stopAudioInternal()
@@ -245,6 +251,7 @@ class ScannerService : MediaLibraryService() {
     private fun addMediaFromIntent(intent: Intent) {
         val path = intent.getStringExtra(EXTRA_AUDIO_PATH) ?: return
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
+        if (profileId in pausedProfiles) return
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Radio traffic" }
         val subtitle = intent.getStringExtra(EXTRA_SUBTITLE).orEmpty()
@@ -266,6 +273,17 @@ class ScannerService : MediaLibraryService() {
         player.addMediaItem(item)
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         if (!player.playWhenReady) player.play()
+    }
+
+    private fun setProfilePausedInternal(profileId: String, paused: Boolean) {
+        if (paused) {
+            pausedProfiles += profileId
+            // A paused scanner should become silent immediately. Remove its current
+            // and queued calls while leaving audio from other connected scanners alone.
+            removeProfileMedia(profileId)
+        } else {
+            pausedProfiles -= profileId
+        }
     }
 
     private fun trimQueueForIncomingCall() {
@@ -420,11 +438,13 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_DISCONNECT = "dev.scanrelay.DISCONNECT"
         const val ACTION_DISCONNECT_ALL = "dev.scanrelay.DISCONNECT_ALL"
         const val ACTION_ENQUEUE = "dev.scanrelay.ENQUEUE"
+        const val ACTION_SET_PROFILE_PAUSED = "dev.scanrelay.SET_PROFILE_PAUSED"
         const val ACTION_SKIP = "dev.scanrelay.SKIP"
         const val ACTION_STOP_AUDIO = "dev.scanrelay.STOP_AUDIO"
         const val ACTION_REMOVE_PROFILE = "dev.scanrelay.REMOVE_PROFILE"
         const val EXTRA_PROFILE_ID = "profile_id"
         const val EXTRA_CALL_ID = "call_id"
+        const val EXTRA_PAUSED = "paused"
         const val EXTRA_AUDIO_PATH = "audio_path"
         const val EXTRA_TITLE = "title"
         const val EXTRA_SUBTITLE = "subtitle"
@@ -453,6 +473,14 @@ class ScannerService : MediaLibraryService() {
                 .putExtra(EXTRA_AUDIO_PATH, path)
                 .putExtra(EXTRA_TITLE, call.talkgroupLabel)
                 .putExtra(EXTRA_SUBTITLE, "${call.serverName} · ${call.systemLabel}")
+            runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
+
+        fun setProfilePaused(context: Context, profileId: String, paused: Boolean) {
+            val intent = Intent(context, ScannerService::class.java)
+                .setAction(ACTION_SET_PROFILE_PAUSED)
+                .putExtra(EXTRA_PROFILE_ID, profileId)
+                .putExtra(EXTRA_PAUSED, paused)
             runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
