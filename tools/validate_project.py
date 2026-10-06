@@ -196,6 +196,7 @@ require('ALERT_CHANNEL_PREFIX' in alert_notifier and 'AlertSoundPreferences.get'
 require('SILENT' in alert_sound and 'displayName' in alert_sound, 'alert sound preference persistence missing')
 require('getDisconnect' in alert_sound and 'setDisconnect' in alert_sound and 'displayDisconnectName' in alert_sound, 'disconnect sound preference persistence missing')
 require('CONNECTION_CHANNEL_PREFIX' in alert_notifier and 'AlertSoundPreferences.getDisconnect' in alert_notifier, 'disconnect sound channel routing missing')
+require('LEGACY_ALERT_CHANNEL_ID' in alert_notifier and 'LEGACY_CONNECTION_CHANNEL_ID' in alert_notifier, 'legacy notification channel cleanup missing')
 require('"Disconnect sound: "' in ui and '"FatLine disconnect sound"' in ui, 'disconnect sound picker UI missing')
 require('hasConnected' in repo and 'disconnectNotified' in repo and 'notifyConnectionLoss' in repo, 'one-shot disconnect notification state missing')
 require('ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)' in repo, 'incident updates must refresh persisted alert details')
