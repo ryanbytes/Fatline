@@ -3,6 +3,7 @@ package dev.scanrelay.app.net
 import android.content.Context
 import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.data.ChannelStore
+import dev.scanrelay.app.model.AlertKeywordList
 import dev.scanrelay.app.model.AlertPreference
 import dev.scanrelay.app.model.CallSource
 import dev.scanrelay.app.model.ChannelKey
@@ -358,6 +359,27 @@ object ScannerRepository {
         }
     }
 
+    internal fun parseAlertKeywordLists(raw: JSONArray): List<AlertKeywordList> = buildList {
+        for (i in 0 until raw.length()) {
+            val item = raw.optJSONObject(i) ?: continue
+            val id = item.optLong("id").takeIf { it > 0 } ?: continue
+            val keywords = item.optJSONArray("keywords")?.let { array ->
+                buildList {
+                    for (j in 0 until array.length()) {
+                        array.optString(j).trim().takeIf { it.isNotBlank() }?.let(::add)
+                    }
+                }.distinct()
+            }.orEmpty()
+            add(
+                AlertKeywordList(
+                    id = id,
+                    label = item.optString("label").trim().ifBlank { "Keyword list $id" },
+                    description = item.optString("description").trim(),
+                    keywords = keywords
+                )
+            )
+        }
+    }.sortedBy { it.label.lowercase() }
     internal fun parseAlertPreferences(raw: JSONArray): List<AlertPreference> {
         fun strings(value: Any?): List<String> {
             val array = when (value) {
@@ -769,6 +791,83 @@ object ScannerRepository {
         }
     }
 
+    fun refreshAlertKeywordLists(profileId: String) {
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    alertKeywordListsLoading = false,
+                    alertKeywordListsError = "Sign in to load keyword lists"
+                )
+            }
+            publish()
+            return
+        }
+        val shouldStart = synchronized(session) {
+            if (session.state.alertKeywordListsLoading) false
+            else {
+                session.state = session.state.copy(
+                    alertKeywordListsLoading = true,
+                    alertKeywordListsError = null
+                )
+                true
+            }
+        }
+        if (!shouldStart) return
+        publish()
+
+        scope.launch {
+            try {
+                val lists = fetchAlertKeywordLists(session)
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        alertKeywordLists = lists,
+                        alertKeywordListsLoading = false,
+                        alertKeywordListsError = null
+                    )
+                }
+                publish()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        alertKeywordListsLoading = false,
+                        alertKeywordListsError = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Keyword list refresh failed"
+                    )
+                }
+                publish()
+            }
+        }
+    }
+
+    fun setAlertKeywordLists(profileId: String, key: ChannelKey, keywordListIds: Collection<Long>) {
+        val session = sessions[profileId] ?: return
+        val normalizedIds = keywordListIds.filter { it > 0 }.distinct().sorted()
+        val changed = synchronized(session) {
+            val existing = session.state.alertPreferences.firstOrNull { it.key == key }
+                ?: AlertPreference(systemRef = key.systemRef, talkgroupRef = key.talkgroupRef)
+            val updated = existing.copy(keywordListIds = normalizedIds)
+            if (updated == existing && session.state.alertPreferences.any { it.key == key }) {
+                false
+            } else {
+                session.alertPreferenceRevision++
+                session.state = session.state.copy(
+                    alertPreferences = (session.state.alertPreferences.filterNot { it.key == key } + updated)
+                        .sortedWith(compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }),
+                    alertPreferencesSaving = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleAlertPreferenceSave(session)
+    }
     fun setAlertPreference(
         profileId: String,
         key: ChannelKey,
@@ -889,6 +988,15 @@ object ScannerRepository {
             .get()
             .build()
         return parseAlertPreferences(executeJsonArray(request))
+    }
+    private fun fetchAlertKeywordLists(session: Session): List<AlertKeywordList> {
+        val origin = httpOrigin(session.profile.baseUrl)
+        val request = Request.Builder()
+            .url("$origin/api/keyword-lists")
+            .header("Authorization", "Bearer ${session.profile.pin.trim()}")
+            .get()
+            .build()
+        return parseAlertKeywordLists(executeJsonArray(request))
     }
     fun replay(profileId: String, callId: Long) {
         val session = sessions[profileId] ?: return
@@ -1287,6 +1395,7 @@ object ScannerRepository {
         if (session.profile.pin.isNotBlank()) {
             scheduleAlertRefresh(session)
             refreshAlertPreferences(session.profile.id)
+            refreshAlertKeywordLists(session.profile.id)
         }
         if (needsKeyExchange) startKeyExchange(session)
     }
