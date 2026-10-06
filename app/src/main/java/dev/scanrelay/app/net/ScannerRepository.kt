@@ -888,6 +888,7 @@ object ScannerRepository {
             }
             ThinLineProtocol.LIST_CALL -> handleHistory(session, envelope.payload as? JSONObject ?: return)
             ThinLineProtocol.ALERT -> handleAlert(session, envelope.payload)
+            ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)
             ThinLineProtocol.ERROR -> {
                 synchronized(session) { session.state = session.state.copy(error = envelope.payload?.toString() ?: "Server error") }
                 publish()
