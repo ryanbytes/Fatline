@@ -5,6 +5,9 @@ import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.TalkgroupConfig
+import dev.scanrelay.app.model.UnitAlias
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -61,4 +64,49 @@ class ScannerRepositoryTest {
         assertFalse(effective[0].talkgroups[1].enabled)
         assertFalse(effective[1].talkgroups[0].enabled)
     }
+    @Test
+    fun callSourcesAreOrderedDeduplicatedAndAliasAware() {
+        val sourceSystems = listOf(
+            SystemConfig(
+                systemRef = 1,
+                label = "One",
+                talkgroups = emptyList(),
+                units = listOf(
+                    UnitAlias(label = "Engine 3", unitRef = 12345),
+                    UnitAlias(label = "Portable", unitFrom = 20000, unitTo = 20099)
+                )
+            )
+        )
+        val payload = JSONObject(
+            """
+            {
+              "source": 99999,
+              "sources": [
+                {"pos": 2, "src": 20042},
+                {"pos": 0, "src": 12345},
+                {"pos": 1, "src": 12345},
+                {"pos": 3, "src": 30001, "tag": "Medic 7"}
+              ]
+            }
+            """.trimIndent()
+        )
+
+        val sources = ScannerRepository.resolveCallSources(sourceSystems, 1, payload)
+
+        assertEquals(listOf(12345L, 20042L, 30001L), sources.mapNotNull { it.sourceRef })
+        assertEquals("Engine 3 | 12345", sources[0].display)
+        assertEquals("Portable | 20042", sources[1].display)
+        assertEquals("Medic 7 | 30001", sources[2].display)
+    }
+
+    @Test
+    fun callSourcesFallBackToLegacySingleSource() {
+        val payload = JSONObject("""{"source":12345}""")
+        val sources = ScannerRepository.resolveCallSources(emptyList(), 1, payload)
+
+        assertEquals(1, sources.size)
+        assertEquals(12345L, sources.single().sourceRef)
+        assertEquals("12345", sources.single().display)
+    }
+
 }

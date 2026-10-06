@@ -67,6 +67,12 @@ data class ScanList(
     val channels: List<ChannelKey>
 )
 
+data class CallSource(
+    val position: Int = 0,
+    val sourceRef: Long? = null,
+    val tag: String? = null,
+    val display: String? = null
+)
 data class CallKey(val profileId: String, val callId: Long)
 
 data class RadioCall(
@@ -84,11 +90,19 @@ data class RadioCall(
     val audioName: String? = null,
     val sourceRef: Long? = null,
     val sourceLabel: String? = null,
+    val sources: List<CallSource> = emptyList(),
     val frequency: Long? = null,
     val durationSeconds: Double? = null,
     val encryptedAudio: Boolean = false
 ) {
     val key: CallKey get() = CallKey(profileId, id)
+    val sourceDisplay: String?
+        get() = sources.mapNotNull { it.display?.takeIf(String::isNotBlank) }
+            .distinct()
+            .joinToString(", ")
+            .takeIf { it.isNotBlank() }
+            ?: sourceLabel
+            ?: sourceRef?.toString()
 }
 
 data class ScannerAlert(
