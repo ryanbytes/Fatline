@@ -1,6 +1,13 @@
 package dev.scanrelay.app.net
 
+import android.content.ContentValues
 import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.os.Handler
+import android.os.Looper
+import android.provider.MediaStore
+import android.widget.Toast
 import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.model.AlertKeywordList
@@ -1071,6 +1078,145 @@ object ScannerRepository {
         }
         synchronized(session) { session.pendingReplay += callId }
         session.socket?.requestCall(callId)
+    }
+
+    fun downloadCall(profileId: String, callId: Long) {
+        if (callId <= 0) return
+        val session = sessions[profileId] ?: return
+        val context = appContext ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            showDownloadToast(context, "Sign in to download call audio")
+            return
+        }
+
+        scope.launch {
+            try {
+                val request = Request.Builder()
+                    .url(callAudioDownloadUrl(session.profile.baseUrl, callId))
+                    .header("Authorization", "Bearer $pin")
+                    .get()
+                    .build()
+                keyHttpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        val detail = response.body.string().take(160).trim()
+                        throw IllegalStateException(
+                            if (detail.isBlank()) "Download failed (HTTP ${response.code})"
+                            else "Download failed (HTTP ${response.code}): $detail"
+                        )
+                    }
+                    val bytes = response.body.bytes()
+                    if (bytes.isEmpty()) throw IllegalStateException("Server returned empty call audio")
+                    val mime = response.header("Content-Type")
+                        ?.substringBefore(';')
+                        ?.trim()
+                        ?.takeIf { it.isNotBlank() }
+                    val fileName = callDownloadFilename(
+                        response.header("Content-Disposition"),
+                        callId,
+                        mime
+                    )
+                    val savedTo = saveDownloadedAudio(context, fileName, mime, bytes)
+                    showDownloadToast(context, "Saved $fileName to $savedTo")
+                }
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                showDownloadToast(
+                    context,
+                    error.message?.takeIf { it.isNotBlank() } ?: "Call audio download failed"
+                )
+            }
+        }
+    }
+
+    internal fun callAudioDownloadUrl(baseUrl: String, callId: Long): String =
+        "${httpOrigin(baseUrl)}/api/calls/$callId/audio"
+
+    internal fun callDownloadFilename(
+        contentDisposition: String?,
+        callId: Long,
+        mime: String?
+    ): String {
+        val fromHeader = contentDisposition
+            ?.let { Regex("""filename\\s*=\\s*"([^"]+)"|filename\\s*=\\s*([^;\\s]+)""", RegexOption.IGNORE_CASE).find(it) }
+            ?.let { match -> match.groups[1]?.value ?: match.groups[2]?.value }
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
+        val fallbackExtension = when (mime?.lowercase()) {
+            "audio/mpeg", "audio/mp3" -> "mp3"
+            "audio/mp4", "audio/m4a", "audio/x-m4a" -> "m4a"
+            "audio/aac" -> "aac"
+            "audio/wav", "audio/x-wav" -> "wav"
+            "audio/ogg" -> "ogg"
+            else -> "bin"
+        }
+        val candidate = fromHeader ?: "FatLine-call-$callId.$fallbackExtension"
+        return candidate
+            .substringAfterLast('/')
+            .substringAfterLast('\\\\')
+            .replace(Regex("""[^A-Za-z0-9._() -]"""), "_")
+            .trim()
+            .trim('.')
+            .take(120)
+            .ifBlank { "FatLine-call-$callId.$fallbackExtension" }
+    }
+
+    private fun saveDownloadedAudio(
+        context: Context,
+        fileName: String,
+        mime: String?,
+        bytes: ByteArray
+    ): String {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime ?: "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/FatLine")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IllegalStateException("Could not create a Downloads entry")
+            try {
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: throw IllegalStateException("Could not open the Downloads file")
+                val completed = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+                resolver.update(uri, completed, null, null)
+            } catch (error: Throwable) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+            return "Downloads/FatLine"
+        }
+
+        val dir = (context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: File(context.filesDir, "downloads"))
+            .resolve("FatLine")
+            .apply { mkdirs() }
+        val target = uniqueDownloadFile(dir, fileName)
+        target.writeBytes(bytes)
+        return target.parentFile?.absolutePath ?: dir.absolutePath
+    }
+
+    private fun uniqueDownloadFile(dir: File, fileName: String): File {
+        val initial = File(dir, fileName)
+        if (!initial.exists()) return initial
+        val dot = fileName.lastIndexOf('.')
+        val stem = if (dot > 0) fileName.substring(0, dot) else fileName
+        val extension = if (dot > 0) fileName.substring(dot) else ""
+        var suffix = 2
+        while (true) {
+            val candidate = File(dir, "$stem ($suffix)$extension")
+            if (!candidate.exists()) return candidate
+            suffix++
+        }
+    }
+
+    private fun showDownloadToast(context: Context, message: String) {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+        }
     }
 
     fun skip() {
