@@ -172,6 +172,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun disconnectAll() = ScannerService.disconnectAll(getApplication())
     fun setTalkgroup(profileId: String, systemRef: Long, talkgroupRef: Long, enabled: Boolean) = ScannerRepository.setTalkgroupEnabled(profileId, systemRef, talkgroupRef, enabled)
     fun setSystemTalkgroups(profileId: String, systemRef: Long, enabled: Boolean) = ScannerRepository.setSystemEnabled(profileId, systemRef, enabled)
+    fun setSystemHidden(profileId: String, systemRef: Long, hidden: Boolean) =
+        ScannerRepository.setSystemHidden(profileId, systemRef, hidden)
     fun setAllTalkgroups(profileId: String, enabled: Boolean) = ScannerRepository.setAllEnabled(profileId, enabled)
     fun setChannels(profileId: String, keys: Collection<ChannelKey>, enabled: Boolean) = ScannerRepository.setChannelsEnabled(profileId, keys, enabled)
     fun createScanList(profileId: String, name: String) = ScannerRepository.createScanList(profileId, name)
