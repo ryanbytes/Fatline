@@ -20,6 +20,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Avoid / unavoid, clear avoids, and skip current audio
 - Server archive/history through `LCL`, paged results, and `CAL` replay
 - Local scanner-alert notifications and transcript display when supplied by the server
+- Per-scanner Android notification sounds, including system-default, installed custom sounds, and silent alerts
 - Incident alerts can open mapped coordinates or geocoded addresses in the installed maps app
 - One-shot scanner connection-loss notifications after a previously healthy connection drops
 - Per-server ordered call processing while different servers remain concurrent

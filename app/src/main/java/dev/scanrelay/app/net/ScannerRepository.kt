@@ -1262,7 +1262,7 @@ object ScannerRepository {
         publish()
         appContext?.let {
             val notificationId = (session.profile.id.hashCode() * 31 + body.hashCode()).absoluteValue
-            AlertNotifier.post(it, "${session.profile.name}: $title", body, notificationId)
+            AlertNotifier.post(it, session.profile.id, session.profile.name, "${session.profile.name}: $title", body, notificationId)
         }
         scheduleAlertRefresh(session)
     }
