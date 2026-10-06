@@ -213,6 +213,8 @@ data class ServerScannerState(
     val audioEncryptionEnabled: Boolean = false,
     val encryptionReady: Boolean = false,
     val serverVersion: String? = null,
+    val showListenersCount: Boolean = false,
+    val listenerCount: Int = 0,
     val historyHasMore: Boolean = false,
     val historySystemRef: Long? = null,
     val historyTalkgroupRef: Long? = null,

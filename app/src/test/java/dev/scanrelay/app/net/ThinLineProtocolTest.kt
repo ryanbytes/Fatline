@@ -55,6 +55,14 @@ class ThinLineProtocolTest {
     @Test fun callDownloadFlagIsThirdEnvelopeElement() {
         assertEquals("[\"CAL\",\"42\",\"d\"]", ThinLineProtocol.call(42, true))
     }
+
+    @Test fun listenerCountAcceptsNumericAndStringPayloads() {
+        assertEquals(7, ThinLineProtocol.parseListenerCount(7))
+        assertEquals(12, ThinLineProtocol.parseListenerCount("12"))
+        assertEquals(null, ThinLineProtocol.parseListenerCount("-1"))
+        assertEquals(null, ThinLineProtocol.parseListenerCount("not-a-count"))
+    }
+
     @Test fun scanListsParseFromUserSettingsWithStringAndNumericRefs() {
         val config = JSONObject(
             """
