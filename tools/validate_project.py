@@ -136,6 +136,8 @@ require('setPaused' in repo and 'viewModel.setPaused' in ui and 'Resume' in ui a
 require('holdSystemRef' in models and 'setSystemHold' in repo and 'viewModel.setSystemHold' in ui, 'system hold parity missing')
 require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'talkgroup hold/avoid/skip support missing')
 require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
+require('recentCalls' in models and 'session.state.recentCalls' in repo, 'dedicated live recent-call state missing')
+require('server.recentCalls' in ui and 'server.history.take(10)' not in ui, 'scanner recent list must not reuse archive history')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
