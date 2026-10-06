@@ -19,6 +19,9 @@ internal fun normalizeUiAccentColor(raw: String?): String? {
     }
 }
 
+internal fun resolvedUiAccentColor(siteColor: String?, userColor: String?): String? =
+    userColor?.trim()?.takeIf { it.isNotBlank() } ?: siteColor?.trim()?.takeIf { it.isNotBlank() }
+
 internal fun uiAccentRgb(raw: String?): UiAccentRgb? {
     val normalized = normalizeUiAccentColor(raw) ?: return null
     val value = normalized.removePrefix("#").toInt(16)
