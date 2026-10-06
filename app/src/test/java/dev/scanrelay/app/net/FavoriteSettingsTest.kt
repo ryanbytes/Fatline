@@ -1,6 +1,7 @@
 package dev.scanrelay.app.net
 
 import dev.scanrelay.app.model.ChannelKey
+import dev.scanrelay.app.model.FavoriteTagKey
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.TalkgroupConfig
 import org.json.JSONArray
@@ -24,7 +25,7 @@ class FavoriteSettingsTest {
     )
 
     @Test
-    fun parsesSystemTagAndTalkgroupFavoritesIntoChannels() {
+    fun parsesTypedFavoritesAndExpandsParentScopesIntoChannels() {
         val settings = JSONObject().put(
             "favorites",
             JSONArray()
@@ -33,6 +34,8 @@ class FavoriteSettingsTest {
                 .put(JSONObject().put("type", "tag").put("systemId", 10).put("tag", "Untagged"))
         )
 
+        val selection = parseFavoriteSelection(settings, listOf(system))!!
+
         assertEquals(
             setOf(
                 ChannelKey(10, 101),
@@ -40,37 +43,68 @@ class FavoriteSettingsTest {
                 ChannelKey(10, 201),
                 ChannelKey(10, 301)
             ),
-            parseFavoriteChannels(settings, listOf(system))
+            selection.channels
         )
+        assertEquals(
+            setOf(FavoriteTagKey(10, "Fire"), FavoriteTagKey(10, "Untagged")),
+            selection.tags
+        )
+        assertTrue(selection.systemRefs.isEmpty())
     }
 
     @Test
     fun absentFavoritesDoesNotOverrideLocalFavorites() {
-        assertNull(parseFavoriteChannels(JSONObject().put("scanLists", JSONArray()), listOf(system)))
+        assertNull(parseFavoriteSelection(JSONObject().put("scanLists", JSONArray()), listOf(system)))
     }
 
     @Test
-    fun serializesParentMarkersOnlyWhenEveryChildIsFavorite() {
+    fun serializesOnlyExplicitValidParentMarkers() {
         val partial = serializeFavorites(
-            setOf(ChannelKey(10, 101), ChannelKey(10, 102)),
+            FavoriteSettingsSelection(
+                channels = setOf(ChannelKey(10, 101), ChannelKey(10, 102)),
+                tags = setOf(FavoriteTagKey(10, "Fire"))
+            ),
             listOf(system)
         )
         val partialTypes = (0 until partial.length()).map { partial.getJSONObject(it).getString("type") }
         assertTrue("tag" in partialTypes)
         assertFalse("system" in partialTypes)
 
-        val all = serializeFavorites(system.talkgroups.map { it.key }.toSet(), listOf(system))
+        val all = serializeFavorites(
+            FavoriteSettingsSelection(
+                channels = system.talkgroups.map { it.key }.toSet(),
+                systemRefs = setOf(10),
+                tags = setOf(
+                    FavoriteTagKey(10, "Fire"),
+                    FavoriteTagKey(10, "Law"),
+                    FavoriteTagKey(10, "Untagged")
+                )
+            ),
+            listOf(system)
+        )
         val allTypes = (0 until all.length()).map { all.getJSONObject(it).getString("type") }
-        assertTrue("system" in allTypes)
+        assertEquals(1, allTypes.count { it == "system" })
         assertEquals(3, allTypes.count { it == "tag" })
         assertEquals(4, allTypes.count { it == "talkgroup" })
+    }
+
+    @Test
+    fun individualFavoriteDoesNotInventSingleMemberTagFavorite() {
+        val json = serializeFavorites(
+            FavoriteSettingsSelection(channels = setOf(ChannelKey(10, 201))),
+            listOf(system)
+        )
+
+        assertEquals(1, json.length())
+        assertEquals("talkgroup", json.getJSONObject(0).getString("type"))
+        assertEquals(201L, json.getJSONObject(0).getLong("talkgroupId"))
     }
 
     @Test
     fun mergePreservesOtherSettings() {
         val merged = mergeFavoritesIntoSettings(
             JSONObject().put("uiAccentColor", "#123456").put("scanLists", JSONArray().put("keep")),
-            setOf(ChannelKey(10, 201)),
+            FavoriteSettingsSelection(channels = setOf(ChannelKey(10, 201))),
             listOf(system)
         )
 
