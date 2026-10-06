@@ -590,6 +590,23 @@ private fun HistoryScreen(
             call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery) == true ||
             call.transcript?.lowercase()?.contains(normalizedHistoryQuery) == true
     }
+    val latestCall = server?.lastCall
+    val archiveFilterLabel = server?.let { current ->
+        when {
+            current.historyTalkgroupRef != null -> {
+                val tgRef = current.historyTalkgroupRef
+                val system = current.systems.firstOrNull { it.systemRef == current.historySystemRef }
+                val talkgroup = system?.talkgroups?.firstOrNull { it.talkgroupRef == tgRef }
+                "Server filter: " + (talkgroup?.displayName ?: "TG $tgRef")
+            }
+            current.historySystemRef != null -> {
+                val systemRef = current.historySystemRef
+                val system = current.systems.firstOrNull { it.systemRef == systemRef }
+                "Server filter: " + (system?.label ?: "System $systemRef")
+            }
+            else -> null
+        }
+    }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -608,20 +625,63 @@ private fun HistoryScreen(
             item { Text("Connect the selected scanner to retrieve history.", modifier = Modifier.padding(16.dp)) }
         } else {
             item {
-                Row(
+                LazyRow(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
-                        onClick = { viewModel.requestHistory(server.profile.id, true) },
-                        enabled = server.status == ConnectionStatus.CONNECTED
-                    ) { Text("Refresh archive") }
-                    if (server.historyHasMore) {
-                        OutlinedButton(
-                            onClick = { viewModel.requestHistory(server.profile.id, false) },
+                    item {
+                        Button(
+                            onClick = { viewModel.requestHistory(server.profile.id, true) },
                             enabled = server.status == ConnectionStatus.CONNECTED
-                        ) { Text("More") }
+                        ) { Text(if (archiveFilterLabel == null) "Refresh archive" else "All archive") }
                     }
+                    latestCall?.let { call ->
+                        item {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.requestHistory(
+                                        server.profile.id,
+                                        true,
+                                        call.systemRef,
+                                        call.talkgroupRef
+                                    )
+                                },
+                                enabled = server.status == ConnectionStatus.CONNECTED
+                            ) { Text("Current TG") }
+                        }
+                        item {
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.requestHistory(
+                                        server.profile.id,
+                                        true,
+                                        call.systemRef,
+                                        null
+                                    )
+                                },
+                                enabled = server.status == ConnectionStatus.CONNECTED
+                            ) { Text("Current SYS") }
+                        }
+                    }
+                    if (server.historyHasMore) {
+                        item {
+                            OutlinedButton(
+                                onClick = { viewModel.requestHistory(server.profile.id, false) },
+                                enabled = server.status == ConnectionStatus.CONNECTED
+                            ) { Text("More") }
+                        }
+                    }
+                }
+            }
+
+            archiveFilterLabel?.let { label ->
+                item {
+                    Text(
+                        label,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
 
