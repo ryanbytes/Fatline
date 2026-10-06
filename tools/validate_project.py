@@ -141,6 +141,8 @@ require('setSystemTalkgroups' in viewmodel and 'setSystemTalkgroups' in ui, 'sys
 require('parseScanLists' in protocol and 'scanLists' in models, 'server scan-list parsing/state missing')
 require('setChannelsEnabled' in repo and 'setChannels' in viewmodel, 'batched scan-list channel toggles missing')
 require('server.scanLists' in ui and '"Scan Lists"' in ui, 'scan-list UI missing')
+require('itemsIndexed' in ui and 'systemIndex' in ui and 'talkgroupIndex' in ui, 'channel lazy-list keys must include stable positional disambiguators')
+require('"scan-list-" + server.profile.id + "-" + index + "-" + scanList.id' in ui, 'scan-list lazy keys must tolerate duplicate server IDs')
 require('scanListsParseFromUserSettingsWithStringAndNumericRefs' in protocol_tests, 'scan-list parser regression test missing')
 require('setPaused' in repo and 'viewModel.setPaused' in ui and 'Resume' in ui and 'Pause' in ui, 'pause/live-feed toggle missing')
 require('ACTION_SET_PROFILE_PAUSED' in service and 'pausedProfiles' in service, 'per-profile playback pause suppression missing')
