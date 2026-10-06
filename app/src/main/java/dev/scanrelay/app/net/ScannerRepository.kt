@@ -146,6 +146,26 @@ object ScannerRepository {
         pruneQueuedLiveCalls(profileId)
     }
 
+    fun setChannelsEnabled(profileId: String, keys: Collection<ChannelKey>, enabled: Boolean) {
+        if (keys.isEmpty()) return
+        val session = sessions[profileId] ?: return
+        val targetKeys = keys.toSet()
+        channelStore?.setMany(profileId, targetKeys, enabled)
+        synchronized(session) {
+            val systems = session.state.systems.map { system ->
+                system.copy(
+                    talkgroups = system.talkgroups.map { talkgroup ->
+                        if (talkgroup.key in targetKeys) talkgroup.copy(enabled = enabled) else talkgroup
+                    }
+                )
+            }
+            session.state = session.state.copy(systems = systems)
+            sendEffectiveLivefeedLocked(session)
+        }
+        publish()
+        pruneQueuedLiveCalls(profileId)
+    }
+
     fun setPaused(profileId: String, paused: Boolean) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
@@ -592,6 +612,7 @@ object ScannerRepository {
     private fun handleConfig(session: Session, payload: JSONObject) {
         val parsed = ThinLineProtocol.parseSystems(payload)
         val systems = channelStore?.apply(session.profile.id, parsed) ?: parsed
+        val scanLists = ThinLineProtocol.parseScanLists(payload)
         val options = payload.optJSONObject("options")
         val encrypted = options?.optBoolean("audioEncryptionEnabled", false) == true
         val relayUrl = options?.optString("relayServerURL")?.takeIf { it.isNotBlank() }
@@ -619,6 +640,7 @@ object ScannerRepository {
                     else -> "Connected"
                 },
                 systems = systems,
+                scanLists = scanLists,
                 audioEncryptionEnabled = encrypted,
                 encryptionReady = !encrypted || session.masterKey != null,
                 error = null
