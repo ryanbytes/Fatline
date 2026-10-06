@@ -850,9 +850,9 @@ object ScannerRepository {
                 )
             }
             val updatedSystem = updatedSystems.firstOrNull { it.systemRef == systemRef }
-            val allSystemFavorite =
-                updatedSystem?.talkgroups?.isNotEmpty() == true &&
-                    updatedSystem.talkgroups.all { it.favorite }
+            val allSystemFavorite = updatedSystem?.talkgroups
+                ?.let { talkgroups -> talkgroups.isNotEmpty() && talkgroups.all { it.favorite } }
+                ?: false
             val tagKey = FavoriteTagKey(systemRef, normalizedTag)
 
             session.favoriteRevision++
