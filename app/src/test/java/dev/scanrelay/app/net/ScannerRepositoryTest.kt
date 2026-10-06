@@ -329,6 +329,56 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun systemAlertsParseAndSortVisibleServerAlerts() {
+        val parsed = ScannerRepository.parseSystemAlerts(
+            JSONObject(
+                """
+                {
+                  "canViewSystemAlerts": true,
+                  "alerts": [
+                    {
+                      "id": 4,
+                      "alertType": "no_audio",
+                      "severity": "warning",
+                      "title": "No audio",
+                      "message": "System 1 has not received audio",
+                      "data": "{\"systemRef\":1}",
+                      "createdAt": 100,
+                      "dismissed": false
+                    },
+                    {
+                      "id": 5,
+                      "alertType": "manual",
+                      "severity": "critical",
+                      "title": "Maintenance",
+                      "message": "Scanner maintenance",
+                      "createdAt": 200
+                    }
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+
+        assertTrue(parsed.canViewSystemAlerts)
+        assertEquals(listOf(5L, 4L), parsed.alerts.map { it.id })
+        assertEquals("critical", parsed.alerts.first().severity)
+        assertEquals("No audio", parsed.alerts.last().title)
+    }
+
+    @Test
+    fun systemAlertUrlsUseCanonicalEndpoints() {
+        assertEquals(
+            "https://scanner.example.com:3000/api/system-alerts?limit=50&includeDismissed=false",
+            ScannerRepository.systemAlertsUrl("wss://scanner.example.com:3000/path")
+        )
+        assertEquals(
+            "https://scanner.example.com:3000/api/system-alerts/17",
+            ScannerRepository.systemAlertsUrl("wss://scanner.example.com:3000/path", 17)
+        )
+    }
+
+    @Test
     fun keywordListPayloadTrimsAndDeduplicatesFields() {
         val payload = ScannerRepository.keywordListPayload(
             "  Priority  ",
