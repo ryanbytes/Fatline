@@ -851,7 +851,10 @@ private fun AlertsScreen(
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
     var alertQuery by remember(selectedProfileId) { mutableStateOf("") }
+    var preferenceQuery by remember(selectedProfileId) { mutableStateOf("") }
+    var showAlertPreferences by remember(selectedProfileId) { mutableStateOf(false) }
     val normalizedQuery = alertQuery.trim().lowercase()
+    val normalizedPreferenceQuery = preferenceQuery.trim().lowercase()
     val visibleAlerts = server?.alerts.orEmpty().filter { alert ->
         normalizedQuery.isEmpty() ||
             alert.title.lowercase().contains(normalizedQuery) ||
@@ -867,10 +870,20 @@ private fun AlertsScreen(
             alert.incidentAddress?.lowercase()?.contains(normalizedQuery) == true ||
             alert.incidentNature?.lowercase()?.contains(normalizedQuery) == true
     }
+    val visiblePreferenceChannels = server?.systems.orEmpty().flatMap { system ->
+        system.talkgroups.map { talkgroup -> system to talkgroup }
+    }.filter { (system, talkgroup) ->
+        normalizedPreferenceQuery.isEmpty() ||
+            system.label.lowercase().contains(normalizedPreferenceQuery) ||
+            talkgroup.displayName.lowercase().contains(normalizedPreferenceQuery) ||
+            talkgroup.tag.lowercase().contains(normalizedPreferenceQuery) ||
+            talkgroup.talkgroupRef.toString().contains(normalizedPreferenceQuery)
+    }
 
     LaunchedEffect(server?.profile?.id) {
         if (server != null && server.status == ConnectionStatus.CONNECTED && server.profile.pin.isNotBlank()) {
             viewModel.refreshAlerts(server.profile.id)
+            viewModel.refreshAlertPreferences(server.profile.id)
         }
     }
 
@@ -927,6 +940,176 @@ private fun AlertsScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
                 )
+            }
+
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                showAlertPreferences = !showAlertPreferences
+                                if (showAlertPreferences) viewModel.refreshAlertPreferences(server.profile.id)
+                            },
+                            enabled = server.profile.pin.isNotBlank()
+                        ) {
+                            Text(if (showAlertPreferences) "Hide alert settings" else "Alert settings")
+                        }
+                        if (server.alertPreferencesLoading) {
+                            Text("Loading settings…", style = MaterialTheme.typography.bodySmall)
+                        } else if (server.alertPreferencesSaving) {
+                            Text("Saving settings…", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    server.alertPreferencesError?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (showAlertPreferences) {
+                        OutlinedTextField(
+                            value = preferenceQuery,
+                            onValueChange = { preferenceQuery = it },
+                            label = { Text("Search alert channels") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            visiblePreferenceChannels.size.toString() + " channels shown",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+
+            if (showAlertPreferences) {
+                itemsIndexed(
+                    visiblePreferenceChannels,
+                    key = { index, pair ->
+                        "alert-pref-" + server.profile.id + "-" + index + "-" +
+                            pair.second.systemRef + "-" + pair.second.talkgroupRef
+                    }
+                ) { _, pair ->
+                    val system = pair.first
+                    val talkgroup = pair.second
+                    val preference = server.alertPreferences.firstOrNull {
+                        it.systemRef == talkgroup.systemRef && it.talkgroupRef == talkgroup.talkgroupRef
+                    }
+                    val alertEnabled = preference?.alertEnabled == true
+                    val toneAlerts = preference?.toneAlerts ?: true
+                    val keywordAlerts = preference?.keywordAlerts ?: true
+
+                    Card(Modifier.padding(horizontal = 16.dp)) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(talkgroup.displayName, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                system.label + " · TG " + talkgroup.talkgroupRef,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                item {
+                                    if (alertEnabled) {
+                                        Button(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    alertEnabled = false
+                                                )
+                                            }
+                                        ) { Text("Alert ✓") }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    alertEnabled = true
+                                                )
+                                            }
+                                        ) { Text("Alert off") }
+                                    }
+                                }
+                                item {
+                                    if (toneAlerts) {
+                                        Button(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    toneAlerts = false
+                                                )
+                                            }
+                                        ) { Text("Tone ✓") }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    toneAlerts = true
+                                                )
+                                            }
+                                        ) { Text("Tone off") }
+                                    }
+                                }
+                                item {
+                                    if (keywordAlerts) {
+                                        Button(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    keywordAlerts = false
+                                                )
+                                            }
+                                        ) { Text("Keyword ✓") }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.setAlertPreference(
+                                                    server.profile.id,
+                                                    talkgroup.key,
+                                                    keywordAlerts = true
+                                                )
+                                            }
+                                        ) { Text("Keyword off") }
+                                    }
+                                }
+                            }
+                            if (preference != null) {
+                                val detail = buildList {
+                                    if (preference.toneSetIds.isNotEmpty()) {
+                                        add(preference.toneSetIds.size.toString() + " tone set(s)")
+                                    }
+                                    if (preference.keywords.isNotEmpty()) {
+                                        add(preference.keywords.size.toString() + " keyword(s)")
+                                    }
+                                    if (preference.keywordListIds.isNotEmpty()) {
+                                        add(preference.keywordListIds.size.toString() + " keyword list(s)")
+                                    }
+                                    if (preference.notificationSound.isNotBlank()) {
+                                        add("sound " + preference.notificationSound)
+                                    }
+                                    if (preference.pagerAlert) add("pager alert")
+                                }.joinToString(" · ")
+                                if (detail.isNotBlank()) {
+                                    Text(detail, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                }
+                item {
+                    HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                }
             }
 
             if (server.alerts.isEmpty() && !server.alertsLoading) {
