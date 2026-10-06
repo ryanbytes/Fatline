@@ -779,7 +779,16 @@ object ScannerRepository {
             val avoided = key in session.state.avoided
             shouldPlay = replayRequested || (!session.state.paused && enabled && talkgroupHoldAllows && systemHoldAllows && !avoided)
             val merged = (session.state.history + call).associateBy { it.id }.values.sortedByDescending(::callSortKey).take(500)
-            session.state = session.state.copy(history = merged, lastCall = call)
+            val recent = if (replayRequested) {
+                session.state.recentCalls
+            } else {
+                (listOf(call) + session.state.recentCalls.filterNot { it.id == call.id }).take(10)
+            }
+            session.state = session.state.copy(
+                history = merged,
+                recentCalls = recent,
+                lastCall = if (replayRequested) session.state.lastCall else call
+            )
         }
         publish()
         if (shouldPlay && path != null) ScannerService.enqueue(context, call)

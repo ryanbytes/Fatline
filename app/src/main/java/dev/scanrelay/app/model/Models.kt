@@ -92,6 +92,7 @@ data class ServerScannerState(
     val profile: ServerProfile,
     val systems: List<SystemConfig> = emptyList(),
     val history: List<RadioCall> = emptyList(),
+    val recentCalls: List<RadioCall> = emptyList(),
     val lastCall: RadioCall? = null,
     val alerts: List<ScannerAlert> = emptyList(),
     val hold: ChannelKey? = null,
