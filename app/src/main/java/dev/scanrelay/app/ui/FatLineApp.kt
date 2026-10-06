@@ -364,6 +364,9 @@ private fun ChannelsScreen(
     val server = selectedProfileId?.let { scanner.servers[it] }
     var channelQuery by remember(selectedProfileId) { mutableStateOf("") }
     var favoritesOnly by remember(selectedProfileId) { mutableStateOf(false) }
+    var newScanListName by remember(selectedProfileId) { mutableStateOf("") }
+    var editingScanListId by remember(selectedProfileId) { mutableStateOf<String?>(null) }
+    val editingScanList = server?.scanLists?.firstOrNull { it.id == editingScanListId }
     val normalizedQuery = channelQuery.trim().lowercase()
     val visibleSystems = server?.systems.orEmpty().mapNotNull { system ->
         val systemMatches = normalizedQuery.isNotEmpty() && system.label.lowercase().contains(normalizedQuery)
@@ -444,51 +447,129 @@ private fun ChannelsScreen(
                 }
             }
 
-            if (server.scanLists.isNotEmpty()) {
-                item {
+            item {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
                         "Scan Lists",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold
                     )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = newScanListName,
+                            onValueChange = { newScanListName = it },
+                            label = { Text("New list name") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Button(
+                            onClick = {
+                                viewModel.createScanList(server.profile.id, newScanListName)
+                                newScanListName = ""
+                            },
+                            enabled = newScanListName.isNotBlank()
+                        ) { Text("Create") }
+                    }
+                    if (server.scanListSyncing) {
+                        Text("Saving Scan Lists…", style = MaterialTheme.typography.bodySmall)
+                    }
+                    server.scanListError?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    editingScanList?.let {
+                        Text(
+                            "Editing membership: " + it.name + " — use + List / ✓ List on channels below.",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
-                itemsIndexed(
-                    server.scanLists,
-                    key = { index, scanList -> "scan-list-" + server.profile.id + "-" + index + "-" + scanList.id }
-                ) { _, scanList ->
-                    val enabledKeys = server.systems
-                        .flatMap { it.talkgroups }
-                        .filter { it.enabled }
-                        .map { it.key }
-                        .toSet()
-                    val enabledCount = scanList.channels.count { it in enabledKeys }
+            }
 
-                    Card(Modifier.padding(horizontal = 16.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(scanList.name, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    enabledCount.toString() + "/" + scanList.channels.size + " enabled",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+            itemsIndexed(
+                server.scanLists,
+                key = { index, scanList -> "scan-list-" + server.profile.id + "-" + index + "-" + scanList.id }
+            ) { _, scanList ->
+                val enabledKeys = server.systems
+                    .flatMap { it.talkgroups }
+                    .filter { it.enabled }
+                    .map { it.key }
+                    .toSet()
+                val enabledCount = scanList.channels.count { it in enabledKeys }
+                var editName by remember(scanList.id, scanList.name) { mutableStateOf(scanList.name) }
+                val editing = editingScanListId == scanList.id
+
+                Card(Modifier.padding(horizontal = 16.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (editing) {
+                            OutlinedTextField(
+                                value = editName,
+                                onValueChange = { editName = it },
+                                label = { Text("List name") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            Text(scanList.name, fontWeight = FontWeight.SemiBold)
+                        }
+                        Text(
+                            enabledCount.toString() + "/" + scanList.channels.size + " enabled · " +
+                                scanList.channels.size + " members",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item {
+                                OutlinedButton(
+                                    onClick = { viewModel.setChannels(server.profile.id, scanList.channels, true) },
+                                    enabled = scanList.channels.isNotEmpty()
+                                ) { Text("Enable") }
                             }
-                            OutlinedButton(
-                                onClick = { viewModel.setChannels(server.profile.id, scanList.channels, true) },
-                                enabled = scanList.channels.isNotEmpty()
-                            ) { Text("Enable") }
-                            OutlinedButton(
-                                onClick = { viewModel.setChannels(server.profile.id, scanList.channels, false) },
-                                enabled = scanList.channels.isNotEmpty()
-                            ) { Text("Disable") }
+                            item {
+                                OutlinedButton(
+                                    onClick = { viewModel.setChannels(server.profile.id, scanList.channels, false) },
+                                    enabled = scanList.channels.isNotEmpty()
+                                ) { Text("Disable") }
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = {
+                                        editingScanListId = if (editing) null else scanList.id
+                                    }
+                                ) { Text(if (editing) "Done" else "Edit members") }
+                            }
+                            if (editing) {
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.renameScanList(server.profile.id, scanList.id, editName)
+                                        },
+                                        enabled = editName.isNotBlank() && editName.trim() != scanList.name
+                                    ) { Text("Save name") }
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.deleteScanList(server.profile.id, scanList.id)
+                                            editingScanListId = null
+                                        }
+                                    ) { Text("Delete") }
+                                }
+                            }
                         }
                     }
                 }
-                item { HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
             }
+            item { HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) }
 
             if (visibleSystems.isEmpty()) {
                 item {
@@ -554,6 +635,19 @@ private fun ChannelsScreen(
                         OutlinedButton(
                             onClick = { viewModel.setFavorite(server.profile.id, tg.systemRef, tg.talkgroupRef, !tg.favorite) }
                         ) { Text(if (tg.favorite) "★" else "☆") }
+                        editingScanList?.let { list ->
+                            val inList = tg.key in list.channels
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.setScanListChannel(
+                                        server.profile.id,
+                                        list.id,
+                                        tg.key,
+                                        !inList
+                                    )
+                                }
+                            ) { Text(if (inList) "✓ List" else "+ List") }
+                        }
                         OutlinedButton(onClick = {
                             if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
                             else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
