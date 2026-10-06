@@ -179,6 +179,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun deleteScanList(profileId: String, listId: String) = ScannerRepository.deleteScanList(profileId, listId)
     fun setScanListChannel(profileId: String, listId: String, key: ChannelKey, included: Boolean) =
         ScannerRepository.setScanListChannel(profileId, listId, key, included)
+    fun reorderScanList(profileId: String, fromIndex: Int, toIndex: Int) =
+        ScannerRepository.reorderScanList(profileId, fromIndex, toIndex)
     fun setPaused(profileId: String, paused: Boolean) = ScannerRepository.setPaused(profileId, paused)
     fun setFavorite(profileId: String, systemRef: Long, talkgroupRef: Long, favorite: Boolean) = ScannerRepository.setFavorite(profileId, systemRef, talkgroupRef, favorite)
     fun setHold(profileId: String, systemRef: Long, talkgroupRef: Long) = ScannerRepository.setHold(profileId, ChannelKey(systemRef, talkgroupRef))

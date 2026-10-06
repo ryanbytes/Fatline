@@ -565,7 +565,7 @@ private fun ChannelsScreen(
             itemsIndexed(
                 server.scanLists,
                 key = { index, scanList -> "scan-list-" + server.profile.id + "-" + index + "-" + scanList.id }
-            ) { _, scanList ->
+            ) { scanListIndex, scanList ->
                 val enabledKeys = server.systems
                     .flatMap { it.talkgroups }
                     .filter { it.enabled }
@@ -597,6 +597,30 @@ private fun ChannelsScreen(
                             style = MaterialTheme.typography.bodySmall
                         )
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.reorderScanList(
+                                            server.profile.id,
+                                            scanListIndex,
+                                            scanListIndex - 1
+                                        )
+                                    },
+                                    enabled = scanListIndex > 0 && !server.scanListSyncing
+                                ) { Text("↑ Move") }
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.reorderScanList(
+                                            server.profile.id,
+                                            scanListIndex,
+                                            scanListIndex + 1
+                                        )
+                                    },
+                                    enabled = scanListIndex < server.scanLists.lastIndex && !server.scanListSyncing
+                                ) { Text("↓ Move") }
+                            }
                             item {
                                 OutlinedButton(
                                     onClick = { viewModel.setChannels(server.profile.id, scanList.channels, true) },
