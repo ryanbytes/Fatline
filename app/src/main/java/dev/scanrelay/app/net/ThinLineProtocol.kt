@@ -95,6 +95,13 @@ object ThinLineProtocol {
     fun call(callId: Long, download: Boolean = false): String =
         command(CALL, callId.toString(), if (download) DOWNLOAD_FLAG else null)
 
+    fun parseListenerCount(payload: Any?): Int? = when (payload) {
+        is Number -> payload.toInt()
+        is String -> payload.trim().toIntOrNull()
+        else -> payload?.toString()?.trim()?.toIntOrNull()
+    }?.takeIf { it >= 0 }
+
+
     fun parseSystems(configPayload: JSONObject): List<SystemConfig> {
         val raw = configPayload.opt("systems") ?: return emptyList()
         val systems = mutableListOf<SystemConfig>()
