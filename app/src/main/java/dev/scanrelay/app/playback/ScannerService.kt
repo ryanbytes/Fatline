@@ -390,7 +390,9 @@ class ScannerService : MediaLibraryService() {
                 parentId.startsWith("profile:") -> {
                     val profileId = parentId.removePrefix("profile:")
                     val state = ScannerRepository.state.value.servers[profileId]
-                    state?.systems.orEmpty().flatMap { system ->
+                    state?.systems.orEmpty()
+                        .filterNot { it.systemRef in state?.hiddenSystemRefs.orEmpty() }
+                        .flatMap { system ->
                         system.talkgroups.filter { it.favorite }.map { tg ->
                             playableItem("channel:$profileId:${tg.systemRef}:${tg.talkgroupRef}", tg.displayName, system.label)
                         }

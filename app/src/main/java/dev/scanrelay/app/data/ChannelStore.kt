@@ -4,6 +4,12 @@ import android.content.Context
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.SystemConfig
 
+internal fun filterHiddenChannelSelection(
+    selected: Set<ChannelKey>,
+    hiddenSystems: Set<Long>
+): Set<ChannelKey> =
+    selected.filterNotTo(mutableSetOf()) { it.systemRef in hiddenSystems }
+
 internal fun reconcileChannelSelection(
     currentScope: Set<ChannelKey>,
     savedSelection: Set<ChannelKey>,
@@ -22,6 +28,7 @@ class ChannelStore(context: Context) {
     private fun selectedKey(profileId: String) = "selected_$profileId"
     private fun knownKey(profileId: String) = "known_$profileId"
     private fun favoritesKey(profileId: String) = "favorites_$profileId"
+    private fun hiddenSystemsKey(profileId: String) = "hidden_systems_$profileId"
 
     fun apply(
         profileId: String,
@@ -49,11 +56,15 @@ class ChannelStore(context: Context) {
             prefs.edit().putBoolean(initializedKey(profileId), true).apply()
             all
         }
+        val hiddenSystems = hiddenSystems(profileId)
+        val visibleSelection = filterHiddenChannelSelection(selected, hiddenSystems)
+        if (visibleSelection != selected) writeKeys(selectedKey(profileId), visibleSelection)
         val favorites = readKeys(favoritesKey(profileId))
         return systems.map { system ->
+            val hidden = system.systemRef in hiddenSystems
             system.copy(talkgroups = system.talkgroups.map { talkgroup ->
                 talkgroup.copy(
-                    enabled = talkgroup.key in selected,
+                    enabled = !hidden && talkgroup.key in visibleSelection,
                     favorite = talkgroup.key in favorites
                 )
             })
@@ -84,12 +95,27 @@ class ChannelStore(context: Context) {
 
     fun favorites(profileId: String): Set<ChannelKey> = readKeys(favoritesKey(profileId))
 
+    fun hiddenSystems(profileId: String): Set<Long> =
+        prefs.getStringSet(hiddenSystemsKey(profileId), emptySet())
+            .orEmpty()
+            .mapNotNull(String::toLongOrNull)
+            .toSet()
+
+    fun setSystemHidden(profileId: String, systemRef: Long, hidden: Boolean) {
+        val current = hiddenSystems(profileId).toMutableSet()
+        if (hidden) current += systemRef else current -= systemRef
+        prefs.edit()
+            .putStringSet(hiddenSystemsKey(profileId), current.mapTo(mutableSetOf(), Long::toString))
+            .apply()
+    }
+
     fun deleteProfile(profileId: String) {
         prefs.edit()
             .remove(initializedKey(profileId))
             .remove(selectedKey(profileId))
             .remove(knownKey(profileId))
             .remove(favoritesKey(profileId))
+            .remove(hiddenSystemsKey(profileId))
             .apply()
     }
 

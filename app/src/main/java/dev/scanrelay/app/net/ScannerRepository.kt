@@ -140,8 +140,9 @@ object ScannerRepository {
     fun setTalkgroupEnabled(profileId: String, systemRef: Long, talkgroupRef: Long, enabled: Boolean) {
         val session = sessions[profileId] ?: return
         val key = ChannelKey(systemRef, talkgroupRef)
-        channelStore?.setEnabled(profileId, key, enabled)
         synchronized(session) {
+            if (enabled && systemRef in session.state.hiddenSystemRefs) return
+            channelStore?.setEnabled(profileId, key, enabled)
             val systems = session.state.systems.map { system ->
                 if (system.systemRef != systemRef) system
                 else system.copy(talkgroups = system.talkgroups.map { tg ->
@@ -158,6 +159,7 @@ object ScannerRepository {
     fun setSystemEnabled(profileId: String, systemRef: Long, enabled: Boolean) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
+            if (enabled && systemRef in session.state.hiddenSystemRefs) return
             val target = session.state.systems.firstOrNull { it.systemRef == systemRef } ?: return
             val keys = target.talkgroups.map { it.key }
             channelStore?.setMany(profileId, keys, enabled)
@@ -172,13 +174,39 @@ object ScannerRepository {
         pruneQueuedLiveCalls(profileId)
     }
 
+    fun setSystemHidden(profileId: String, systemRef: Long, hidden: Boolean) {
+        val session = sessions[profileId] ?: return
+        synchronized(session) {
+            val target = session.state.systems.firstOrNull { it.systemRef == systemRef } ?: return
+            channelStore?.setSystemHidden(profileId, systemRef, hidden)
+            if (hidden) channelStore?.setMany(profileId, target.talkgroups.map { it.key }, false)
+            val hiddenRefs = session.state.hiddenSystemRefs.toMutableSet().apply {
+                if (hidden) add(systemRef) else remove(systemRef)
+            }
+            val systems = session.state.systems.map { system ->
+                if (!hidden || system.systemRef != systemRef) system
+                else system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = false) })
+            }
+            session.state = session.state.copy(systems = systems, hiddenSystemRefs = hiddenRefs)
+            sendEffectiveLivefeedLocked(session)
+        }
+        publish()
+        pruneQueuedLiveCalls(profileId)
+    }
+
     fun setAllEnabled(profileId: String, enabled: Boolean) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
-            val all = session.state.systems.flatMap { it.talkgroups }.map { it.key }.toSet()
-            channelStore?.setAll(profileId, all, enabled)
+            val visibleSystems = session.state.systems.filterNot { it.systemRef in session.state.hiddenSystemRefs }
+            val visibleKeys = visibleSystems.flatMap { it.talkgroups }.map { it.key }.toSet()
+            val selected = if (enabled) visibleKeys else emptySet()
+            channelStore?.setAll(profileId, selected, enabled = true)
             val systems = session.state.systems.map { system ->
-                system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = enabled) })
+                if (system.systemRef in session.state.hiddenSystemRefs) {
+                    system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = false) })
+                } else {
+                    system.copy(talkgroups = system.talkgroups.map { it.copy(enabled = enabled) })
+                }
             }
             session.state = session.state.copy(systems = systems)
             sendEffectiveLivefeedLocked(session)
@@ -190,9 +218,11 @@ object ScannerRepository {
     fun setChannelsEnabled(profileId: String, keys: Collection<ChannelKey>, enabled: Boolean) {
         if (keys.isEmpty()) return
         val session = sessions[profileId] ?: return
-        val targetKeys = keys.toSet()
-        channelStore?.setMany(profileId, targetKeys, enabled)
         synchronized(session) {
+            val hidden = session.state.hiddenSystemRefs
+            val targetKeys = keys.filterNot { enabled && it.systemRef in hidden }.toSet()
+            if (targetKeys.isEmpty()) return
+            channelStore?.setMany(profileId, targetKeys, enabled)
             val systems = session.state.systems.map { system ->
                 system.copy(
                     talkgroups = system.talkgroups.map { talkgroup ->
@@ -2175,6 +2205,7 @@ object ScannerRepository {
             parsed,
             autoEnableNewTalkgroups
         ) ?: parsed
+        val hiddenSystemRefs = channelStore?.hiddenSystems(session.profile.id).orEmpty()
         val scanLists = ThinLineProtocol.parseScanLists(payload)
         val encrypted = options?.optBoolean("audioEncryptionEnabled", false) == true
         val relayUrl = options?.optString("relayServerURL")?.takeIf { it.isNotBlank() }
@@ -2206,6 +2237,7 @@ object ScannerRepository {
                     else -> "Connected"
                 },
                 systems = systems,
+                hiddenSystemRefs = hiddenSystemRefs,
                 scanLists = if (session.state.scanListSyncing) session.state.scanLists else scanLists,
                 audioEncryptionEnabled = encrypted,
                 encryptionReady = !encrypted || session.masterKey != null,
