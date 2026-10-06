@@ -186,6 +186,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         talkgroupRef: Long? = null
     ) = ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)
     fun refreshAlerts(profileId: String) = ScannerRepository.refreshAlerts(profileId)
+    fun refreshSystemAlerts(profileId: String) = ScannerRepository.refreshSystemAlerts(profileId)
+    fun dismissSystemAlert(profileId: String, alertId: Long) =
+        ScannerRepository.dismissSystemAlert(profileId, alertId)
     fun refreshAlertPreferences(profileId: String) = ScannerRepository.refreshAlertPreferences(profileId)
     fun refreshAlertKeywordLists(profileId: String) = ScannerRepository.refreshAlertKeywordLists(profileId)
     fun createAlertKeywordList(profileId: String, label: String, description: String, rawKeywords: String) =
