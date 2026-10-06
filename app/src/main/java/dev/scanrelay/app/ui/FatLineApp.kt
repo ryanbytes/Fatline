@@ -250,7 +250,11 @@ private fun ScannerScreen(
                 }
             } else {
                 items(recent, key = { call -> "recent-" + call.profileId + "-" + call.id }) { call ->
-                    CallRow(call, onReplay = { viewModel.replay(call.profileId, call.id) })
+                    CallRow(
+                        call,
+                        onReplay = { viewModel.replay(call.profileId, call.id) },
+                        onDownload = { viewModel.downloadCall(call.profileId, call.id) }
+                    )
                 }
             }
         }
@@ -831,7 +835,11 @@ private fun HistoryScreen(
                 item { Text("No loaded calls match the search.", modifier = Modifier.padding(16.dp)) }
             } else {
                 items(visibleHistory, key = { call -> "history-" + call.profileId + "-" + call.id }) { call ->
-                    CallRow(call, onReplay = { viewModel.replay(call.profileId, call.id) })
+                    CallRow(
+                        call,
+                        onReplay = { viewModel.replay(call.profileId, call.id) },
+                        onDownload = { viewModel.downloadCall(call.profileId, call.id) }
+                    )
                 }
             }
         }
@@ -1579,7 +1587,7 @@ private fun InfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun CallRow(call: RadioCall, onReplay: () -> Unit) {
+private fun CallRow(call: RadioCall, onReplay: () -> Unit, onDownload: () -> Unit) {
     Card(Modifier.padding(horizontal = 16.dp)) {
         Row(
             Modifier.fillMaxWidth().padding(12.dp),
@@ -1594,7 +1602,10 @@ private fun CallRow(call: RadioCall, onReplay: () -> Unit) {
                     Text(it, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            OutlinedButton(onClick = onReplay) { Text("Replay") }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(onClick = onReplay) { Text("Replay") }
+                OutlinedButton(onClick = onDownload) { Text("Download") }
+            }
         }
     }
 }
