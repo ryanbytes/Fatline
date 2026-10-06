@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -83,7 +84,17 @@ fun FatLineApp(viewModel: ScannerViewModel) {
         }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme()) {
+    val accent = selectedProfileId
+        ?.let { scanner.servers[it]?.uiAccentColor }
+        ?.let(::uiAccentRgb)
+    val colorScheme = if (accent != null) {
+        val color = Color(accent.red, accent.green, accent.blue)
+        darkColorScheme(primary = color, secondary = color, tertiary = color)
+    } else {
+        darkColorScheme()
+    }
+
+    MaterialTheme(colorScheme = colorScheme) {
         Surface(Modifier.fillMaxSize()) {
             Scaffold(
                 bottomBar = {
