@@ -196,7 +196,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                                     server.profile.id,
                                                     call.systemRef,
                                                     call.talkgroupRef,
-                                                    call.key !in server.avoided
+                                                    dev.scanrelay.app.model.ChannelKey(call.systemRef, call.talkgroupRef) !in server.avoided
                                                 )
                                             }) { Text(if (dev.scanrelay.app.model.ChannelKey(call.systemRef, call.talkgroupRef) in server.avoided) "Unavoid" else "Avoid") }
                                             OutlinedButton(onClick = viewModel::skip) { Text("Skip") }
