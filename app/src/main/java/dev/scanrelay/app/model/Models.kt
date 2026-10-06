@@ -218,6 +218,7 @@ data class ServerScannerState(
     val incidentMappingEnabled: Boolean = false,
     val time12hFormat: Boolean = false,
     val uiAccentColor: String? = null,
+    val userUiAccentColor: String? = null,
     val historyHasMore: Boolean = false,
     val historySystemRef: Long? = null,
     val historyTalkgroupRef: Long? = null,
