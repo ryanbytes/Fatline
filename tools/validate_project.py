@@ -32,6 +32,7 @@ required = [
     'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt',
     'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt',
+    'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt',
 ]
 for rel in required:
     require((ROOT / rel).is_file(), f'missing {rel}')
@@ -140,7 +141,7 @@ require('MediaLibraryService' in service and 'MediaLibrarySession' in service an
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
 require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
-require('MAX_QUEUE_ITEMS = 30' in service and 'trimQueueForIncomingCall' in service, 'bounded playback queue handling missing')
+require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIndex' in service, 'bounded playback queue handling missing')
 require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
 
 # User-visible ThinLine parity / enhancements.
@@ -256,6 +257,10 @@ require('requestPlaybackCall' in socket and 'session.socket?.requestPlaybackCall
 require('callFlag == ThinLineProtocol.PLAY_FLAG' in repo, 'CAL play responses must be classified as replay')
 require('playbackCallUsesPublicClientPlayFlag' in protocol_tests, 'CAL playback flag regression test missing')
 require('continueHistory' in repo and 'continueReplayQueue' in repo and 'requestNextContinueReplay' in repo, 'continuous archive playback engine missing')
+require('PlaybackQueuePolicy.removalIndex' in service and 'trimQueueForIncomingCall(liveFeed)' in service, 'playback queue trimming must be media-type aware')
+require((ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').exists(), 'playback queue policy missing')
+require('liveOverflowRemovesOnlyLiveItems' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'live queue isolation regression test missing')
+require('replayOverflowDoesNotDiscardQueuedLiveTraffic' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'replay queue isolation regression test missing')
 require('continuationCallIds' in repo and 'historyContinueStartsAtSelectedAndMovesTowardNewest' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive Continue ordering regression missing')
 require('continueHistory' in viewmodel and 'Text("Continue")' in ui, 'History Continue UI/view-model bridge missing')
 require('AlertToneSet' in models and 'toneDetectionEnabled' in models and 'toneSets' in models, 'talkgroup tone-set metadata missing')

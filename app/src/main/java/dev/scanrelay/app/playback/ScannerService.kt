@@ -274,7 +274,7 @@ class ScannerService : MediaLibraryService() {
             .build()
 
         if (player.playbackState == Player.STATE_ENDED) player.clearMediaItems()
-        trimQueueForIncomingCall()
+        trimQueueForIncomingCall(liveFeed)
         player.addMediaItem(item)
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         if (!player.playWhenReady) player.play()
@@ -302,14 +302,15 @@ class ScannerService : MediaLibraryService() {
         }
     }
 
-    private fun trimQueueForIncomingCall() {
-        if (player.mediaItemCount < MAX_QUEUE_ITEMS) return
-        val current = player.currentMediaItemIndex
-        val removeIndex = when {
-            current > 0 -> 0
-            player.mediaItemCount > 1 -> 1
-            else -> -1
+    private fun trimQueueForIncomingCall(liveFeed: Boolean) {
+        val mediaIds = List(player.mediaItemCount) { index ->
+            player.getMediaItemAt(index).mediaId
         }
+        val removeIndex = PlaybackQueuePolicy.removalIndex(
+            mediaIds = mediaIds,
+            currentIndex = player.currentMediaItemIndex,
+            incomingLiveFeed = liveFeed
+        )
         if (removeIndex >= 0) player.removeMediaItem(removeIndex)
     }
 
@@ -445,7 +446,6 @@ class ScannerService : MediaLibraryService() {
         private const val PREFS = "fatline_session"
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
         private const val ROOT_ID = "fatline_root"
-        private const val MAX_QUEUE_ITEMS = 30
         private const val NETWORK_LOSS_GRACE_MS = 650L
 
         @Volatile private var suppressRepositoryServiceCallbacks = false
