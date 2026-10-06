@@ -310,7 +310,7 @@ private fun NowPlayingCard(server: ServerScannerState, call: RadioCall, viewMode
             InfoRow("System", call.systemLabel)
             InfoRow("TGID", call.talkgroupRef.toString())
             talkgroup?.tag?.takeIf { it.isNotBlank() }?.let { InfoRow("Tag", it) }
-            call.sourceRef?.let { InfoRow("Unit", it.toString()) }
+            call.sourceRef?.let { InfoRow("Unit", call.sourceLabel ?: it.toString()) }
             call.frequency?.let { InfoRow("Frequency", formatFrequency(it)) }
             call.durationSeconds?.let { InfoRow("Duration", String.format(Locale.US, "%.1f s", it)) }
             if (call.dateTime.isNotBlank()) InfoRow("Time", call.dateTime)
