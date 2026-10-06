@@ -56,6 +56,11 @@ class ThinLineProtocolTest {
         assertEquals("[\"CAL\",\"42\",\"d\"]", ThinLineProtocol.call(42, true))
     }
 
+    @Test fun playbackCallUsesPublicClientPlayFlag() {
+        assertEquals("[\"CAL\",\"42\",\"p\"]", ThinLineProtocol.playbackCall(42))
+    }
+
+
     @Test fun listenerCountAcceptsNumericAndStringPayloads() {
         assertEquals(7, ThinLineProtocol.parseListenerCount(7))
         assertEquals(12, ThinLineProtocol.parseListenerCount("12"))

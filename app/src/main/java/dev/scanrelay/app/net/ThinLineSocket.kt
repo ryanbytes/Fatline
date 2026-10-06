@@ -89,6 +89,7 @@ class ThinLineSocket(
     fun requestHistory(limit: Int, offset: Int, systemRef: Long?, talkgroups: Collection<Long>): Boolean =
         send(ThinLineProtocol.listCalls(limit, offset, -1, systemRef, talkgroups))
     fun requestCall(callId: Long, download: Boolean = false): Boolean = send(ThinLineProtocol.call(callId, download))
+    fun requestPlaybackCall(callId: Long): Boolean = send(ThinLineProtocol.playbackCall(callId))
     fun send(text: String): Boolean = socket?.send(text) ?: false
 
     fun close() {

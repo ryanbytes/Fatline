@@ -1449,7 +1449,7 @@ object ScannerRepository {
             return
         }
         synchronized(session) { session.pendingReplay += callId }
-        session.socket?.requestCall(callId)
+        session.socket?.requestPlaybackCall(callId)
     }
 
     fun downloadCall(profileId: String, callId: Long) {
@@ -1895,7 +1895,8 @@ object ScannerRepository {
                 handleConfig(session, envelope.payload as? JSONObject ?: return)
             }
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
-                scope.launch { session.callMutex.withLock { processCall(session, payload, generation) } }
+                val callFlag = envelope.flag?.toString()
+                scope.launch { session.callMutex.withLock { processCall(session, payload, generation, callFlag) } }
             }
             ThinLineProtocol.LIST_CALL -> handleHistory(session, envelope.payload as? JSONObject ?: return)
             ThinLineProtocol.ALERT -> handleAlert(session, envelope.payload)
@@ -2150,7 +2151,12 @@ object ScannerRepository {
         )
     }
 
-    private fun processCall(session: Session, payload: JSONObject, generation: Long? = null) {
+    private fun processCall(
+        session: Session,
+        payload: JSONObject,
+        generation: Long? = null,
+        callFlag: String? = null
+    ) {
         if (generation != null) {
             if (!isCurrent(session, generation)) return
         } else if (!isCurrent(session)) return
@@ -2238,7 +2244,8 @@ object ScannerRepository {
         val shouldPlay: Boolean
         var replayRequested = false
         synchronized(session) {
-            replayRequested = session.pendingReplay.remove(id)
+            val locallyRequestedReplay = session.pendingReplay.remove(id)
+            replayRequested = callFlag == ThinLineProtocol.PLAY_FLAG || locallyRequestedReplay
             val enabled = session.state.systems.flatMap { it.talkgroups }.firstOrNull { it.key == key }?.enabled == true
             val talkgroupHoldAllows = session.state.hold?.let { it == key } ?: true
             val systemHoldAllows = session.state.holdSystemRef?.let { it == systemRef } ?: true

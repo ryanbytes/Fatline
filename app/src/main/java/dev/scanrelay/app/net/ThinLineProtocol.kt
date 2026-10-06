@@ -28,6 +28,7 @@ object ThinLineProtocol {
     const val SERVER = "SRV"
     const val VERSION = "VER"
     const val DOWNLOAD_FLAG = "d"
+    const val PLAY_FLAG = "p"
 
     data class Envelope(val command: String, val payload: Any? = null, val flag: Any? = null)
 
@@ -94,6 +95,10 @@ object ThinLineProtocol {
     /** ThinLine's public web client serializes CAL ids as decimal strings. */
     fun call(callId: Long, download: Boolean = false): String =
         command(CALL, callId.toString(), if (download) DOWNLOAD_FLAG else null)
+
+    /** Archive playback uses the public client's "p" CAL flag. */
+    fun playbackCall(callId: Long): String =
+        command(CALL, callId.toString(), PLAY_FLAG)
 
     fun parseListenerCount(payload: Any?): Int? = when (payload) {
         is Number -> payload.toInt()
