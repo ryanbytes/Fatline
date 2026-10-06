@@ -139,6 +139,8 @@ data class ServerScannerState(
     val encryptionReady: Boolean = false,
     val serverVersion: String? = null,
     val historyHasMore: Boolean = false,
+    val historySystemRef: Long? = null,
+    val historyTalkgroupRef: Long? = null,
     val error: String? = null
 )
 
