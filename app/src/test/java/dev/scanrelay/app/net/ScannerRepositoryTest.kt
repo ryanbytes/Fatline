@@ -1,5 +1,6 @@
 package dev.scanrelay.app.net
 
+import dev.scanrelay.app.model.AlertPreference
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScanList
@@ -234,6 +235,69 @@ class ScannerRepositoryTest {
         assertEquals("Vehicle pursuit", alerts[0].body)
         assertEquals(listOf("Station 1"), alerts[1].matchedToneSets)
         assertEquals(101L, alerts[0].callId)
+    }
+
+    @Test
+    fun alertPreferencesRoundTripPreservesServerExtras() {
+        val raw = JSONArray(
+            """
+            [
+              {
+                "systemRef": 1,
+                "talkgroupRef": 11,
+                "alertEnabled": true,
+                "toneAlerts": false,
+                "keywordAlerts": true,
+                "keywords": ["pursuit", "armed"],
+                "keywordListIds": [7, "8"],
+                "toneSetIds": ["station-1", "station-2"],
+                "notificationSound": "alert.wav",
+                "toneSetSounds": {"station-1":"chirp.wav"},
+                "pagerAlert": true,
+                "toneSetPagerAlerts": {"station-2":true}
+              }
+            ]
+            """.trimIndent()
+        )
+
+        val parsed = ScannerRepository.parseAlertPreferences(raw)
+        val pref = parsed.single()
+
+        assertEquals(ChannelKey(1, 11), pref.key)
+        assertTrue(pref.alertEnabled)
+        assertFalse(pref.toneAlerts)
+        assertTrue(pref.keywordAlerts)
+        assertEquals(listOf("pursuit", "armed"), pref.keywords)
+        assertEquals(listOf(7L, 8L), pref.keywordListIds)
+        assertEquals(listOf("station-1", "station-2"), pref.toneSetIds)
+        assertEquals("alert.wav", pref.notificationSound)
+        assertEquals("chirp.wav", pref.toneSetSounds["station-1"])
+        assertTrue(pref.pagerAlert)
+        assertTrue(pref.toneSetPagerAlerts["station-2"] == true)
+
+        val encoded = ScannerRepository.serializeAlertPreferences(parsed).getJSONObject(0)
+        assertEquals(1L, encoded.getLong("systemRef"))
+        assertEquals(11L, encoded.getLong("talkgroupRef"))
+        assertEquals("alert.wav", encoded.getString("notificationSound"))
+        assertEquals("chirp.wav", encoded.getJSONObject("toneSetSounds").getString("station-1"))
+        assertTrue(encoded.getJSONObject("toneSetPagerAlerts").getBoolean("station-2"))
+        assertEquals(2, encoded.getJSONArray("keywords").length())
+        assertEquals(2, encoded.getJSONArray("keywordListIds").length())
+        assertEquals(2, encoded.getJSONArray("toneSetIds").length())
+    }
+
+    @Test
+    fun newAlertPreferenceUsesServerCompatibleDefaults() {
+        val encoded = ScannerRepository.serializeAlertPreferences(
+            listOf(AlertPreference(systemRef = 2, talkgroupRef = 21, alertEnabled = true))
+        ).getJSONObject(0)
+
+        assertTrue(encoded.getBoolean("alertEnabled"))
+        assertTrue(encoded.getBoolean("toneAlerts"))
+        assertTrue(encoded.getBoolean("keywordAlerts"))
+        assertEquals(0, encoded.getJSONArray("keywords").length())
+        assertEquals(0, encoded.getJSONArray("keywordListIds").length())
+        assertEquals(0, encoded.getJSONArray("toneSetIds").length())
     }
 
 }
