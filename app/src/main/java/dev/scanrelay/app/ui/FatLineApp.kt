@@ -1066,7 +1066,10 @@ private fun TranscriptsScreen(
             }
 
             items(server.transcripts, key = { "transcript-" + it.profileId + "-" + it.callId }) { transcript ->
-                Card(Modifier.padding(horizontal = 16.dp)) {
+                Card(
+                    onClick = { viewModel.replay(server.profile.id, transcript.callId) },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             transcript.talkgroupLabel ?: transcript.talkgroupName ?: "Call ${transcript.callId}",
@@ -1087,6 +1090,7 @@ private fun TranscriptsScreen(
                         transcript.transcriptionStatus?.let {
                             Text("Status: $it", style = MaterialTheme.typography.bodySmall)
                         }
+                        Text("Tap to play", style = MaterialTheme.typography.labelSmall)
                     }
                 }
             }
