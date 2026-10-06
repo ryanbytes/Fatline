@@ -3,6 +3,7 @@ package dev.scanrelay.app.net
 import android.content.Context
 import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.data.ChannelStore
+import dev.scanrelay.app.model.CallSource
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ConnectionStatus
 import dev.scanrelay.app.model.RadioCall
@@ -756,7 +757,9 @@ object ScannerRepository {
         val systemRef = payload.optLong("system")
         val talkgroupRef = payload.optLong("talkgroup")
         val (systemLabel, talkgroupLabel) = labels(session.state.systems, systemRef, talkgroupRef)
-        val sourceRef = payload.optLong("source").takeIf { it > 0 }
+        val sources = resolveCallSources(session.state.systems, systemRef, payload)
+        val sourceRef = sources.firstNotNullOfOrNull { it.sourceRef }
+            ?: payload.optLong("source").takeIf { it > 0 }
         return RadioCall(
             profileId = session.profile.id,
             serverName = session.profile.name,
@@ -767,7 +770,9 @@ object ScannerRepository {
             talkgroupLabel = talkgroupLabel,
             dateTime = payload.optString("dateTime"),
             sourceRef = sourceRef,
-            sourceLabel = unitDisplay(session.state.systems, systemRef, sourceRef),
+            sourceLabel = sources.firstOrNull()?.display
+                ?: sourceRef?.let { formatUnitDisplay(session.state.systems, systemRef, it) },
+            sources = sources,
             frequency = payload.optLong("frequency").takeIf { it > 0 },
             durationSeconds = payload.optDouble("duration").takeIf { !it.isNaN() && it > 0 }
         )
@@ -833,7 +838,9 @@ object ScannerRepository {
         val audioName = payload.optString("audioName").takeIf { it.isNotBlank() }
         val path = if (audioBytes.isNotEmpty()) writeAudio(context, session.profile.id, id, audioName, mime, audioBytes) else null
         val (systemLabel, talkgroupLabel) = labels(session.state.systems, systemRef, talkgroupRef)
-        val sourceRef = payload.optLong("source").takeIf { it > 0 }
+        val sources = resolveCallSources(session.state.systems, systemRef, payload)
+        val sourceRef = sources.firstNotNullOfOrNull { it.sourceRef }
+            ?: payload.optLong("source").takeIf { it > 0 }
         val call = RadioCall(
             profileId = session.profile.id,
             serverName = session.profile.name,
@@ -848,7 +855,9 @@ object ScannerRepository {
             audioMime = mime,
             audioName = audioName,
             sourceRef = sourceRef,
-            sourceLabel = unitDisplay(session.state.systems, systemRef, sourceRef),
+            sourceLabel = sources.firstOrNull()?.display
+                ?: sourceRef?.let { formatUnitDisplay(session.state.systems, systemRef, it) },
+            sources = sources,
             frequency = payload.optLong("frequency").takeIf { it > 0 },
             durationSeconds = payload.optDouble("duration").takeIf { !it.isNaN() && it > 0 },
             encryptedAudio = encrypted
@@ -938,16 +947,73 @@ object ScannerRepository {
         return (system?.label ?: "System $systemRef") to (talkgroup?.displayName ?: "TG $talkgroupRef")
     }
 
-    private fun unitDisplay(systems: List<SystemConfig>, systemRef: Long, sourceRef: Long?): String? {
-        val source = sourceRef ?: return null
-        val alias = systems
+    internal fun resolveCallSources(
+        systems: List<SystemConfig>,
+        systemRef: Long,
+        payload: JSONObject
+    ): List<CallSource> {
+        val rawSources = payload.optJSONArray("sources")
+        val parsed = mutableListOf<CallSource>()
+        val seen = mutableSetOf<Long>()
+        val fallbackTags = mutableListOf<Pair<Int, String>>()
+
+        if (rawSources != null) {
+            val ordered = buildList {
+                for (i in 0 until rawSources.length()) {
+                    rawSources.optJSONObject(i)?.let(::add)
+                }
+            }.sortedBy { it.optInt("pos", 0) }
+
+            ordered.forEach { item ->
+                val position = item.optInt("pos", 0)
+                val source = item.optLong("src").takeIf { it > 0 }
+                val tag = item.optString("tag").trim().takeIf { it.isNotBlank() }
+                if (source != null) {
+                    if (seen.add(source)) {
+                        parsed += CallSource(
+                            position = position,
+                            sourceRef = source,
+                            tag = tag,
+                            display = formatUnitDisplay(systems, systemRef, source, tag)
+                        )
+                    }
+                } else if (tag != null) {
+                    fallbackTags += position to tag
+                }
+            }
+        }
+
+        if (parsed.isNotEmpty()) return parsed
+        fallbackTags.minByOrNull { it.first }?.let { (position, tag) ->
+            return listOf(CallSource(position = position, tag = tag, display = tag))
+        }
+
+        val legacy = payload.optLong("source").takeIf { it > 0 } ?: return emptyList()
+        return listOf(
+            CallSource(
+                sourceRef = legacy,
+                display = formatUnitDisplay(systems, systemRef, legacy)
+            )
+        )
+    }
+
+    private fun formatUnitDisplay(
+        systems: List<SystemConfig>,
+        systemRef: Long,
+        sourceRef: Long,
+        tag: String? = null
+    ): String {
+        val sourceText = sourceRef.toString()
+        val dynamicAlias = tag?.trim()?.takeIf { it.isNotBlank() && it != sourceText }
+        val configuredAlias = systems
             .firstOrNull { it.systemRef == systemRef }
             ?.units
-            ?.firstOrNull { it.matches(source) }
+            ?.firstOrNull { it.matches(sourceRef) }
             ?.label
             ?.trim()
-            ?.takeIf { it.isNotBlank() && it != source.toString() }
-        return alias?.let { "$it | $source" }
+            ?.takeIf { it.isNotBlank() && it != sourceText }
+        val alias = dynamicAlias ?: configuredAlias
+        return alias?.let { "$it | $sourceText" } ?: sourceText
     }
 
     private fun callSortKey(call: RadioCall): Long = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
