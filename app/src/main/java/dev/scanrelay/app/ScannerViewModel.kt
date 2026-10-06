@@ -184,9 +184,12 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun reorderScanList(profileId: String, fromIndex: Int, toIndex: Int) =
         ScannerRepository.reorderScanList(profileId, fromIndex, toIndex)
     fun setPaused(profileId: String, paused: Boolean) = ScannerRepository.setPaused(profileId, paused)
-    fun setFavorite(profileId: String, systemRef: Long, talkgroupRef: Long, favorite: Boolean) = ScannerRepository.setFavorite(profileId, systemRef, talkgroupRef, favorite)
-    fun setFavorites(profileId: String, keys: Collection<ChannelKey>, favorite: Boolean) =
-        ScannerRepository.setFavorites(profileId, keys, favorite)
+    fun setFavorite(profileId: String, systemRef: Long, talkgroupRef: Long, favorite: Boolean) =
+        ScannerRepository.setFavorite(profileId, systemRef, talkgroupRef, favorite)
+    fun setSystemFavorite(profileId: String, systemRef: Long, favorite: Boolean) =
+        ScannerRepository.setSystemFavorite(profileId, systemRef, favorite)
+    fun setTagFavorite(profileId: String, systemRef: Long, tag: String, favorite: Boolean) =
+        ScannerRepository.setTagFavorite(profileId, systemRef, tag, favorite)
     fun setHold(profileId: String, systemRef: Long, talkgroupRef: Long) = ScannerRepository.setHold(profileId, ChannelKey(systemRef, talkgroupRef))
     fun setSystemHold(profileId: String, systemRef: Long?) = ScannerRepository.setSystemHold(profileId, systemRef)
     fun clearHold(profileId: String) = ScannerRepository.clearHold(profileId)
