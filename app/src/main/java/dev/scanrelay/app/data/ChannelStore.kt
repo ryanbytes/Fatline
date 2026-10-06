@@ -4,20 +4,48 @@ import android.content.Context
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.SystemConfig
 
+internal fun reconcileChannelSelection(
+    currentScope: Set<ChannelKey>,
+    savedSelection: Set<ChannelKey>,
+    knownScope: Set<ChannelKey>,
+    autoEnableNewTalkgroups: Boolean
+): Set<ChannelKey> {
+    val retained = savedSelection.intersect(currentScope)
+    if (!autoEnableNewTalkgroups) return retained
+    return retained + (currentScope - knownScope)
+}
+
 class ChannelStore(context: Context) {
     private val prefs = context.getSharedPreferences("fatline_channels", Context.MODE_PRIVATE)
 
     private fun initializedKey(profileId: String) = "selection_initialized_$profileId"
     private fun selectedKey(profileId: String) = "selected_$profileId"
+    private fun knownKey(profileId: String) = "known_$profileId"
     private fun favoritesKey(profileId: String) = "favorites_$profileId"
 
-    fun apply(profileId: String, systems: List<SystemConfig>): List<SystemConfig> {
+    fun apply(
+        profileId: String,
+        systems: List<SystemConfig>,
+        autoEnableNewTalkgroups: Boolean = false
+    ): List<SystemConfig> {
         val all = systems.flatMap { system -> system.talkgroups.map { it.key } }.toSet()
         val initialized = prefs.getBoolean(initializedKey(profileId), false)
         val selected = if (initialized) {
-            readKeys(selectedKey(profileId))
+            val saved = readKeys(selectedKey(profileId))
+            val hasKnownBaseline = prefs.contains(knownKey(profileId))
+            // Existing FatLine installs predate the known-scope key. Treat the
+            // current config as their baseline so an upgrade never bulk-enables
+            // channels merely because they look new to this app version.
+            val known = if (hasKnownBaseline) readKeys(knownKey(profileId)) else all
+            reconcileChannelSelection(all, saved, known, autoEnableNewTalkgroups).also {
+                writeKeys(selectedKey(profileId), it)
+                writeKeys(knownKey(profileId), all)
+            }
         } else {
+            // FatLine's established first-connect behavior is all authorized
+            // channels enabled. The server option only controls later scope additions.
             writeKeys(selectedKey(profileId), all)
+            writeKeys(knownKey(profileId), all)
             prefs.edit().putBoolean(initializedKey(profileId), true).apply()
             all
         }
@@ -60,6 +88,7 @@ class ChannelStore(context: Context) {
         prefs.edit()
             .remove(initializedKey(profileId))
             .remove(selectedKey(profileId))
+            .remove(knownKey(profileId))
             .remove(favoritesKey(profileId))
             .apply()
     }
