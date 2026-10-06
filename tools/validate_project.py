@@ -66,7 +66,7 @@ require('fatline-ci-debug.p12.b64' in (ROOT / '.github/workflows/android.yml').r
 require('Verify stable APK signing certificate' in (ROOT / '.github/workflows/android.yml').read_text(), 'APK certificate verification missing')
 require((ROOT / 'tools/fatline-ci-debug.p12.b64').is_file(), 'stable CI debug key material missing')
 
-for cmd in ['ALT','CAL','CFG','ERR','XPR','LCL','LSC','LFM','MAX','PIN','PNS','PNG','VER']:
+for cmd in ['ALT','INC','CAL','CFG','ERR','XPR','LCL','LSC','LFM','MAX','PIN','PNS','PNG','VER']:
     require(f'= "{cmd}"' in protocol, f'protocol constant {cmd} missing')
 
 require(json.dumps(['PIN','MTIzNA=='], separators=(',', ':')) == '["PIN","MTIzNA=="]', 'PIN fixture malformed')
@@ -185,6 +185,12 @@ require('sources: List<CallSource>' in models and 'sourceDisplay' in models, 'or
 require('call.sourceDisplay' in ui and 'call.sources.size > 1' in ui, 'scanner must display all resolved call sources')
 require('systemsParseExactAndRangeUnitAliases' in protocol_tests, 'unit alias regression test missing')
 require('callSourcesAreOrderedDeduplicatedAndAliasAware' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'multi-source parser regression test missing')
+require('alertsLoading' in models and 'alertsError' in models and 'stableKey' in models, 'persisted rich-alert state missing')
+require('refreshAlerts' in repo and '/api/alerts' in repo and 'parseServerAlerts' in repo, 'server alert-history loading missing')
+require('ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)' in repo, 'incident updates must refresh persisted alert details')
+require('AppTab.Alerts' in ui and 'Search alerts' in ui and 'Replay call' in ui, 'dedicated searchable Alerts screen missing')
+require('refreshAlerts' in viewmodel, 'alert refresh view-model bridge missing')
+require('richAlertHistoryParsesAndSortsServerFields' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'rich alert parser regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
