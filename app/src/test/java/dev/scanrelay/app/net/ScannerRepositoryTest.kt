@@ -329,6 +329,15 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun alertToneSetIdsTrimDropBlanksAndDeduplicate() {
+        val ids = ScannerRepository.normalizeAlertToneSetIds(
+            listOf(" station-1 ", "", "station-2", "station-1")
+        )
+
+        assertEquals(listOf("station-1", "station-2"), ids)
+    }
+
+    @Test
     fun customAlertKeywordsNormalizeCommaNewlineWhitespaceAndDuplicates() {
         val keywords = ScannerRepository.normalizeAlertKeywords(
             " pursuit, shots fired\npursuit,  cardiac arrest  , "
