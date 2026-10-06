@@ -1972,6 +1972,7 @@ object ScannerRepository {
         val parsed = ThinLineProtocol.parseSystems(payload)
         val options = payload.optJSONObject("options")
         val autoEnableNewTalkgroups = options?.optBoolean("autoEnableNewTalkgroups", false) == true
+        val incidentMappingEnabled = options?.optBoolean("incidentMappingEnabled", false) == true
         val systems = channelStore?.apply(
             session.profile.id,
             parsed,
@@ -2012,6 +2013,7 @@ object ScannerRepository {
                 encryptionReady = !encrypted || session.masterKey != null,
                 showListenersCount = showListenersCount,
                 listenerCount = if (showListenersCount) session.state.listenerCount else 0,
+                incidentMappingEnabled = incidentMappingEnabled,
                 error = null
             )
             if (session.state.paused) session.socket?.stopLivefeed()
