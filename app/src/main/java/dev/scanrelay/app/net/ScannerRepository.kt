@@ -60,6 +60,8 @@ object ScannerRepository {
         @Volatile var scanListSaveJob: Job? = null
         @Volatile var scanListRevision = 0L
         @Volatile var alertRefreshJob: Job? = null
+        @Volatile var hasConnected = false
+        @Volatile var disconnectNotified = false
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -740,6 +742,10 @@ object ScannerRepository {
                     )
                 }
                 publish()
+                notifyConnectionLoss(
+                    session,
+                    if (networkAvailable) message else "Network unavailable"
+                )
                 scheduleReconnect(session, generation)
             }
 
@@ -756,6 +762,10 @@ object ScannerRepository {
                     )
                 }
                 publish()
+                notifyConnectionLoss(
+                    session,
+                    if (networkAvailable) reason.ifBlank { "Connection closed" } else "Network unavailable"
+                )
                 scheduleReconnect(session, generation)
             }
         })
@@ -776,7 +786,33 @@ object ScannerRepository {
                 )
             }
             publish()
+            notifyConnectionLoss(
+                session,
+                if (networkAvailable) error.message?.takeIf { it.isNotBlank() } ?: "Connection failed"
+                else "Network unavailable"
+            )
             scheduleReconnect(session, generation)
+        }
+    }
+
+    private fun notifyConnectionLoss(session: Session, detail: String) {
+        val shouldNotify = synchronized(session) {
+            if (!isCurrent(session) || !session.hasConnected || session.disconnectNotified) {
+                false
+            } else {
+                session.disconnectNotified = true
+                true
+            }
+        }
+        if (!shouldNotify) return
+        appContext?.let { context ->
+            val notificationId = ("connection-loss:" + session.profile.id).hashCode() and Int.MAX_VALUE
+            AlertNotifier.postConnectionLoss(
+                context,
+                session.profile.name,
+                detail.ifBlank { "Scanner connection lost" },
+                notificationId
+            )
         }
     }
 
@@ -943,6 +979,8 @@ object ScannerRepository {
             session.relayUrl = relayUrl
             session.clientToken = token
             needsKeyExchange = encrypted && session.masterKey == null
+            session.hasConnected = true
+            session.disconnectNotified = false
             session.state = session.state.copy(
                 status = ConnectionStatus.CONNECTED,
                 statusText = when {

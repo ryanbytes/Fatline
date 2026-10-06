@@ -10,6 +10,7 @@ import dev.scanrelay.app.MainActivity
 
 object AlertNotifier {
     private const val CHANNEL_ID = "fatline_alerts"
+    private const val CONNECTION_CHANNEL_ID = "fatline_connection"
 
     fun post(context: Context, title: String, body: String, notificationId: Int) {
         val manager = context.getSystemService(NotificationManager::class.java)
@@ -27,6 +28,32 @@ object AlertNotifier {
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        manager.notify(notificationId, notification)
+    }
+
+    fun postConnectionLoss(context: Context, serverName: String, detail: String, notificationId: Int) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CONNECTION_CHANNEL_ID,
+                "Scanner connection",
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+        )
+        val open = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CONNECTION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setContentTitle("$serverName disconnected")
+            .setContentText(detail)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
             .setContentIntent(open)
             .setAutoCancel(true)
             .build()
