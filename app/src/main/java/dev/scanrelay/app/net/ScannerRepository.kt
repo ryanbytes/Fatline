@@ -59,6 +59,7 @@ object ScannerRepository {
         val settingsMutex = Mutex()
         @Volatile var scanListSaveJob: Job? = null
         @Volatile var scanListRevision = 0L
+        @Volatile var alertRefreshJob: Job? = null
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -521,6 +522,73 @@ object ScannerRepository {
         publish()
     }
 
+    fun refreshAlerts(profileId: String) {
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    alertsLoading = false,
+                    alertsError = "Sign in to load server alert history"
+                )
+            }
+            publish()
+            return
+        }
+
+        val shouldStart = synchronized(session) {
+            if (session.state.alertsLoading) false
+            else {
+                session.state = session.state.copy(alertsLoading = true, alertsError = null)
+                true
+            }
+        }
+        if (!shouldStart) return
+        publish()
+
+        scope.launch {
+            try {
+                val origin = httpOrigin(session.profile.baseUrl)
+                val request = Request.Builder()
+                    .url("$origin/api/alerts")
+                    .header("Authorization", "Bearer $pin")
+                    .get()
+                    .build()
+                val alerts = parseServerAlerts(session.profile, executeJsonArray(request))
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        alerts = alerts.take(500),
+                        alertsLoading = false,
+                        alertsError = null
+                    )
+                }
+                publish()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    session.state = session.state.copy(
+                        alertsLoading = false,
+                        alertsError = error.message?.takeIf { it.isNotBlank() } ?: "Alert history refresh failed"
+                    )
+                }
+                publish()
+            }
+        }
+    }
+
+    private fun scheduleAlertRefresh(session: Session) {
+        if (session.profile.pin.isBlank()) return
+        synchronized(session) {
+            session.alertRefreshJob?.cancel()
+            session.alertRefreshJob = scope.launch {
+                delay(300L)
+                synchronized(session) { session.alertRefreshJob = null }
+                refreshAlerts(session.profile.id)
+            }
+        }
+    }
     fun replay(profileId: String, callId: Long) {
         val session = sessions[profileId] ?: return
         val existing = session.state.history.firstOrNull { it.id == callId }
@@ -574,6 +642,7 @@ object ScannerRepository {
         session.handshakeJob?.cancel()
         session.keyJob?.cancel()
         session.scanListSaveJob?.cancel()
+        session.alertRefreshJob?.cancel()
         session.socketGeneration++
         val old = session.socket
         session.socket = null
@@ -585,6 +654,7 @@ object ScannerRepository {
             session.masterKey = null
             session.keyJob = null
             session.scanListSaveJob = null
+            session.alertRefreshJob = null
             session.handshakeJob = null
             session.relayUrl = null
             session.clientToken = null
@@ -875,6 +945,7 @@ object ScannerRepository {
             else sendEffectiveLivefeedLocked(session)
         }
         publish()
+        if (session.profile.pin.isNotBlank()) scheduleAlertRefresh(session)
         if (needsKeyExchange) startKeyExchange(session)
     }
 
@@ -1140,6 +1211,7 @@ object ScannerRepository {
             val notificationId = (session.profile.id.hashCode() * 31 + body.hashCode()).absoluteValue
             AlertNotifier.post(it, "${session.profile.name}: $title", body, notificationId)
         }
+        scheduleAlertRefresh(session)
     }
 
     private fun decodeBuffer(raw: Any?): ByteArray {
