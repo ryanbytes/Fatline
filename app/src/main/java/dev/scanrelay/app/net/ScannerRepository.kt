@@ -730,6 +730,68 @@ object ScannerRepository {
         require(!uri.host.isNullOrBlank()) { "Server URL must include a host" }
         return URI(scheme, null, uri.host, uri.port, null, null, null).toString().trimEnd('/')
     }
+    fun setLivefeedBacklogMinutes(profileId: String, minutes: Int) {
+        val session = sessions[profileId] ?: return
+        val value = minutes.coerceAtLeast(0)
+        val pin = session.profile.pin.trim()
+        synchronized(session) {
+            session.state = session.state.copy(
+                livefeedBacklogMinutes = value,
+                userSettingsSaving = pin.isNotBlank(),
+                userSettingsError = if (pin.isBlank()) {
+                    "Sign in to save live-feed backlog"
+                } else {
+                    null
+                }
+            )
+        }
+        publish()
+        if (pin.isBlank()) return
+
+        scope.launch {
+            session.settingsMutex.withLock {
+                if (!isCurrent(session)) return@withLock
+                try {
+                    val origin = httpOrigin(session.profile.baseUrl)
+                    val auth = "Bearer $pin"
+                    val currentRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .get()
+                        .build()
+                    val current = executeSettingsJson(currentRequest)
+                    val updated = mergeLivefeedBacklogIntoSettings(current, value)
+                    val saveRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .post(updated.toString().toRequestBody(JSON_MEDIA_TYPE))
+                        .build()
+                    executeSettingsJson(saveRequest)
+
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            userSettingsSaving = false,
+                            userSettingsError = null
+                        )
+                    }
+                    publish()
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            userSettingsSaving = false,
+                            userSettingsError = error.message?.takeIf { it.isNotBlank() }
+                                ?: "User settings save failed"
+                        )
+                    }
+                    publish()
+                }
+            }
+        }
+    }
+
     fun setPaused(profileId: String, paused: Boolean) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
@@ -2384,6 +2446,7 @@ object ScannerRepository {
             ?.let { it as? String }
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+        val livefeedBacklogMinutes = parseLivefeedBacklogMinutes(userSettings)
         val serverFavorites = parseFavoriteSelection(userSettings, parsed)
         val favoriteSavePending = synchronized(session) { session.favoriteSaveJob?.isActive == true }
         val applyServerFavorites = serverFavorites != null && !favoriteSavePending
@@ -2447,6 +2510,11 @@ object ScannerRepository {
                 time12hFormat = time12hFormat,
                 uiAccentColor = uiAccentColor,
                 userUiAccentColor = userUiAccentColor,
+                livefeedBacklogMinutes = if (session.state.userSettingsSaving) {
+                    session.state.livefeedBacklogMinutes
+                } else {
+                    livefeedBacklogMinutes
+                },
                 error = null
             )
             if (session.state.paused) session.socket?.stopLivefeed()
