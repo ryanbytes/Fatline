@@ -1930,9 +1930,14 @@ object ScannerRepository {
 
     private fun handleConfig(session: Session, payload: JSONObject) {
         val parsed = ThinLineProtocol.parseSystems(payload)
-        val systems = channelStore?.apply(session.profile.id, parsed) ?: parsed
-        val scanLists = ThinLineProtocol.parseScanLists(payload)
         val options = payload.optJSONObject("options")
+        val autoEnableNewTalkgroups = options?.optBoolean("autoEnableNewTalkgroups", false) == true
+        val systems = channelStore?.apply(
+            session.profile.id,
+            parsed,
+            autoEnableNewTalkgroups
+        ) ?: parsed
+        val scanLists = ThinLineProtocol.parseScanLists(payload)
         val encrypted = options?.optBoolean("audioEncryptionEnabled", false) == true
         val relayUrl = options?.optString("relayServerURL")?.takeIf { it.isNotBlank() }
         val token = options?.optString("audioClientToken")?.takeIf { it.isNotBlank() }
