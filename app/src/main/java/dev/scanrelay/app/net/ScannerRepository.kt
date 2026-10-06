@@ -70,6 +70,9 @@ object ScannerRepository {
         var historyOffset = 0
         val pendingEncrypted = ArrayDeque<JSONObject>()
         val pendingReplay = mutableSetOf<Long>()
+        val continueReplayQueue = ArrayDeque<Long>()
+        var continueReplayPending: Long? = null
+        var continueReplayRestoreLivefeed = false
         val callMutex = Mutex()
         val settingsMutex = Mutex()
         @Volatile var scanListSaveJob: Job? = null
@@ -1452,6 +1455,84 @@ object ScannerRepository {
         session.socket?.requestPlaybackCall(callId)
     }
 
+    internal fun continuationCallIds(historyIdsNewestFirst: List<Long>, startId: Long): List<Long> {
+        val index = historyIdsNewestFirst.indexOf(startId)
+        if (index < 0) return emptyList()
+        return historyIdsNewestFirst.take(index + 1).asReversed()
+    }
+
+    fun continueHistory(profileId: String, callId: Long) {
+        val session = sessions[profileId] ?: return
+        val context = appContext ?: return
+        val ids = synchronized(session) {
+            continuationCallIds(session.state.history.map { it.id }, callId)
+        }
+        if (ids.isEmpty()) return
+
+        ScannerService.stopAudio(context)
+        synchronized(session) {
+            session.continueReplayQueue.clear()
+            session.continueReplayQueue.addAll(ids)
+            session.continueReplayPending = null
+            session.continueReplayRestoreLivefeed =
+                !session.state.paused && session.state.status == ConnectionStatus.CONNECTED
+            if (session.continueReplayRestoreLivefeed) {
+                session.socket?.stopLivefeed()
+            }
+        }
+        requestNextContinueReplay(session)
+    }
+
+    private fun requestNextContinueReplay(session: Session) {
+        val context = appContext ?: return
+        while (true) {
+            var cachedCall: RadioCall? = null
+            var requestId: Long? = null
+            synchronized(session) {
+                if (session.continueReplayPending != null) return
+                val nextId = session.continueReplayQueue.pollFirst()
+                if (nextId == null) {
+                    if (session.continueReplayRestoreLivefeed) {
+                        session.continueReplayRestoreLivefeed = false
+                        sendEffectiveLivefeedLocked(session)
+                    }
+                    return
+                }
+
+                val existing = session.state.history.firstOrNull { it.id == nextId }
+                val path = existing?.audioPath
+                if (existing != null && path != null && File(path).isFile) {
+                    cachedCall = existing
+                } else {
+                    session.continueReplayPending = nextId
+                    session.pendingReplay += nextId
+                    requestId = nextId
+                }
+            }
+
+            cachedCall?.let {
+                ScannerService.enqueue(context, it, liveFeed = false)
+                continue
+            }
+
+            val id = requestId ?: continue
+            if (session.socket?.requestPlaybackCall(id) == true) return
+
+            synchronized(session) {
+                session.pendingReplay.remove(id)
+                if (session.continueReplayPending == id) session.continueReplayPending = null
+                session.continueReplayQueue.clear()
+                session.state = session.state.copy(error = "Could not continue archive playback")
+                if (session.continueReplayRestoreLivefeed) {
+                    session.continueReplayRestoreLivefeed = false
+                    sendEffectiveLivefeedLocked(session)
+                }
+            }
+            publish()
+            return
+        }
+    }
+
     fun downloadCall(profileId: String, callId: Long) {
         if (callId <= 0) return
         val session = sessions[profileId] ?: return
@@ -1909,8 +1990,17 @@ object ScannerRepository {
             }
             ThinLineProtocol.PIN_SET -> syncServerPin(session, envelope.payload)
             ThinLineProtocol.ERROR -> {
-                synchronized(session) { session.state = session.state.copy(error = envelope.payload?.toString() ?: "Server error") }
+                var continueAfterError = false
+                synchronized(session) {
+                    session.continueReplayPending?.let { failedId ->
+                        session.pendingReplay.remove(failedId)
+                        session.continueReplayPending = null
+                        continueAfterError = true
+                    }
+                    session.state = session.state.copy(error = envelope.payload?.toString() ?: "Server error")
+                }
                 publish()
+                if (continueAfterError) requestNextContinueReplay(session)
             }
             ThinLineProtocol.EXPIRED -> {
                 synchronized(session) {
@@ -2271,6 +2361,16 @@ object ScannerRepository {
         }
         publish()
         if (shouldPlay && path != null) ScannerService.enqueue(context, call, liveFeed = !replayRequested)
+
+        val continueAfterCall = synchronized(session) {
+            if (session.continueReplayPending == id) {
+                session.continueReplayPending = null
+                true
+            } else {
+                false
+            }
+        }
+        if (continueAfterCall) requestNextContinueReplay(session)
     }
 
     private fun bufferEncryptedCallLocked(session: Session, payload: JSONObject) {
