@@ -191,6 +191,8 @@ require('postConnectionLoss' in (ROOT / 'app/src/main/java/dev/scanrelay/app/ale
 require('hasConnected' in repo and 'disconnectNotified' in repo and 'notifyConnectionLoss' in repo, 'one-shot disconnect notification state missing')
 require('ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)' in repo, 'incident updates must refresh persisted alert details')
 require('AppTab.Alerts' in ui and 'Search alerts' in ui and 'Replay call' in ui, 'dedicated searchable Alerts screen missing')
+require('incidentMapUri' in ui and '"Open map"' in ui and 'Intent.ACTION_VIEW' in ui, 'incident alert map action missing')
+require((ROOT / 'app/src/test/java/dev/scanrelay/app/ui/IncidentMapUriTest.kt').exists(), 'incident map URI regression tests missing')
 require('refreshAlerts' in viewmodel, 'alert refresh view-model bridge missing')
 require('richAlertHistoryParsesAndSortsServerFields' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'rich alert parser regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
