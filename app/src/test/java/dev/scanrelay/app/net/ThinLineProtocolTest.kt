@@ -140,6 +140,39 @@ class ThinLineProtocolTest {
         assertEquals(listOf("Station 1", "station-2"), talkgroup.toneSets.map { it.label })
     }
 
+    @Test fun systemsRetainDatabaseIdsForTranscriptFilters() {
+        val config = JSONObject(
+            """
+            {
+              "systems": [
+                {
+                  "id": 1001,
+                  "systemId": 12,
+                  "systemRef": 1001,
+                  "label": "County",
+                  "talkgroups": [
+                    {
+                      "id": 2002,
+                      "talkgroupId": 34,
+                      "talkgroupRef": 2002,
+                      "label": "Dispatch"
+                    }
+                  ]
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        val system = ThinLineProtocol.parseSystems(config).single()
+        val talkgroup = system.talkgroups.single()
+
+        assertEquals(12L, system.systemId)
+        assertEquals(34L, talkgroup.talkgroupId)
+        assertEquals(1001L, system.systemRef)
+        assertEquals(2002L, talkgroup.talkgroupRef)
+    }
+
     @Test fun systemsParseExactAndRangeUnitAliases() {
         val config = JSONObject(
             """
