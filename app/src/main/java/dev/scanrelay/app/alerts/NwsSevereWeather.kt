@@ -112,8 +112,14 @@ class NwsSevereWeatherMonitor(context: Context) {
 
         val key = "known:${zip.take(5)}"
         val knownIds = prefs.getStringSet(key, null)
-        newlyActiveNwsAlerts(knownIds, alerts).forEach { alert ->
-            WeatherAlertNotifier.post(appContext, profile, zip, alert)
+        if (knownIds == null) {
+            alerts.forEach { alert ->
+                WeatherAlertNotifier.post(appContext, profile, zip, alert, playSound = false)
+            }
+        } else {
+            newlyActiveNwsAlerts(knownIds, alerts).forEach { alert ->
+                WeatherAlertNotifier.post(appContext, profile, zip, alert)
+            }
         }
         prefs.edit().putStringSet(key, alerts.mapTo(mutableSetOf()) { it.id }).apply()
     }
