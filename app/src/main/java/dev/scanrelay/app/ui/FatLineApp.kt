@@ -952,7 +952,12 @@ private fun HistoryScreen(
         mutableStateOf(server?.historyTag)
     }
     var archiveDate by remember(selectedProfileId, server?.historyDate) {
-        mutableStateOf(server?.historyDate?.take(10).orEmpty())
+        mutableStateOf(
+            server?.historyDate
+                ?.let { runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()).toLocalDate() }.getOrNull() }
+                ?.toString()
+                .orEmpty()
+        )
     }
     var archiveTime by remember(selectedProfileId, server?.historyDate) {
         mutableStateOf(
@@ -977,14 +982,14 @@ private fun HistoryScreen(
         .flatMap { it.groups }
         .map(String::trim)
         .filter(String::isNotBlank)
-        .distinctBy(String::lowercase)
-        .sortedBy(String::lowercase)
+        .distinctBy { it.lowercase() }
+        .sortedBy { it.lowercase() }
     val archiveTags = allSystems
         .flatMap { it.talkgroups }
         .map { it.tag.trim() }
         .filter(String::isNotBlank)
-        .distinctBy(String::lowercase)
-        .sortedBy(String::lowercase)
+        .distinctBy { it.lowercase() }
+        .sortedBy { it.lowercase() }
     val filteredSystems = allSystems.filter { system ->
         val groupMatches = archiveGroup == null ||
             system.talkgroups.any { talkgroup ->
@@ -1157,10 +1162,8 @@ private fun HistoryScreen(
                                         archiveGroups.map { ArchiveMenuChoice(it, it) },
                                     onSelect = { key ->
                                         archiveGroup = key.takeIf { it.isNotBlank() }
+                                        archiveSystemRef = null
                                         archiveTalkgroupRef = null
-                                        if (archiveSystemRef !in filteredSystems.map { it.systemRef }) {
-                                            archiveSystemRef = null
-                                        }
                                     }
                                 )
                             }
@@ -1172,6 +1175,7 @@ private fun HistoryScreen(
                                         archiveTags.map { ArchiveMenuChoice(it, it) },
                                     onSelect = { key ->
                                         archiveTag = key.takeIf { it.isNotBlank() }
+                                        archiveSystemRef = null
                                         archiveTalkgroupRef = null
                                     }
                                 )
