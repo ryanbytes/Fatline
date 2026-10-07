@@ -45,6 +45,23 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun liveOverflowKeepsCurrentPlayingCallSelected() {
+        val media = List(PlaybackQueuePolicy.LIVE_LIMIT) { index -> id("live", index + 1) }
+
+        val remove = PlaybackQueuePolicy.removalIndex(
+            mediaIds = media,
+            currentIndex = 0,
+            incomingLiveFeed = true
+        )
+
+        assertEquals(1, remove)
+        assertEquals(
+            PlaybackQueuePolicy.LIVE_LIMIT - 1,
+            PlaybackQueuePolicy.queuedCount(mediaCount = media.size, currentIndex = 0)
+        )
+    }
+
+    @Test
     fun replayOverflowDoesNotDiscardQueuedLiveTraffic() {
         val media = buildList {
             add(id("live", 1))
