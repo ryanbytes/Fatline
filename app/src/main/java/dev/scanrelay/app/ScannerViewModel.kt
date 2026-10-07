@@ -41,6 +41,12 @@ data class PasswordRecoveryState(
     val error: String? = null
 )
 
+data class AccountPasswordChangeState(
+    val working: Boolean = false,
+    val message: String? = null,
+    val error: String? = null
+)
+
 class ScannerViewModel(application: Application) : AndroidViewModel(application) {
     private val profileStore = ProfileStore(application)
     private val channelStore = ChannelStore(application)
@@ -48,12 +54,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _accountLogin = MutableStateFlow(AccountLoginState())
     private val _accountProfiles = MutableStateFlow<Map<String, AccountProfileLoadState>>(emptyMap())
     private val _passwordRecovery = MutableStateFlow(PasswordRecoveryState())
+    private val _accountPasswordChange = MutableStateFlow(AccountPasswordChangeState())
     private val loginHttpClient = OkHttpClient()
 
     val profiles: StateFlow<List<ServerProfile>> = _profiles.asStateFlow()
     val accountLogin: StateFlow<AccountLoginState> = _accountLogin.asStateFlow()
     val accountProfiles: StateFlow<Map<String, AccountProfileLoadState>> = _accountProfiles.asStateFlow()
     val passwordRecovery: StateFlow<PasswordRecoveryState> = _passwordRecovery.asStateFlow()
+    val accountPasswordChange: StateFlow<AccountPasswordChangeState> = _accountPasswordChange.asStateFlow()
     val scannerState = ScannerRepository.state
 
     init {
@@ -252,6 +260,80 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         _passwordRecovery.value = PasswordRecoveryState()
     }
 
+    fun requestAccountPasswordChangeCode(baseUrl: String, pin: String) {
+        if (baseUrl.isBlank()) {
+            _accountPasswordChange.value = AccountPasswordChangeState(error = "Server URL is required")
+            return
+        }
+        if (pin.isBlank()) {
+            _accountPasswordChange.value = AccountPasswordChangeState(error = "Sign in to change the account password")
+            return
+        }
+
+        _accountPasswordChange.value = AccountPasswordChangeState(working = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(baseUrl)
+                postAuthenticatedJson(
+                    "$origin/api/account/password/request-verification",
+                    pin.trim(),
+                    JSONObject()
+                )
+            }.onSuccess { response ->
+                _accountPasswordChange.value = AccountPasswordChangeState(
+                    message = response.optString("message").takeIf(String::isNotBlank)
+                        ?: "Verification code sent to your account email"
+                )
+            }.onFailure { error ->
+                _accountPasswordChange.value = AccountPasswordChangeState(
+                    error = error.message?.takeIf(String::isNotBlank)
+                        ?: "Password change code request failed"
+                )
+            }
+        }
+    }
+
+    fun changeAccountPassword(baseUrl: String, pin: String, code: String, newPassword: String) {
+        if (baseUrl.isBlank()) {
+            _accountPasswordChange.value = AccountPasswordChangeState(error = "Server URL is required")
+            return
+        }
+        if (pin.isBlank() || code.isBlank() || newPassword.isBlank()) {
+            _accountPasswordChange.value = AccountPasswordChangeState(
+                error = "Sign in and enter the verification code and new password"
+            )
+            return
+        }
+
+        _accountPasswordChange.value = AccountPasswordChangeState(working = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(baseUrl)
+                postAuthenticatedJson(
+                    "$origin/api/account/password",
+                    pin.trim(),
+                    JSONObject()
+                        .put("newPassword", newPassword)
+                        .put("code", code.trim())
+                )
+            }.onSuccess { response ->
+                _accountPasswordChange.value = AccountPasswordChangeState(
+                    message = response.optString("message").takeIf(String::isNotBlank)
+                        ?: "Password updated successfully"
+                )
+            }.onFailure { error ->
+                _accountPasswordChange.value = AccountPasswordChangeState(
+                    error = error.message?.takeIf(String::isNotBlank)
+                        ?: "Password change failed"
+                )
+            }
+        }
+    }
+
+    fun clearAccountPasswordChangeStatus() {
+        _accountPasswordChange.value = AccountPasswordChangeState()
+    }
+
     fun clearAccountLoginStatus() {
         _accountLogin.value = AccountLoginState()
     }
@@ -264,6 +346,15 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private fun postJson(url: String, body: JSONObject): JSONObject {
         val request = Request.Builder()
             .url(url)
+            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return executeJson(request)
+    }
+
+    private fun postAuthenticatedJson(url: String, pin: String, body: JSONObject): JSONObject {
+        val request = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $pin")
             .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
         return executeJson(request)
