@@ -2841,6 +2841,10 @@ private fun SettingsScreen(
                         "Severe weather sound: " + weatherSoundLabel,
                         style = MaterialTheme.typography.bodySmall
                     )
+                    Text(
+                        "Uses the ZIP code on your scanner account. Warnings already active at first check appear silently.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = weatherSoundEnabled,
