@@ -1080,7 +1080,16 @@ object ScannerRepository {
     private fun pruneQueuedLiveCalls(profileId: String) {
         appContext?.let { ScannerService.filterProfileMedia(it, profileId) }
     }
-    fun requestHistory(profileId: String, reset: Boolean = true, systemRef: Long? = null, talkgroupRef: Long? = null) {
+    fun requestHistory(
+        profileId: String,
+        reset: Boolean = true,
+        systemRef: Long? = null,
+        talkgroupRef: Long? = null,
+        date: String? = null,
+        group: String? = null,
+        tag: String? = null,
+        sort: Int = -1
+    ) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
             if (reset) {
@@ -1088,17 +1097,23 @@ object ScannerRepository {
                 session.state = session.state.copy(
                     history = emptyList(),
                     historyHasMore = false,
-                    historySystemRef = systemRef,
-                    historyTalkgroupRef = talkgroupRef
+                    historySystemRef = systemRef?.takeIf { it > 0 },
+                    historyTalkgroupRef = talkgroupRef?.takeIf { it > 0 },
+                    historyDate = date?.trim()?.takeIf { it.isNotBlank() },
+                    historyGroup = group?.trim()?.takeIf { it.isNotBlank() },
+                    historyTag = tag?.trim()?.takeIf { it.isNotBlank() },
+                    historySort = if (sort < 0) -1 else 1
                 )
             }
-            val activeSystemRef = session.state.historySystemRef
-            val activeTalkgroupRef = session.state.historyTalkgroupRef
             session.socket?.requestHistory(
-                limit = 100,
+                limit = 200,
                 offset = session.historyOffset,
-                systemRef = activeSystemRef,
-                talkgroups = activeTalkgroupRef?.let(::listOf).orEmpty()
+                sort = session.state.historySort,
+                systemRef = session.state.historySystemRef,
+                talkgroupRef = session.state.historyTalkgroupRef,
+                date = session.state.historyDate,
+                group = session.state.historyGroup,
+                tag = session.state.historyTag
             )
         }
         publish()
@@ -2750,9 +2765,17 @@ object ScannerRepository {
             }
         }
         synchronized(session) {
-            val merged = (session.state.history + calls).associateBy { it.id }.values.sortedByDescending(::callSortKey).take(500)
+            val combined = (session.state.history + calls).associateBy { it.id }.values
+            val merged = if (session.state.historySort < 0) {
+                combined.sortedByDescending(::callSortKey)
+            } else {
+                combined.sortedBy(::callSortKey)
+            }
             session.historyOffset += calls.size
-            session.state = session.state.copy(history = merged, historyHasMore = payload.optBoolean("hasMore", false))
+            session.state = session.state.copy(
+                history = merged,
+                historyHasMore = payload.optBoolean("hasMore", false)
+            )
         }
         publish()
     }
