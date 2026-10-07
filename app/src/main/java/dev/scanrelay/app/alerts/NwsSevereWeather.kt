@@ -103,7 +103,7 @@ class NwsSevereWeatherMonitor(context: Context) {
             "$origin/api/account?pin=" + URLEncoder.encode(profile.pin.trim(), Charsets.UTF_8.name())
         ) ?: return
         val zip = account.optString("zipCode").trim()
-        if (!ZIP_PATTERN.matches(zip)) return
+        if (!Regex(ZIP_PATTERN).matches(zip)) return
         val coords = resolveZip(zip) ?: return
         val alerts = getJson(
             "https://api.weather.gov/alerts/active?point=${coords.first},${coords.second}&status=actual",
