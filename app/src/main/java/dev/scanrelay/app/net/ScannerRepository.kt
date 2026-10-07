@@ -2450,6 +2450,7 @@ object ScannerRepository {
             }
             session.reconnectAttempt = (session.reconnectAttempt + 1).coerceAtMost(6)
             val jitter = session.profile.id.hashCode().toLong().absoluteValue % 350L
+            // The base retry delay remains capped at 30_000L.
             val retryDelay = ReconnectBackoff.delayMillis(session.reconnectAttempt, jitter)
             val retrySeconds = ((retryDelay + 999L) / 1_000L).toInt()
             session.state = session.state.copy(
