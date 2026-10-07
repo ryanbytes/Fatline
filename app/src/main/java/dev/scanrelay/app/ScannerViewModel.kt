@@ -66,7 +66,12 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _passwordRecovery = MutableStateFlow(PasswordRecoveryState())
     private val _accountPasswordChange = MutableStateFlow(AccountPasswordChangeState())
     private val _accountEmailChange = MutableStateFlow(AccountEmailChangeState())
-    private val loginHttpClient = OkHttpClient()
+    // Account requests contain passwords or bearer PINs. Refuse redirects so a server response
+    // cannot forward those credentials to a different host.
+    private val loginHttpClient = OkHttpClient.Builder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
 
     val profiles: StateFlow<List<ServerProfile>> = _profiles.asStateFlow()
     val accountLogin: StateFlow<AccountLoginState> = _accountLogin.asStateFlow()
