@@ -73,22 +73,24 @@ object ThinLineProtocol {
     }
 
     fun listCalls(
-        limit: Int = 100,
+        limit: Int = 200,
         offset: Int = 0,
         sort: Int = -1,
         systemRef: Long? = null,
-        talkgroupRefs: Collection<Long> = emptyList()
+        talkgroupRef: Long? = null,
+        date: String? = null,
+        group: String? = null,
+        tag: String? = null
     ): String {
         val payload = JSONObject()
             .put("limit", limit.coerceIn(1, 500))
             .put("offset", offset.coerceAtLeast(0))
             .put("sort", if (sort < 0) -1 else 1)
         if (systemRef != null && systemRef > 0) payload.put("system", systemRef)
-        if (talkgroupRefs.isNotEmpty()) {
-            payload.put("talkgroups", JSONArray().apply {
-                talkgroupRefs.filter { it > 0 }.forEach { ref -> put(ref) }
-            })
-        }
+        if (talkgroupRef != null && talkgroupRef > 0) payload.put("talkgroup", talkgroupRef)
+        date?.trim()?.takeIf { it.isNotBlank() }?.let { payload.put("date", it) }
+        group?.trim()?.takeIf { it.isNotBlank() }?.let { payload.put("group", it) }
+        tag?.trim()?.takeIf { it.isNotBlank() }?.let { payload.put("tag", it) }
         return command(LIST_CALL, payload)
     }
 
@@ -219,6 +221,13 @@ object ThinLineProtocol {
                     is JSONObject -> tag.optString("label")
                     else -> ""
                 },
+                groups = node.optJSONArray("groups")?.let { groups ->
+                    buildList {
+                        for (i in 0 until groups.length()) {
+                            groups.optString(i).trim().takeIf { it.isNotBlank() }?.let(::add)
+                        }
+                    }
+                }.orEmpty(),
                 toneDetectionEnabled = node.optBoolean("toneDetectionEnabled", false),
                 toneSets = parseToneSets(node.opt("toneSets")),
                 talkgroupId = node.optLong("talkgroupId").takeIf { it > 0 }
