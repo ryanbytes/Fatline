@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -754,52 +755,65 @@ private fun ChannelsScreen(
                 val fullSystem = server.systems.firstOrNull { it.systemRef == system.systemRef } ?: system
                 val systemFavorite = system.systemRef in server.favoriteSystemRefs
                 item(key = "system-" + server.profile.id + "-" + systemIndex + "-" + system.systemRef) {
-                    Row(
+                    Column(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(system.label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                system.talkgroups.count { it.enabled }.toString() + "/" + system.talkgroups.size + " enabled",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.setSystemFavorite(
-                                        server.profile.id,
-                                        system.systemRef,
-                                        !systemFavorite
-                                    )
-                                },
-                                enabled = fullSystem.talkgroups.isNotEmpty()
-                            ) { Text(if (systemFavorite) "★" else "☆") }
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.setSystemHold(
-                                        server.profile.id,
-                                        if (server.holdSystemRef == system.systemRef) null else system.systemRef
-                                    )
-                                }
-                            ) { Text(if (server.holdSystemRef == system.systemRef) "Held" else "Hold") }
-                            OutlinedButton(
-                                onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, true) }
-                            ) { Text("All") }
-                            OutlinedButton(
-                                onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, false) }
-                            ) { Text("None") }
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.setSystemHidden(
-                                        server.profile.id,
-                                        system.systemRef,
-                                        true
-                                    )
-                                }
-                            ) { Text("Hide") }
+                        Text(
+                            system.label,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            system.talkgroups.count { it.enabled }.toString() + "/" + system.talkgroups.size + " enabled",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            item {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setSystemFavorite(
+                                            server.profile.id,
+                                            system.systemRef,
+                                            !systemFavorite
+                                        )
+                                    },
+                                    enabled = fullSystem.talkgroups.isNotEmpty()
+                                ) { Text(if (systemFavorite) "★" else "☆") }
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setSystemHold(
+                                            server.profile.id,
+                                            if (server.holdSystemRef == system.systemRef) null else system.systemRef
+                                        )
+                                    }
+                                ) { Text(if (server.holdSystemRef == system.systemRef) "Held" else "Hold") }
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, true) }
+                                ) { Text("All") }
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, false) }
+                                ) { Text("None") }
+                            }
+                            item {
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.setSystemHidden(
+                                            server.profile.id,
+                                            system.systemRef,
+                                            true
+                                        )
+                                    }
+                                ) { Text("Hide") }
+                            }
                         }
                     }
                 }
@@ -809,53 +823,58 @@ private fun ChannelsScreen(
                         FavoriteTagKey(system.systemRef, tagGroup.tag) in server.favoriteTags
                     val tagRgb = TagColors.rgb(tagGroup.tag, server.tagColors)
                     item(key = "tag-" + server.profile.id + "-" + systemIndex + "-" + tagIndex + "-" + tagGroup.tag) {
-                        Row(
+                        Column(
                             Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    tagGroup.tag,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color(tagRgb.red, tagRgb.green, tagRgb.blue)
-                                )
-                                Text(
-                                    tagGroup.talkgroups.count { it.enabled }.toString() + "/" +
-                                        tagGroup.talkgroups.size + " enabled",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.setTagFavorite(
-                                            server.profile.id,
-                                            system.systemRef,
-                                            tagGroup.tag,
-                                            !tagFavorite
-                                        )
-                                    },
-                                    enabled = tagGroup.talkgroups.isNotEmpty()
-                                ) { Text(if (tagFavorite) "★" else "☆") }
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.setChannels(
-                                            server.profile.id,
-                                            tagGroup.talkgroups.map { it.key },
-                                            true
-                                        )
-                                    }
-                                ) { Text("All") }
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.setChannels(
-                                            server.profile.id,
-                                            tagGroup.talkgroups.map { it.key },
-                                            false
-                                        )
-                                    }
-                                ) { Text("None") }
+                            Text(
+                                tagGroup.tag,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(tagRgb.red, tagRgb.green, tagRgb.blue),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                tagGroup.talkgroups.count { it.enabled }.toString() + "/" +
+                                    tagGroup.talkgroups.size + " enabled",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.setTagFavorite(
+                                                server.profile.id,
+                                                system.systemRef,
+                                                tagGroup.tag,
+                                                !tagFavorite
+                                            )
+                                        },
+                                        enabled = tagGroup.talkgroups.isNotEmpty()
+                                    ) { Text(if (tagFavorite) "★" else "☆") }
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.setChannels(
+                                                server.profile.id,
+                                                tagGroup.talkgroups.map { it.key },
+                                                true
+                                            )
+                                        }
+                                    ) { Text("All") }
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.setChannels(
+                                                server.profile.id,
+                                                tagGroup.talkgroups.map { it.key },
+                                                false
+                                            )
+                                        }
+                                    ) { Text("None") }
+                                }
                             }
                         }
                     }
