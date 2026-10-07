@@ -2318,11 +2318,13 @@ private fun SettingsScreen(
     modifier: Modifier
 ) {
     val loginState by viewModel.accountLogin.collectAsStateWithLifecycle()
+    val accountProfiles by viewModel.accountProfiles.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
     }
     val editing = profiles.firstOrNull { it.id == editingId }
+    val accountProfileState = accountProfiles[editingId]
     val connectedServer = scanner.servers[editingId]
     var backlogMinutesText by remember(editingId, connectedServer?.livefeedBacklogMinutes) {
         mutableStateOf((connectedServer?.livefeedBacklogMinutes ?: 0).toString())
@@ -2443,6 +2445,38 @@ private fun SettingsScreen(
                     }
                     loginState.error?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    if (editing != null && editing.pin.isNotBlank()) {
+                        HorizontalDivider()
+                        Text(
+                            "Account details",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        OutlinedButton(
+                            onClick = { viewModel.refreshAccountProfile(editing) },
+                            enabled = accountProfileState?.loading != true
+                        ) {
+                            Text(if (accountProfileState?.loading == true) "Refreshing…" else "Refresh account details")
+                        }
+                        accountProfileState?.error?.takeIf(String::isNotBlank)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
+                        accountProfileState?.account?.let { account ->
+                            account.displayName.takeIf(String::isNotBlank)?.let {
+                                Text(it, fontWeight = FontWeight.Medium)
+                            }
+                            account.email.takeIf(String::isNotBlank)?.let { Text(it) }
+                            if (account.groupName.isNotBlank()) Text("Group: ${account.groupName}")
+                            Text("Email verified: ${if (account.verified) "Yes" else "No"}")
+                            Text(
+                                "Subscription: " + account.subscriptionStatus.ifBlank { "not reported" }
+                            )
+                            Text("Billing required: ${if (account.billingRequired) "Yes" else "No"}")
+                            if (account.isGroupAdmin) Text("Group administrator")
+                            Text("Listener PIN expired: ${if (account.pinExpired) "Yes" else "No"}")
+                        }
                     }
 
                     Text(
