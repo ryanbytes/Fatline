@@ -240,6 +240,10 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         ScannerRepository.setAlertToneSets(profileId, key, toneSetIds)
     fun setAlertKeywords(profileId: String, key: ChannelKey, rawKeywords: String) =
         ScannerRepository.setAlertKeywords(profileId, key, rawKeywords)
+    fun setAlertNotificationSound(profileId: String, key: ChannelKey, fileName: String) =
+        ScannerRepository.setAlertNotificationSound(profileId, key, fileName)
+    fun setAlertToneSetSound(profileId: String, key: ChannelKey, toneSetId: String, fileName: String) =
+        ScannerRepository.setAlertToneSetSound(profileId, key, toneSetId, fileName)
     fun setAlertPreference(
         profileId: String,
         key: ChannelKey,

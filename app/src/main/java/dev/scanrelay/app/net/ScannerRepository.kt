@@ -1617,6 +1617,60 @@ object ScannerRepository {
         scheduleAlertPreferenceSave(session)
     }
 
+    fun setAlertNotificationSound(profileId: String, key: ChannelKey, fileName: String) {
+        updateAlertSoundPreference(profileId, key) { existing ->
+            existing.copy(notificationSound = fileName.trim())
+        }
+    }
+
+    fun setAlertToneSetSound(
+        profileId: String,
+        key: ChannelKey,
+        toneSetId: String,
+        fileName: String
+    ) {
+        val normalizedToneSetId = toneSetId.trim()
+        if (normalizedToneSetId.isEmpty()) return
+        updateAlertSoundPreference(profileId, key) { existing ->
+            val sounds = existing.toneSetSounds.toMutableMap()
+            val normalizedFileName = fileName.trim()
+            if (normalizedFileName.isEmpty()) {
+                sounds.remove(normalizedToneSetId)
+            } else {
+                sounds[normalizedToneSetId] = normalizedFileName
+            }
+            existing.copy(toneSetSounds = sounds)
+        }
+    }
+
+    private fun updateAlertSoundPreference(
+        profileId: String,
+        key: ChannelKey,
+        transform: (AlertPreference) -> AlertPreference
+    ) {
+        val session = sessions[profileId] ?: return
+        val changed = synchronized(session) {
+            val existing = session.state.alertPreferences.firstOrNull { it.key == key }
+                ?: AlertPreference(systemRef = key.systemRef, talkgroupRef = key.talkgroupRef)
+            val updated = transform(existing)
+            if (updated == existing && session.state.alertPreferences.any { it.key == key }) {
+                false
+            } else {
+                session.alertPreferenceRevision++
+                session.state = session.state.copy(
+                    alertPreferences = (session.state.alertPreferences.filterNot { it.key == key } + updated)
+                        .sortedWith(compareBy<AlertPreference> { it.systemRef }.thenBy { it.talkgroupRef }),
+                    alertPreferencesSaving = true,
+                    alertPreferencesError = null
+                )
+                true
+            }
+        }
+        if (!changed) return
+        publish()
+        scheduleAlertPreferenceSave(session)
+    }
+
     internal fun normalizeAlertKeywords(rawKeywords: String): List<String> =
         rawKeywords
             .replace('\n', ',')
