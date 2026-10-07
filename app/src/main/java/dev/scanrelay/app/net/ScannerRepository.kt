@@ -126,6 +126,15 @@ object ScannerRepository {
         sessions.remove(profile.id)?.let(::stopSession)
         val session = Session(profile)
         sessions[profile.id] = session
+        if (ScannerEndpointPolicy.isBlockedUrl(profile.baseUrl)) {
+            session.state = session.state.copy(
+                status = ConnectionStatus.DISCONNECTED,
+                statusText = "Blocked for privacy",
+                error = "ThinLine Radio hosted endpoints are blocked for privacy"
+            )
+            publish()
+            return
+        }
         publish()
         openSocket(session)
     }
