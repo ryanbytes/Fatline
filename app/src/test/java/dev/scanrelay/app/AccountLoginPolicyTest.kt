@@ -21,7 +21,7 @@ class AccountLoginPolicyTest {
     @Test fun validatesPasswordsUsingServerRequirements() {
         assertNull(AccountLoginPolicy.passwordValidationError("Strongpass1"))
         assertEquals("Use at least 8 characters", AccountLoginPolicy.passwordValidationError("Aa1!"))
-        assertEquals("Use an uppercase letter", AccountLoginPolicy.passwordValidationError("strongpass1"))
+        assertEquals("Add an uppercase letter", AccountLoginPolicy.passwordValidationError("strongpass1"))
         assertEquals("Add a lowercase letter", AccountLoginPolicy.passwordValidationError("STRONGPASS1"))
         assertEquals("Add a number", AccountLoginPolicy.passwordValidationError("Strongpass"))
     }
