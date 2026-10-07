@@ -88,3 +88,5 @@ The CI debug signing key is intentionally repository-visible and is only for per
 ## Verification status
 
 The network-hardened Android code has produced a green CI build including structural validation, JVM unit tests, `assembleDebug`, and debug-APK upload. CI proves the project compiles and its deterministic tests pass; real-device interoperability still needs deliberate testing against real ThinLine servers, especially Wi-Fi/cellular/VPN handoffs, encrypted relay deployments, and Android Auto hosts.
+
+Weather: the scanner screen shows a local National Weather Service forecast using the ZIP code saved for the scanner account. You can edit the ZIP; the card displays current conditions, the next five hourly periods, and a three-day outlook, refreshing every ten minutes.
