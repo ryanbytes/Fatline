@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.scanrelay.app.AccountLoginPolicy
 import dev.scanrelay.app.ScannerViewModel
@@ -121,7 +122,15 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                 selected = tab == item,
                                 onClick = { tab = item },
                                 icon = { Text(item.glyph) },
-                                label = { Text(item.label) }
+                                label = {
+                                    Text(
+                                        item.label,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
+                                    )
+                                }
                             )
                         }
                     }
