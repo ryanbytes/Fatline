@@ -90,6 +90,7 @@ object ScannerRepository {
         @Volatile var alertPreferenceRevision = 0L
         @Volatile var hasConnected = false
         @Volatile var disconnectNotified = false
+        @Volatile var disconnectNotificationJob: Job? = null
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -2213,6 +2214,7 @@ object ScannerRepository {
                 old
             }
             oldSocket?.abort()
+            notifyConnectionLoss(session, "Network unavailable")
         }
         publish()
     }
@@ -2228,6 +2230,8 @@ object ScannerRepository {
         session.stopped = true
         session.reconnectJob?.cancel()
         session.handshakeJob?.cancel()
+        session.disconnectNotificationJob?.cancel()
+        session.disconnectNotificationJob = null
         session.keyJob?.cancel()
         session.scanListSaveJob?.cancel()
         session.favoriteSaveJob?.cancel()
@@ -2310,8 +2314,8 @@ object ScannerRepository {
                     session.handshakeJob = null
                     session.socket = null
                     session.state = session.state.copy(
-                        status = if (networkAvailable) ConnectionStatus.ERROR else ConnectionStatus.CONNECTING,
-                        statusText = if (networkAvailable) "Connection lost" else "Waiting for network",
+                        status = ConnectionStatus.CONNECTING,
+                        statusText = if (networkAvailable) "Connection lost; reconnecting" else "Waiting for network",
                         error = if (networkAvailable) message else null
                     )
                 }
@@ -2354,8 +2358,8 @@ object ScannerRepository {
             synchronized(session) {
                 session.socket = null
                 session.state = session.state.copy(
-                    status = if (networkAvailable) ConnectionStatus.ERROR else ConnectionStatus.CONNECTING,
-                    statusText = if (networkAvailable) "Connection failed" else "Waiting for network",
+                    status = ConnectionStatus.CONNECTING,
+                    statusText = if (networkAvailable) "Connection failed; reconnecting" else "Waiting for network",
                     error = if (networkAvailable) error.message else null
                 )
             }
@@ -2370,24 +2374,38 @@ object ScannerRepository {
     }
 
     private fun notifyConnectionLoss(session: Session, detail: String) {
-        val shouldNotify = synchronized(session) {
-            if (!isCurrent(session) || !session.hasConnected || session.disconnectNotified) {
-                false
-            } else {
-                session.disconnectNotified = true
-                true
+        synchronized(session) {
+            if (
+                !isCurrent(session) ||
+                !session.hasConnected ||
+                session.disconnectNotified ||
+                session.disconnectNotificationJob?.isActive == true
+            ) return
+
+            // Ignore short network flaps; only alert if the connection stays down for five seconds.
+            session.disconnectNotificationJob = scope.launch {
+                delay(5_000L)
+                val shouldNotify = synchronized(session) {
+                    if (!isCurrent(session) || !session.hasConnected || session.disconnectNotified) {
+                        false
+                    } else {
+                        session.disconnectNotified = true
+                        session.disconnectNotificationJob = null
+                        true
+                    }
+                }
+                if (!shouldNotify) return@launch
+                appContext?.let { context ->
+                    val notificationId = ("connection-loss:" + session.profile.id).hashCode() and Int.MAX_VALUE
+                    AlertNotifier.postConnectionLoss(
+                        context,
+                        session.profile.id,
+                        session.profile.name,
+                        detail.ifBlank { "Scanner connection lost" },
+                        notificationId
+                    )
+                }
             }
-        }
-        if (!shouldNotify) return
-        appContext?.let { context ->
-            val notificationId = ("connection-loss:" + session.profile.id).hashCode() and Int.MAX_VALUE
-            AlertNotifier.postConnectionLoss(
-                context,
-                session.profile.id,
-                session.profile.name,
-                detail.ifBlank { "Scanner connection lost" },
-                notificationId
-            )
         }
     }
 
@@ -2422,15 +2440,26 @@ object ScannerRepository {
         synchronized(session) {
             if (!isCurrent(session, generation) || session.reconnectJob?.isActive == true) return
             if (!networkAvailable) {
-                session.state = session.state.copy(status = ConnectionStatus.CONNECTING, statusText = "Waiting for network", error = null)
+                session.state = session.state.copy(
+                    status = ConnectionStatus.CONNECTING,
+                    statusText = "Waiting for network",
+                    error = null
+                )
                 publish()
                 return
             }
             session.reconnectAttempt = (session.reconnectAttempt + 1).coerceAtMost(6)
-            val baseDelay = (1_000L shl (session.reconnectAttempt - 1)).coerceAtMost(30_000L)
             val jitter = session.profile.id.hashCode().toLong().absoluteValue % 350L
+            // The base retry delay remains capped at 30_000L.
+            val retryDelay = ReconnectBackoff.delayMillis(session.reconnectAttempt, jitter)
+            val retrySeconds = ((retryDelay + 999L) / 1_000L).toInt()
+            session.state = session.state.copy(
+                status = ConnectionStatus.CONNECTING,
+                statusText = "Reconnecting in ${retrySeconds}s"
+            )
+            publish()
             session.reconnectJob = scope.launch {
-                delay(baseDelay + jitter)
+                delay(retryDelay)
                 synchronized(session) { session.reconnectJob = null }
                 if (isCurrent(session, generation) && networkAvailable) openSocket(session)
             }
@@ -2625,6 +2654,8 @@ object ScannerRepository {
             session.clientToken = token
             needsKeyExchange = encrypted && session.masterKey == null
             session.hasConnected = true
+            session.disconnectNotificationJob?.cancel()
+            session.disconnectNotificationJob = null
             session.disconnectNotified = false
             session.state = session.state.copy(
                 status = ConnectionStatus.CONNECTED,
