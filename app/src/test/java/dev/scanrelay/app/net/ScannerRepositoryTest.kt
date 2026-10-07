@@ -63,6 +63,33 @@ class ScannerRepositoryTest {
     )
 
     @Test
+    fun liveAlertPrefersTitleMessageAndCarriesTimestamp() {
+        val alert = ScannerRepository.parseRealtimeAlert(
+            profile,
+            JSONObject("""{"title":"Fire alert","message":"Unit 123 on scene","dateTime":"2026-10-07T18:30:00Z"}""")
+        )
+
+        assertEquals("Fire alert", alert.title)
+        assertEquals("Unit 123 on scene", alert.body)
+        assertEquals("2026-10-07T18:30:00Z", alert.dateTime)
+        assertEquals(profile.id, alert.profileId)
+    }
+
+    @Test
+    fun liveAlertFallsBackToTypeSummaryAndRawPayload() {
+        val structured = ScannerRepository.parseRealtimeAlert(
+            profile,
+            JSONObject("""{"type":"Tone alert","summary":"Second stage page"}""")
+        )
+        assertEquals("Tone alert", structured.title)
+        assertEquals("Second stage page", structured.body)
+
+        val raw = ScannerRepository.parseRealtimeAlert(profile, "signal received")
+        assertEquals("Scanner alert", raw.title)
+        assertEquals("signal received", raw.body)
+    }
+
+    @Test
     fun talkgroupHoldFiltersSubscriptionWithoutMutatingBaseSelection() {
         val state = ServerScannerState(
             profile = profile,

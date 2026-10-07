@@ -231,6 +231,7 @@ require('serverMappingSwitchHidesMapAction' in (ROOT / 'app/src/test/java/dev/sc
 require((ROOT / 'app/src/test/java/dev/scanrelay/app/ui/IncidentMapUriTest.kt').exists(), 'incident map URI regression tests missing')
 require('refreshAlerts' in viewmodel, 'alert refresh view-model bridge missing')
 require('richAlertHistoryParsesAndSortsServerFields' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'rich alert parser regression test missing')
+require('parseRealtimeAlert' in repo and 'liveAlertPrefersTitleMessageAndCarriesTimestamp' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'live ALT payload regression tests missing')
 require('SystemHealthAlert' in models and 'systemAlertsLoading' in models and 'canViewSystemAlerts' in models, 'system health alert state missing')
 require('refreshSystemAlerts' in repo and 'dismissSystemAlert' in repo and '/api/system-alerts' in repo, 'system health alert repository controls missing')
 require('refreshSystemAlerts' in viewmodel and 'dismissSystemAlert' in viewmodel, 'system health alert view-model bridge missing')
