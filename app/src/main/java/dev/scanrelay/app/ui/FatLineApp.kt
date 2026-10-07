@@ -2320,6 +2320,7 @@ private fun SettingsScreen(
     val loginState by viewModel.accountLogin.collectAsStateWithLifecycle()
     val accountProfiles by viewModel.accountProfiles.collectAsStateWithLifecycle()
     val passwordRecovery by viewModel.passwordRecovery.collectAsStateWithLifecycle()
+    val accountPasswordChange by viewModel.accountPasswordChange.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
@@ -2338,6 +2339,8 @@ private fun SettingsScreen(
     var recoveryEmail by remember(editingId) { mutableStateOf("") }
     var recoveryCode by remember(editingId) { mutableStateOf("") }
     var recoveryNewPassword by remember(editingId) { mutableStateOf("") }
+    var accountPasswordCode by remember(editingId) { mutableStateOf("") }
+    var accountNewPassword by remember(editingId) { mutableStateOf("") }
     var pin by remember(editingId, editing?.pin) { mutableStateOf(editing?.pin ?: "") }
     var alertSoundLabel by remember(editingId) {
         mutableStateOf(AlertSoundPreferences.displayName(context, editingId))
@@ -2379,6 +2382,14 @@ private fun SettingsScreen(
         }
     }
 
+    LaunchedEffect(accountPasswordChange.message) {
+        if (accountPasswordChange.message == "Password updated successfully") {
+            accountPasswordCode = ""
+            accountNewPassword = ""
+            password = ""
+        }
+    }
+
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Text(
@@ -2401,6 +2412,7 @@ private fun SettingsScreen(
                         password = ""
                         viewModel.clearAccountLoginStatus()
                         viewModel.clearPasswordRecoveryStatus()
+                        viewModel.clearAccountPasswordChangeStatus()
                         onSelectProfile(profile.id)
                     }) { Text(profile.name) }
                 }
@@ -2414,6 +2426,7 @@ private fun SettingsScreen(
                         pin = ""
                         viewModel.clearAccountLoginStatus()
                         viewModel.clearPasswordRecoveryStatus()
+                        viewModel.clearAccountPasswordChangeStatus()
                     }) { Text("New") }
                 }
             }
@@ -2553,6 +2566,60 @@ private fun SettingsScreen(
                             if (account.isGroupAdmin) Text("Group administrator")
                             Text("Listener PIN expired: ${if (account.pinExpired) "Yes" else "No"}")
                         }
+
+                        HorizontalDivider()
+                        Text(
+                            "Change account password",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Send a verification code to the account email, then enter it with your new password.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedButton(
+                            onClick = { viewModel.requestAccountPasswordChangeCode(url, editing.pin) },
+                            enabled = url.isNotBlank() && !accountPasswordChange.working
+                        ) {
+                            Text(if (accountPasswordChange.working) "Working…" else "Send verification code")
+                        }
+                        OutlinedTextField(
+                            accountPasswordCode,
+                            { accountPasswordCode = it },
+                            label = { Text("Verification code") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            accountNewPassword,
+                            { accountNewPassword = it },
+                            label = { Text("New account password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                        Button(
+                            onClick = {
+                                viewModel.changeAccountPassword(
+                                    url,
+                                    editing.pin,
+                                    accountPasswordCode,
+                                    accountNewPassword
+                                )
+                            },
+                            enabled = url.isNotBlank() &&
+                                accountPasswordCode.isNotBlank() &&
+                                accountNewPassword.isNotBlank() &&
+                                !accountPasswordChange.working
+                        ) {
+                            Text(if (accountPasswordChange.working) "Updating…" else "Update account password")
+                        }
+                        accountPasswordChange.message?.takeIf(String::isNotBlank)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
+                        accountPasswordChange.error?.takeIf(String::isNotBlank)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
 
                     Text(
@@ -2652,6 +2719,7 @@ private fun SettingsScreen(
                                 pin = ""
                                 viewModel.clearAccountLoginStatus()
                         viewModel.clearPasswordRecoveryStatus()
+                        viewModel.clearAccountPasswordChangeStatus()
                             }) { Text("Delete") }
                         }
                     }
