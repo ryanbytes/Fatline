@@ -3,6 +3,9 @@ package dev.scanrelay.app
 import org.json.JSONObject
 
 object AccountLoginPolicy {
+    fun usesCentralManagementAuthentication(settings: JSONObject?): Boolean =
+        settings?.optBoolean("centralManagementEnabled", false) == true
+
     fun requiresForcedPasswordReset(loginResponse: JSONObject): Boolean =
         loginResponse.optJSONObject("user")?.optBoolean("needsPasswordReset", false) == true
 
