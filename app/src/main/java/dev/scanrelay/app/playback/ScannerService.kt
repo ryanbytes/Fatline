@@ -307,6 +307,7 @@ class ScannerService : MediaLibraryService() {
         trimQueueForIncomingCall(liveFeed)
         player.addMediaItem(item)
         if (call != null) callByMediaId[item.mediaId] = call
+        syncCurrentlyPlayingCall()
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         if (!player.playWhenReady) player.play()
     }
