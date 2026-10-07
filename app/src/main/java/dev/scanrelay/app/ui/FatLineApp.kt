@@ -2475,7 +2475,7 @@ private fun SettingsScreen(
                             )
                             Text("Billing required: ${if (account.billingRequired) "Yes" else "No"}")
                             if (account.isGroupAdmin) Text("Group administrator")
-                            if (account.isSystemAdmin) Text("System administrator")
+                            Text("Listener PIN expired: ${if (account.pinExpired) "Yes" else "No"}")
                         }
                     }
 
