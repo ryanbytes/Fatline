@@ -84,6 +84,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
     val scanner by viewModel.scannerState.collectAsStateWithLifecycle()
     val queuedCallCount by ScannerService.queuedCallCount.collectAsStateWithLifecycle()
+    val currentlyPlayingCall by ScannerService.currentlyPlayingCall.collectAsStateWithLifecycle()
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(AppTab.Scanner) }
 
@@ -132,6 +133,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                         selectedProfileId = selectedProfileId,
                         onSelectProfile = { selectedProfileId = it },
                         queuedCallCount = queuedCallCount,
+                        currentlyPlayingCall = currentlyPlayingCall,
                         viewModel = viewModel,
                         modifier = Modifier.fillMaxSize().padding(padding)
                     )
@@ -191,11 +193,13 @@ private fun ScannerScreen(
     selectedProfileId: String?,
     onSelectProfile: (String) -> Unit,
     queuedCallCount: Int,
+    currentlyPlayingCall: RadioCall?,
     viewModel: ScannerViewModel,
     modifier: Modifier
 ) {
     val profile = profiles.firstOrNull { it.id == selectedProfileId }
     val server = selectedProfileId?.let { scanner.servers[it] }
+    val playingCall = currentlyPlayingCall?.takeIf { it.profileId == server?.profile?.id }
 
     LazyColumn(
         modifier = modifier,
@@ -257,16 +261,16 @@ private fun ScannerScreen(
         } else {
             item { ScannerStatusCard(server, viewModel) }
 
-            server.lastCall?.let { call ->
-                item(key = "now-" + server.profile.id + "-" + call.id) {
+            playingCall?.let { call ->
+                item(key = "playing-" + server.profile.id + "-" + call.id) {
                     NowPlayingCard(server, call, viewModel)
                 }
             } ?: item {
                 Card(Modifier.padding(horizontal = 16.dp)) {
                     Column(Modifier.padding(16.dp)) {
-                        Text("Waiting for traffic", style = MaterialTheme.typography.titleLarge)
+                        Text("Nothing playing", style = MaterialTheme.typography.titleLarge)
                         Text(
-                            if (server.paused) "Live feed is paused." else "No transmission has arrived yet.",
+                            if (server.paused) "Live feed is paused." else "No call from this scanner is playing.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -396,7 +400,7 @@ private fun NowPlayingCard(server: ServerScannerState, call: RadioCall, viewMode
 
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("LATEST TRANSMISSION", style = MaterialTheme.typography.labelLarge)
+            Text("NOW PLAYING", style = MaterialTheme.typography.labelLarge)
             Text(call.talkgroupLabel, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
             InfoRow("System", call.systemLabel)
