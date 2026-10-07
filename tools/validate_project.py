@@ -296,6 +296,7 @@ require('Tones all' in ui and 'Leave all unselected to alert on every tone set.'
 require('systemsParseToneDetectionAndToneSets' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt').read_text(), 'tone-set config regression test missing')
 require('alertToneSetIdsTrimDropBlanksAndDeduplicate' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'tone-set selection normalization regression test missing')
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
+require('/api/cm-auth/login' not in viewmodel and '/api/cm-auth/session' not in viewmodel, 'central account credentials must not be sent from FatLine')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
