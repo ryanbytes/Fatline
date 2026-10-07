@@ -11,7 +11,7 @@ data class AccountProfile(
     val billingRequired: Boolean,
     val hasBilling: Boolean,
     val isGroupAdmin: Boolean,
-    val isSystemAdmin: Boolean
+    val pinExpired: Boolean
 )
 
 internal fun parseAccountProfile(json: JSONObject): AccountProfile {
@@ -32,6 +32,6 @@ internal fun parseAccountProfile(json: JSONObject): AccountProfile {
         billingRequired = json.optBoolean("billingRequired", false),
         hasBilling = json.optBoolean("hasBilling", false),
         isGroupAdmin = json.optBoolean("isGroupAdmin", false),
-        isSystemAdmin = json.optBoolean("systemAdmin", false)
+        pinExpired = json.optBoolean("pinExpired", false)
     )
 }
