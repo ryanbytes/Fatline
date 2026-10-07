@@ -27,6 +27,7 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import dev.scanrelay.app.MainActivity
+import dev.scanrelay.app.alerts.NwsSevereWeatherMonitor
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
@@ -35,7 +36,7 @@ import dev.scanrelay.app.net.ScannerRepository
 class ScannerService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
-    private lateinit var weatherMonitor: dev.scanrelay.app.alerts.NwsSevereWeatherMonitor
+    private lateinit var weatherMonitor: NwsSevereWeatherMonitor
     private lateinit var connectivityManager: ConnectivityManager
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
@@ -74,7 +75,7 @@ class ScannerService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         ScannerRepository.initialize(this)
-        weatherMonitor = dev.scanrelay.app.alerts.NwsSevereWeatherMonitor(this).also { it.start() }
+        weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
         player = ExoPlayer.Builder(this).build().apply {
