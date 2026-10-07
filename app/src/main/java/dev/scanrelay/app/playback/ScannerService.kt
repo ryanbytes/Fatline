@@ -18,6 +18,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
@@ -86,6 +87,14 @@ class ScannerService : MediaLibraryService() {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     val title = mediaItem?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "Listening" }
                     val subtitle = mediaItem?.mediaMetadata?.artist?.toString().orEmpty().ifBlank { "Waiting for traffic" }
+                    updateNotification(title, subtitle)
+                }
+
+                override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                    val current = player.currentMediaItem
+                    val title = current?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "FatLine" }
+                    val subtitle = current?.mediaMetadata?.artist?.toString().orEmpty()
+                        .ifBlank { "Scanner service active" }
                     updateNotification(title, subtitle)
                 }
             })
@@ -351,6 +360,18 @@ class ScannerService : MediaLibraryService() {
             Intent(this, ScannerService::class.java).setAction(ACTION_DISCONNECT_ALL),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val skip = PendingIntent.getService(
+            this,
+            2,
+            Intent(this, ScannerService::class.java).setAction(ACTION_SKIP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val clearQueue = PendingIntent.getService(
+            this,
+            3,
+            Intent(this, ScannerService::class.java).setAction(ACTION_STOP_AUDIO),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_headset)
             .setContentTitle(title)
@@ -358,12 +379,19 @@ class ScannerService : MediaLibraryService() {
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            .addAction(0, "Skip", skip)
+            .addAction(0, "Clear queue", clearQueue)
             .addAction(0, "Disconnect all", stop)
             .build()
     }
 
     private fun updateNotification(title: String, text: String) {
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, text))
+        val queuedCount = PlaybackQueuePolicy.queuedCount(
+            mediaCount = player.mediaItemCount,
+            currentIndex = player.currentMediaItemIndex
+        )
+        val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
