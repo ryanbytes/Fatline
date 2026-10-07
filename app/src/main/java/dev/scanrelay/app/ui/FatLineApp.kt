@@ -786,6 +786,7 @@ private fun ChannelsScreen(
                     ) {
                         Text(
                             system.label,
+                            modifier = Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 2,
@@ -793,9 +794,13 @@ private fun ChannelsScreen(
                         )
                         Text(
                             system.talkgroups.count { it.enabled }.toString() + "/" + system.talkgroups.size + " enabled",
+                            modifier = Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.bodySmall
                         )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             item {
                                 OutlinedButton(
                                     onClick = {
@@ -854,6 +859,7 @@ private fun ChannelsScreen(
                         ) {
                             Text(
                                 tagGroup.tag,
+                                modifier = Modifier.fillMaxWidth(),
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(tagRgb.red, tagRgb.green, tagRgb.blue),
                                 maxLines = 2,
@@ -862,9 +868,13 @@ private fun ChannelsScreen(
                             Text(
                                 tagGroup.talkgroups.count { it.enabled }.toString() + "/" +
                                     tagGroup.talkgroups.size + " enabled",
+                                modifier = Modifier.fillMaxWidth(),
                                 style = MaterialTheme.typography.bodySmall
                             )
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 item {
                                     OutlinedButton(
                                         onClick = {
@@ -911,44 +921,70 @@ private fun ChannelsScreen(
                                 talkgroupIndex + "-" + tg.systemRef + "-" + tg.talkgroupRef
                         }
                     ) { _, tg ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 3.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Checkbox(
-                                checked = tg.enabled,
-                                onCheckedChange = { enabled ->
-                                    viewModel.setTalkgroup(server.profile.id, tg.systemRef, tg.talkgroupRef, enabled)
-                                }
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(tg.displayName)
-                                Text(
-                                    "TG " + tg.talkgroupRef +
-                                        if (tg.tag.isBlank()) "" else " · " + tg.tag,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = { viewModel.setFavorite(server.profile.id, tg.systemRef, tg.talkgroupRef, !tg.favorite) }
-                            ) { Text(if (tg.favorite) "★" else "☆") }
-                            editingScanList?.let { list ->
-                                val inList = tg.key in list.channels
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.setScanListChannel(
-                                            server.profile.id,
-                                            list.id,
-                                            tg.key,
-                                            !inList
-                                        )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = tg.enabled,
+                                    onCheckedChange = { enabled ->
+                                        viewModel.setTalkgroup(server.profile.id, tg.systemRef, tg.talkgroupRef, enabled)
                                     }
-                                ) { Text(if (inList) "✓ List" else "+ List") }
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        tg.displayName,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        "TG " + tg.talkgroupRef +
+                                            if (tg.tag.isBlank()) "" else " · " + tg.tag,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
-                            OutlinedButton(onClick = {
-                                if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
-                                else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
-                            }) { Text(if (server.hold == tg.key) "Held" else "Hold") }
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.setFavorite(
+                                                server.profile.id,
+                                                tg.systemRef,
+                                                tg.talkgroupRef,
+                                                !tg.favorite
+                                            )
+                                        }
+                                    ) { Text(if (tg.favorite) "★" else "☆") }
+                                }
+                                editingScanList?.let { list ->
+                                    item {
+                                        val inList = tg.key in list.channels
+                                        OutlinedButton(
+                                            onClick = {
+                                                viewModel.setScanListChannel(
+                                                    server.profile.id,
+                                                    list.id,
+                                                    tg.key,
+                                                    !inList
+                                                )
+                                            }
+                                        ) { Text(if (inList) "✓ List" else "+ List") }
+                                    }
+                                }
+                                item {
+                                    OutlinedButton(onClick = {
+                                        if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
+                                        else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
+                                    }) { Text(if (server.hold == tg.key) "Held" else "Hold") }
+                                }
+                            }
                         }
                         HorizontalDivider(Modifier.padding(start = 64.dp))
                     }

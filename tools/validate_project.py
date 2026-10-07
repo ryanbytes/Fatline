@@ -302,6 +302,8 @@ require('alertToneSetIdsTrimDropBlanksAndDeduplicate' in (ROOT / 'app/src/test/j
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('/api/cm-auth/login' not in viewmodel and '/api/cm-auth/session' not in viewmodel, 'central account credentials must not be sent from FatLine')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
+require('tg.displayName,\n                                        maxLines = 1,\n                                        overflow = TextOverflow.Ellipsis' in ui, 'channel names must ellipsize instead of wrapping into narrow vertical strips')
+require('LazyRow(\n                                modifier = Modifier.fillMaxWidth(),\n                                horizontalArrangement = Arrangement.spacedBy(6.dp)' in ui, 'talkgroup actions must scroll independently below the channel label')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
