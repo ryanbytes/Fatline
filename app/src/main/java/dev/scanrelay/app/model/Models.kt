@@ -36,12 +36,12 @@ data class TalkgroupConfig(
     val label: String,
     val name: String = "",
     val tag: String = "",
-    val groups: List<String> = emptyList(),
     val enabled: Boolean = false,
     val favorite: Boolean = false,
     val toneDetectionEnabled: Boolean = false,
     val toneSets: List<AlertToneSet> = emptyList(),
-    val talkgroupId: Long? = null
+    val talkgroupId: Long? = null,
+    val groups: List<String> = emptyList()
 ) {
     val key: ChannelKey get() = ChannelKey(systemRef, talkgroupRef)
     val displayName: String
