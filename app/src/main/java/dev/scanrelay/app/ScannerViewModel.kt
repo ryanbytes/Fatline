@@ -123,39 +123,29 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             runCatching {
                 val origin = httpOrigin(profile.baseUrl)
                 val email = username.trim().lowercase()
-                val settings = runCatching { getJson("$origin/api/registration-settings") }.getOrNull()
-                val pin = if (settings?.optBoolean("centralManagementEnabled", false) == true) {
-                    val login = postJson(
-                        "$origin/api/cm-auth/login",
-                        JSONObject().put("email", email).put("password", password)
-                    )
-                    val token = login.optString("token").trim()
-                    require(token.isNotBlank()) { "Login succeeded but no account session token was returned" }
-                    val session = postJson(
-                        "$origin/api/cm-auth/session",
-                        JSONObject().put("token", token).put("returnUrl", origin)
-                    )
-                    if (session.optBoolean("needsSubscription", false)) {
+                val settings = runCatching { getJson("$origin/api/registration-settings") }
+                    .getOrElse {
                         throw IllegalStateException(
-                            session.optString("message").takeIf { it.isNotBlank() }
-                                ?: "This account does not currently have scanner access"
+                            "FatLine could not verify this server's account mode, so it did not send your password. Retry or connect with a scanner PIN."
                         )
                     }
-                    session.optString("pin").trim()
-                } else {
-                    val login = postJson(
-                        "$origin/api/user/login",
-                        JSONObject().put("email", email).put("password", password)
+                if (AccountLoginPolicy.usesCentralManagementAuthentication(settings)) {
+                    throw IllegalStateException(
+                        "This server forwards central-account sign-ins to its account service. FatLine blocks that login to keep your email and password out of that service. Connect with a scanner PIN instead."
                     )
-                    if (AccountLoginPolicy.requiresForcedPasswordReset(login)) {
-                        _accountLogin.value = AccountLoginState(
-                            message = "Password update required",
-                            needsPasswordReset = true
-                        )
-                        return@launch
-                    }
-                    login.optJSONObject("user")?.optString("pin").orEmpty().trim()
                 }
+                val login = postJson(
+                    "$origin/api/user/login",
+                    JSONObject().put("email", email).put("password", password)
+                )
+                if (AccountLoginPolicy.requiresForcedPasswordReset(login)) {
+                    _accountLogin.value = AccountLoginState(
+                        message = "Password update required",
+                        needsPasswordReset = true
+                    )
+                    return@launch
+                }
+                val pin = login.optJSONObject("user")?.optString("pin").orEmpty().trim()
 
                 require(pin.isNotBlank()) { "Login succeeded but the server did not return a scanner PIN" }
                 val saved = saveProfile(profile.copy(pin = pin))

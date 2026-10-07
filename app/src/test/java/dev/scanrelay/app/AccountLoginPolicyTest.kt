@@ -18,6 +18,17 @@ class AccountLoginPolicyTest {
         assertFalse(AccountLoginPolicy.requiresForcedPasswordReset(JSONObject("""{"user":{}}""")))
     }
 
+    @Test fun identifiesCentralManagementAuthentication() {
+        assertTrue(AccountLoginPolicy.usesCentralManagementAuthentication(
+            JSONObject("""{"centralManagementEnabled":true}""")
+        ))
+        assertFalse(AccountLoginPolicy.usesCentralManagementAuthentication(
+            JSONObject("""{"centralManagementEnabled":false}""")
+        ))
+        assertFalse(AccountLoginPolicy.usesCentralManagementAuthentication(JSONObject())
+        )
+    }
+
     @Test fun validatesPasswordsUsingServerRequirements() {
         assertNull(AccountLoginPolicy.passwordValidationError("Strongpass1"))
         assertEquals("Use at least 8 characters", AccountLoginPolicy.passwordValidationError("Aa1!"))
