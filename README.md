@@ -13,6 +13,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Account profile details from `/api/account`, including verification, group, and subscription/access status
 - In-app password reset by emailed code for existing scanner accounts
 - In-app account password changes using an emailed verification code
+- In-app account email changes with current-address verification and a new-address confirmation link
 - Playback notification shows queued-call count and offers Skip and Clear queue controls
 - Server-issued `PNS` PIN updates replace the live reconnect credential and refresh the encrypted saved PIN
 - ThinLine-compatible WebSocket commands including `VER`, `PIN`, `CFG`, `CAL`, `LCL`, `LFM`, `ALT`, `ERR`, `XPR`, and `MAX`

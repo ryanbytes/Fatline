@@ -47,6 +47,15 @@ data class AccountPasswordChangeState(
     val error: String? = null
 )
 
+data class AccountEmailChangeState(
+    val working: Boolean = false,
+    val codeSent: Boolean = false,
+    val verified: Boolean = false,
+    val pendingEmail: String? = null,
+    val message: String? = null,
+    val error: String? = null
+)
+
 class ScannerViewModel(application: Application) : AndroidViewModel(application) {
     private val profileStore = ProfileStore(application)
     private val channelStore = ChannelStore(application)
@@ -55,6 +64,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _accountProfiles = MutableStateFlow<Map<String, AccountProfileLoadState>>(emptyMap())
     private val _passwordRecovery = MutableStateFlow(PasswordRecoveryState())
     private val _accountPasswordChange = MutableStateFlow(AccountPasswordChangeState())
+    private val _accountEmailChange = MutableStateFlow(AccountEmailChangeState())
     private val loginHttpClient = OkHttpClient()
 
     val profiles: StateFlow<List<ServerProfile>> = _profiles.asStateFlow()
@@ -62,6 +72,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     val accountProfiles: StateFlow<Map<String, AccountProfileLoadState>> = _accountProfiles.asStateFlow()
     val passwordRecovery: StateFlow<PasswordRecoveryState> = _passwordRecovery.asStateFlow()
     val accountPasswordChange: StateFlow<AccountPasswordChangeState> = _accountPasswordChange.asStateFlow()
+    val accountEmailChange: StateFlow<AccountEmailChangeState> = _accountEmailChange.asStateFlow()
     val scannerState = ScannerRepository.state
 
     init {
@@ -332,6 +343,143 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearAccountPasswordChangeStatus() {
         _accountPasswordChange.value = AccountPasswordChangeState()
+    }
+
+    fun requestAccountEmailChangeCode(baseUrl: String, pin: String) {
+        if (baseUrl.isBlank()) {
+            _accountEmailChange.value = AccountEmailChangeState(error = "Server URL is required")
+            return
+        }
+        if (pin.isBlank()) {
+            _accountEmailChange.value = AccountEmailChangeState(error = "Sign in to change the account email")
+            return
+        }
+
+        _accountEmailChange.value = AccountEmailChangeState(working = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(baseUrl)
+                postAuthenticatedJson(
+                    "$origin/api/account/email/request-verification",
+                    pin.trim(),
+                    JSONObject()
+                )
+            }.onSuccess { response ->
+                _accountEmailChange.value = AccountEmailChangeState(
+                    codeSent = true,
+                    message = response.optString("message").takeIf(String::isNotBlank)
+                        ?: "Verification code sent to your current email"
+                )
+            }.onFailure { error ->
+                _accountEmailChange.value = AccountEmailChangeState(
+                    error = error.message?.takeIf(String::isNotBlank)
+                        ?: "Email change code request failed"
+                )
+            }
+        }
+    }
+
+    fun verifyAccountEmailChangeCode(baseUrl: String, pin: String, code: String) {
+        if (baseUrl.isBlank()) {
+            _accountEmailChange.value = AccountEmailChangeState(error = "Server URL is required")
+            return
+        }
+        if (pin.isBlank() || code.isBlank()) {
+            _accountEmailChange.value = AccountEmailChangeState(error = "Enter the verification code")
+            return
+        }
+
+        _accountEmailChange.value = _accountEmailChange.value.copy(working = true, error = null)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(baseUrl)
+                postAuthenticatedJson(
+                    "$origin/api/account/email/verify-code",
+                    pin.trim(),
+                    JSONObject().put("code", code.trim())
+                )
+            }.onSuccess { response ->
+                if (!response.optBoolean("verified", false)) {
+                    _accountEmailChange.value = _accountEmailChange.value.copy(
+                        working = false,
+                        error = "Email verification failed"
+                    )
+                } else {
+                    _accountEmailChange.value = _accountEmailChange.value.copy(
+                        working = false,
+                        verified = true,
+                        error = null,
+                        message = "Current email verified. Enter the new email address."
+                    )
+                }
+            }.onFailure { error ->
+                _accountEmailChange.value = _accountEmailChange.value.copy(
+                    working = false,
+                    error = error.message?.takeIf(String::isNotBlank) ?: "Invalid verification code"
+                )
+            }
+        }
+    }
+
+    fun changeAccountEmail(
+        baseUrl: String,
+        pin: String,
+        code: String,
+        newEmail: String,
+        password: String
+    ) {
+        if (baseUrl.isBlank()) {
+            _accountEmailChange.value = _accountEmailChange.value.copy(error = "Server URL is required")
+            return
+        }
+        if (!_accountEmailChange.value.verified) {
+            _accountEmailChange.value = _accountEmailChange.value.copy(
+                error = "Verify your current email before changing it"
+            )
+            return
+        }
+        if (pin.isBlank() || code.isBlank() || newEmail.isBlank() || password.isBlank()) {
+            _accountEmailChange.value = _accountEmailChange.value.copy(
+                error = "Enter the new email, account password, and verification code"
+            )
+            return
+        }
+
+        _accountEmailChange.value = _accountEmailChange.value.copy(working = true, error = null)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(baseUrl)
+                postAuthenticatedJson(
+                    "$origin/api/account/email",
+                    pin.trim(),
+                    JSONObject()
+                        .put("newEmail", newEmail.trim().lowercase())
+                        .put("password", password)
+                        .put("code", code.trim())
+                )
+            }.onSuccess { response ->
+                val pendingEmail = response.optString("newEmail").takeIf(String::isNotBlank)
+                val requiresVerification = response.optBoolean("requiresVerification", false)
+                _accountEmailChange.value = AccountEmailChangeState(
+                    pendingEmail = pendingEmail,
+                    message = response.optString("message").takeIf(String::isNotBlank)
+                        ?: if (requiresVerification) {
+                            "Check the new email address for a confirmation link."
+                        } else {
+                            "Email updated successfully"
+                        }
+                )
+            }.onFailure { error ->
+                _accountEmailChange.value = _accountEmailChange.value.copy(
+                    working = false,
+                    error = error.message?.takeIf(String::isNotBlank) ?: "Email change failed"
+                )
+            }
+        }
+    }
+
+    fun clearAccountEmailChangeStatus() {
+        _accountEmailChange.value = AccountEmailChangeState()
     }
 
     fun clearAccountLoginStatus() {
