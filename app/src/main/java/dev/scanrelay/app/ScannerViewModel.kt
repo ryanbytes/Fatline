@@ -203,21 +203,28 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         profileId: String,
         reset: Boolean = true,
         systemRef: Long? = null,
+        talkgroupRef: Long? = null
+    ) = ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)
+
+    fun requestHistoryFiltered(
+        profileId: String,
+        systemRef: Long? = null,
         talkgroupRef: Long? = null,
         date: String? = null,
         group: String? = null,
         tag: String? = null,
         sort: Int = -1
     ) = ScannerRepository.requestHistory(
-        profileId,
-        reset,
-        systemRef,
-        talkgroupRef,
-        date,
-        group,
-        tag,
-        sort
+        profileId = profileId,
+        reset = true,
+        systemRef = systemRef,
+        talkgroupRef = talkgroupRef,
+        date = date,
+        group = group,
+        tag = tag,
+        sort = sort
     )
+
     fun refreshAlerts(profileId: String) = ScannerRepository.refreshAlerts(profileId)
     fun refreshTranscripts(
         profileId: String,
