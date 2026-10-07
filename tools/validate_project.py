@@ -123,6 +123,7 @@ except Exception as e:
 
 require('AndroidKeyStore' in vault and 'AES/GCM/NoPadding' in vault, 'PIN vault is not Android Keystore AES-GCM')
 require('tlr-audio-key-wrap-v1' in crypto and 'ECDH' in crypto and 'AES/GCM/NoPadding' in crypto, 'ThinLine encrypted audio primitives missing')
+require('relayKeyExchangeRoundTripsThroughMockTransport' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt').read_text(), 'encrypted relay key-exchange integration regression missing')
 require('ConcurrentHashMap' in repo and 'sessions' in repo, 'multi-server session map missing')
 require('CallKey' in models, 'per-server call identity missing')
 require('pendingEncrypted' in repo and '20' in repo, 'bounded encrypted-call buffering missing')
@@ -274,6 +275,7 @@ require('PlaybackQueuePolicy.removalIndex' in service and 'trimQueueForIncomingC
 require((ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').exists(), 'playback queue policy missing')
 require('liveOverflowRemovesOnlyLiveItems' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'live queue isolation regression test missing')
 require('replayOverflowDoesNotDiscardQueuedLiveTraffic' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'replay queue isolation regression test missing')
+require('liveOverflowKeepsCurrentPlayingCallSelected' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'live queue overflow must preserve current playback regression missing')
 require('continuationCallIds' in repo and 'historyContinueStartsAtSelectedAndMovesTowardNewest' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive Continue ordering regression missing')
 require('continueHistory' in viewmodel and 'Text("Continue")' in ui, 'History Continue UI/view-model bridge missing')
 require('AlertToneSet' in models and 'toneDetectionEnabled' in models and 'toneSets' in models, 'talkgroup tone-set metadata missing')
