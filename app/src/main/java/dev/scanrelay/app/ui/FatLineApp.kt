@@ -2319,6 +2319,7 @@ private fun SettingsScreen(
 ) {
     val loginState by viewModel.accountLogin.collectAsStateWithLifecycle()
     val accountProfiles by viewModel.accountProfiles.collectAsStateWithLifecycle()
+    val passwordRecovery by viewModel.passwordRecovery.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
@@ -2333,6 +2334,10 @@ private fun SettingsScreen(
     var url by remember(editingId, editing?.baseUrl) { mutableStateOf(editing?.baseUrl ?: "") }
     var username by remember(editingId) { mutableStateOf("") }
     var password by remember(editingId) { mutableStateOf("") }
+    var showPasswordRecovery by remember(editingId) { mutableStateOf(false) }
+    var recoveryEmail by remember(editingId) { mutableStateOf("") }
+    var recoveryCode by remember(editingId) { mutableStateOf("") }
+    var recoveryNewPassword by remember(editingId) { mutableStateOf("") }
     var pin by remember(editingId, editing?.pin) { mutableStateOf(editing?.pin ?: "") }
     var alertSoundLabel by remember(editingId) {
         mutableStateOf(AlertSoundPreferences.displayName(context, editingId))
@@ -2366,6 +2371,14 @@ private fun SettingsScreen(
         if (loginState.message == "Signed in") password = ""
     }
 
+    LaunchedEffect(passwordRecovery.message) {
+        if (passwordRecovery.message == "Password reset successful") {
+            recoveryCode = ""
+            recoveryNewPassword = ""
+            password = ""
+        }
+    }
+
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Text(
@@ -2387,6 +2400,7 @@ private fun SettingsScreen(
                         username = ""
                         password = ""
                         viewModel.clearAccountLoginStatus()
+                        viewModel.clearPasswordRecoveryStatus()
                         onSelectProfile(profile.id)
                     }) { Text(profile.name) }
                 }
@@ -2399,6 +2413,7 @@ private fun SettingsScreen(
                         password = ""
                         pin = ""
                         viewModel.clearAccountLoginStatus()
+                        viewModel.clearPasswordRecoveryStatus()
                     }) { Text("New") }
                 }
             }
@@ -2445,6 +2460,67 @@ private fun SettingsScreen(
                     }
                     loginState.error?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    OutlinedButton(onClick = { showPasswordRecovery = !showPasswordRecovery }) {
+                        Text(if (showPasswordRecovery) "Hide password recovery" else "Forgot password?")
+                    }
+                    if (showPasswordRecovery) {
+                        Text(
+                            "Request a reset code, then enter the code and a new password.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedTextField(
+                            recoveryEmail,
+                            { recoveryEmail = it },
+                            label = { Text("Account email") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        OutlinedButton(
+                            onClick = { viewModel.requestPasswordReset(url, recoveryEmail) },
+                            enabled = url.isNotBlank() && recoveryEmail.isNotBlank() && !passwordRecovery.working
+                        ) {
+                            Text(if (passwordRecovery.working) "Working…" else "Send reset code")
+                        }
+                        OutlinedTextField(
+                            recoveryCode,
+                            { recoveryCode = it },
+                            label = { Text("Reset code") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            recoveryNewPassword,
+                            { recoveryNewPassword = it },
+                            label = { Text("New password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                        Button(
+                            onClick = {
+                                viewModel.resetAccountPassword(
+                                    url,
+                                    recoveryEmail,
+                                    recoveryCode,
+                                    recoveryNewPassword
+                                )
+                            },
+                            enabled = url.isNotBlank() &&
+                                recoveryEmail.isNotBlank() &&
+                                recoveryCode.isNotBlank() &&
+                                recoveryNewPassword.isNotBlank() &&
+                                !passwordRecovery.working
+                        ) {
+                            Text(if (passwordRecovery.working) "Resetting…" else "Reset password")
+                        }
+                        passwordRecovery.message?.takeIf(String::isNotBlank)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
+                        passwordRecovery.error?.takeIf(String::isNotBlank)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
 
                     if (editing != null && editing.pin.isNotBlank()) {
@@ -2575,6 +2651,7 @@ private fun SettingsScreen(
                                 password = ""
                                 pin = ""
                                 viewModel.clearAccountLoginStatus()
+                        viewModel.clearPasswordRecoveryStatus()
                             }) { Text("Delete") }
                         }
                     }

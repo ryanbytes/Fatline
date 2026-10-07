@@ -35,17 +35,25 @@ data class AccountProfileLoadState(
     val error: String? = null
 )
 
+data class PasswordRecoveryState(
+    val working: Boolean = false,
+    val message: String? = null,
+    val error: String? = null
+)
+
 class ScannerViewModel(application: Application) : AndroidViewModel(application) {
     private val profileStore = ProfileStore(application)
     private val channelStore = ChannelStore(application)
     private val _profiles = MutableStateFlow(profileStore.load())
     private val _accountLogin = MutableStateFlow(AccountLoginState())
     private val _accountProfiles = MutableStateFlow<Map<String, AccountProfileLoadState>>(emptyMap())
+    private val _passwordRecovery = MutableStateFlow(PasswordRecoveryState())
     private val loginHttpClient = OkHttpClient()
 
     val profiles: StateFlow<List<ServerProfile>> = _profiles.asStateFlow()
     val accountLogin: StateFlow<AccountLoginState> = _accountLogin.asStateFlow()
     val accountProfiles: StateFlow<Map<String, AccountProfileLoadState>> = _accountProfiles.asStateFlow()
+    val passwordRecovery: StateFlow<PasswordRecoveryState> = _passwordRecovery.asStateFlow()
     val scannerState = ScannerRepository.state
 
     init {
@@ -171,6 +179,77 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+    }
+
+    fun requestPasswordReset(baseUrl: String, email: String) {
+        if (baseUrl.isBlank()) {
+            _passwordRecovery.value = PasswordRecoveryState(error = "Server URL is required")
+            return
+        }
+        if (email.isBlank()) {
+            _passwordRecovery.value = PasswordRecoveryState(error = "Email is required")
+            return
+        }
+
+        _passwordRecovery.value = PasswordRecoveryState(working = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(baseUrl)
+                postJson(
+                    "$origin/api/user/forgot-password",
+                    JSONObject().put("email", email.trim().lowercase())
+                )
+            }.onSuccess { response ->
+                _passwordRecovery.value = PasswordRecoveryState(
+                    message = response.optString("message").takeIf(String::isNotBlank)
+                        ?: "If an account with that email exists, a password reset code has been sent."
+                )
+            }.onFailure { error ->
+                _passwordRecovery.value = PasswordRecoveryState(
+                    error = error.message?.takeIf(String::isNotBlank) ?: "Reset code request failed"
+                )
+            }
+        }
+    }
+
+    fun resetAccountPassword(baseUrl: String, email: String, code: String, newPassword: String) {
+        if (baseUrl.isBlank()) {
+            _passwordRecovery.value = PasswordRecoveryState(error = "Server URL is required")
+            return
+        }
+        if (email.isBlank() || code.isBlank() || newPassword.isBlank()) {
+            _passwordRecovery.value = PasswordRecoveryState(
+                error = "Email, reset code, and new password are required"
+            )
+            return
+        }
+
+        _passwordRecovery.value = PasswordRecoveryState(working = true)
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(baseUrl)
+                postJson(
+                    "$origin/api/user/reset-password",
+                    JSONObject()
+                        .put("email", email.trim().lowercase())
+                        .put("code", code.trim())
+                        .put("newPassword", newPassword)
+                )
+            }.onSuccess { response ->
+                _passwordRecovery.value = PasswordRecoveryState(
+                    message = response.optString("message").takeIf(String::isNotBlank)
+                        ?: "Password reset successful"
+                )
+            }.onFailure { error ->
+                _passwordRecovery.value = PasswordRecoveryState(
+                    error = error.message?.takeIf(String::isNotBlank) ?: "Password reset failed"
+                )
+            }
+        }
+    }
+
+    fun clearPasswordRecoveryStatus() {
+        _passwordRecovery.value = PasswordRecoveryState()
     }
 
     fun clearAccountLoginStatus() {
