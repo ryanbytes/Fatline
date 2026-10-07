@@ -37,7 +37,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Incident alerts can open mapped coordinates or geocoded addresses in the installed maps app
 - One-shot scanner connection-loss notifications after a previously healthy connection drops
 - Per-server ordered call processing while different servers remain concurrent
-- ThinLine relay encrypted audio: P-256 ECDH, HKDF-SHA256 (`tlr-audio-key-wrap-v1`), AES-256-GCM
+- Encrypted-audio compatibility for non-ThinLine-hosted relays using P-256 ECDH, HKDF-SHA256 (`tlr-audio-key-wrap-v1`), and AES-256-GCM; key exchange to `thinlineradio.com` is blocked for privacy
 - Bounded encrypted-call buffering while relay key exchange is pending
 - Automatic relay-key refresh after encrypted-audio authentication/decrypt failure
 - Media3 1.11.0 ExoPlayer background playback and `MediaLibraryService` Android Auto surface
@@ -84,6 +84,8 @@ The CI debug signing key is intentionally repository-visible and is only for per
 - Cleartext HTTP remains allowed for self-hosted LAN scanner deployments and the UI warns when it is used.
 - Relay audio master keys are held in memory only, cleared when scanner sessions are removed, and refreshed when encrypted audio indicates a stale key.
 - No ad or analytics SDK is included.
+- Direct requests to `thinlineradio.com` and its subdomains are blocked for scanner, account, and relay traffic; HTTP/WebSocket redirects are disabled to prevent credential forwarding
+- Encrypted audio that depends on ThinLine's hosted relay is unavailable; compatible relays under user-controlled domains can still be used
 
 ## Verification status
 
