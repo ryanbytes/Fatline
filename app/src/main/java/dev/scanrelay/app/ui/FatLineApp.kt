@@ -59,6 +59,7 @@ import dev.scanrelay.app.model.ScannerAlert
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
+import dev.scanrelay.app.playback.ScannerService
 import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate
@@ -81,6 +82,7 @@ private enum class AppTab(val label: String, val glyph: String) {
 fun FatLineApp(viewModel: ScannerViewModel) {
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
     val scanner by viewModel.scannerState.collectAsStateWithLifecycle()
+    val queuedCallCount by ScannerService.queuedCallCount.collectAsStateWithLifecycle()
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(AppTab.Scanner) }
 
@@ -128,6 +130,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                         profiles = profiles,
                         selectedProfileId = selectedProfileId,
                         onSelectProfile = { selectedProfileId = it },
+                        queuedCallCount = queuedCallCount,
                         viewModel = viewModel,
                         modifier = Modifier.fillMaxSize().padding(padding)
                     )
@@ -183,6 +186,7 @@ private fun ScannerScreen(
     profiles: List<ServerProfile>,
     selectedProfileId: String?,
     onSelectProfile: (String) -> Unit,
+    queuedCallCount: Int,
     viewModel: ScannerViewModel,
     modifier: Modifier
 ) {
@@ -207,6 +211,23 @@ private fun ScannerScreen(
                     style = MaterialTheme.typography.bodySmall
                 )
                 ProfileStrip(profiles, selectedProfileId, onSelectProfile)
+            }
+        }
+
+        item {
+            Card(Modifier.padding(horizontal = 16.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Playback queue", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (queuedCallCount == 1) "1 call queued" else "$queuedCallCount calls queued",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 

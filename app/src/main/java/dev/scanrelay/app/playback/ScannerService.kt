@@ -32,6 +32,9 @@ import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.net.ScannerRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class ScannerService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
@@ -408,6 +411,7 @@ class ScannerService : MediaLibraryService() {
             mediaCount = player.mediaItemCount,
             currentIndex = player.currentMediaItemIndex
         )
+        _queuedCallCount.value = queuedCount
         val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))
     }
@@ -489,6 +493,9 @@ class ScannerService : MediaLibraryService() {
         .build()
 
     companion object {
+        private val _queuedCallCount = MutableStateFlow(0)
+        val queuedCallCount: StateFlow<Int> = _queuedCallCount.asStateFlow()
+
         private const val CHANNEL_ID = "fatline_playback"
         private const val NOTIFICATION_ID = 8101
         private const val PREFS = "fatline_session"
