@@ -20,7 +20,7 @@ class AccountProfileTest {
                 .put("billingRequired", false)
                 .put("hasBilling", true)
                 .put("isGroupAdmin", false)
-                .put("systemAdmin", true)
+                .put("pinExpired", true)
         )
 
         assertEquals("Ryan Stoner", account.displayName)
@@ -31,7 +31,7 @@ class AccountProfileTest {
         assertFalse(account.billingRequired)
         assertTrue(account.hasBilling)
         assertFalse(account.isGroupAdmin)
-        assertTrue(account.isSystemAdmin)
+        assertTrue(account.pinExpired)
     }
 
     @Test
@@ -46,6 +46,6 @@ class AccountProfileTest {
         assertFalse(account.billingRequired)
         assertFalse(account.hasBilling)
         assertFalse(account.isGroupAdmin)
-        assertFalse(account.isSystemAdmin)
+        assertFalse(account.pinExpired)
     }
 }
