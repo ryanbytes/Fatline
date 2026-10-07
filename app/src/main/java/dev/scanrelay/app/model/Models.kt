@@ -36,6 +36,7 @@ data class TalkgroupConfig(
     val label: String,
     val name: String = "",
     val tag: String = "",
+    val groups: List<String> = emptyList(),
     val enabled: Boolean = false,
     val favorite: Boolean = false,
     val toneDetectionEnabled: Boolean = false,
@@ -254,6 +255,10 @@ data class ServerScannerState(
     val historyHasMore: Boolean = false,
     val historySystemRef: Long? = null,
     val historyTalkgroupRef: Long? = null,
+    val historyDate: String? = null,
+    val historyGroup: String? = null,
+    val historyTag: String? = null,
+    val historySort: Int = -1,
     val error: String? = null
 )
 
