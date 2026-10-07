@@ -160,6 +160,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                         modifier = Modifier.fillMaxSize().padding(padding)
                     )
                     AppTab.Settings -> SettingsScreen(
+                        scanner = scanner,
                         profiles = profiles,
                         selectedProfileId = selectedProfileId,
                         onSelectProfile = { selectedProfileId = it },
@@ -1930,6 +1931,7 @@ private fun AlertsScreen(
 
 @Composable
 private fun SettingsScreen(
+    scanner: ScannerState,
     profiles: List<ServerProfile>,
     selectedProfileId: String?,
     onSelectProfile: (String) -> Unit,
@@ -1942,6 +1944,10 @@ private fun SettingsScreen(
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
     }
     val editing = profiles.firstOrNull { it.id == editingId }
+    val connectedServer = scanner.servers[editingId]
+    var backlogMinutesText by remember(editingId, connectedServer?.livefeedBacklogMinutes) {
+        mutableStateOf((connectedServer?.livefeedBacklogMinutes ?: 0).toString())
+    }
     var name by remember(editingId, editing?.name) { mutableStateOf(editing?.name ?: "Scanner") }
     var url by remember(editingId, editing?.baseUrl) { mutableStateOf(editing?.baseUrl ?: "") }
     var username by remember(editingId) { mutableStateOf("") }
@@ -2157,6 +2163,59 @@ private fun SettingsScreen(
                                 pin = ""
                                 viewModel.clearAccountLoginStatus()
                             }) { Text("Delete") }
+                        }
+                    }
+                }
+            }
+        }
+
+        connectedServer?.let { server ->
+            item {
+                Card(Modifier.padding(horizontal = 16.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Live feed",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        OutlinedTextField(
+                            value = backlogMinutesText,
+                            onValueChange = { value ->
+                                if (value.isEmpty() || value.all(Char::isDigit)) {
+                                    backlogMinutesText = value
+                                }
+                            },
+                            label = { Text("Backlog (minutes)") },
+                            singleLine = true,
+                            enabled = !server.userSettingsSaving,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            if (server.livefeedBacklogMinutes == 0) {
+                                "0 means live audio only."
+                            } else {
+                                "Current server setting: " + server.livefeedBacklogMinutes + " minute(s)."
+                            },
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "The server applies backlog on a fresh live-feed start. Pause, then Resume after saving to apply it to the current connection.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Button(
+                            onClick = {
+                                backlogMinutesText.toIntOrNull()?.let { minutes ->
+                                    viewModel.setLivefeedBacklogMinutes(server.profile.id, minutes)
+                                }
+                            },
+                            enabled = backlogMinutesText.toIntOrNull() != null &&
+                                server.profile.pin.isNotBlank() &&
+                                !server.userSettingsSaving
+                        ) {
+                            Text(if (server.userSettingsSaving) "Saving…" else "Save backlog")
+                        }
+                        server.userSettingsError?.takeIf { it.isNotBlank() }?.let { error ->
+                            Text(error, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
