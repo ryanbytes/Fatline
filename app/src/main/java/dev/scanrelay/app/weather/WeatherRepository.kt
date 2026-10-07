@@ -5,6 +5,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 data class ForecastPeriod(
@@ -20,7 +22,8 @@ data class ForecastPeriod(
 data class WeatherSnapshot(
     val location: String,
     val periods: List<ForecastPeriod>,
-    val severeAlerts: List<String>
+    val severeAlerts: List<String>,
+    val radarUrl: String
 )
 
 internal fun parseForecastPeriods(json: JSONObject): List<ForecastPeriod> {
@@ -46,6 +49,14 @@ internal fun parseForecastPeriods(json: JSONObject): List<ForecastPeriod> {
             )
         }
     }
+}
+
+internal fun nwsRadarUrl(latitude: Double, longitude: Double): String {
+    require(latitude in -90.0..90.0 && longitude in -180.0..180.0) { "Invalid radar location." }
+    val settings = """{"agenda":{"id":"national","center":[$longitude,$latitude],"zoom":7,"layer":"bref_qcd","transparent":false,"alertsOverlay":true},"base":"standard","county":false,"cwa":false,"state":false,"menu":true}"""
+    val encoded = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(settings.toByteArray(StandardCharsets.UTF_8))
+    return "https://radar.weather.gov/?settings=v1_$encoded"
 }
 
 class WeatherRepository(
@@ -94,7 +105,8 @@ class WeatherRepository(
         WeatherSnapshot(
             location = listOf(city, state).filter(String::isNotBlank).joinToString(", ").ifBlank { normalized },
             periods = periods,
-            severeAlerts = alerts
+            severeAlerts = alerts,
+            radarUrl = nwsRadarUrl(latitude, longitude)
         )
     }
 

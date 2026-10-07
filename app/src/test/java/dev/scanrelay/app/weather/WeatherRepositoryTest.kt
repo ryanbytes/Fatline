@@ -4,6 +4,8 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 class WeatherRepositoryTest {
     @Test fun parsesForecastPeriodsAndSkipsIncompleteEntries() {
@@ -20,6 +22,16 @@ class WeatherRepositoryTest {
         assertEquals("Tonight", periods.first().name)
         assertEquals("5 mph NW", periods.first().wind)
         assertTrue(!periods.first().isDaytime)
+    }
+
+    @Test fun radarUrlCentersOnTheRequestedCoordinates() {
+        val url = nwsRadarUrl(latitude = 40.99, longitude = -85.99)
+        assertTrue(url.startsWith("https://radar.weather.gov/?settings=v1_"))
+        val token = url.substringAfter("settings=v1_")
+        val settings = String(Base64.getUrlDecoder().decode(token), StandardCharsets.UTF_8)
+        assertTrue(settings.contains("\"center\":[-85.99,40.99]"))
+        assertTrue(settings.contains("\"layer\":\"bref_qcd\""))
+        assertTrue(settings.contains("\"alertsOverlay\":true"))
     }
 
     @Test fun emptyOrMalformedForecastHasNoPeriods() {
