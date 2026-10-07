@@ -193,6 +193,50 @@ data class ScannerAlert(
             ?: listOf(title, body, dateTime.orEmpty()).joinToString("|")
 }
 
+data class StatsSystem(
+    val id: Long,
+    val label: String
+)
+
+data class StatsMinuteBucket(
+    val minute: Long,
+    val count: Int
+)
+
+data class StatsHourBucket(
+    val hour: Int,
+    val count: Int
+)
+
+data class StatsLabelCount(
+    val label: String,
+    val count: Int
+)
+
+data class StatsIncidentSubcategory(
+    val label: String,
+    val count: Int
+)
+
+data class StatsIncidentCategory(
+    val category: String,
+    val count: Int,
+    val subcategories: List<StatsIncidentSubcategory> = emptyList()
+)
+
+data class ScannerStats(
+    val availableSystems: List<StatsSystem> = emptyList(),
+    val callsPerMinute: List<StatsMinuteBucket> = emptyList(),
+    val topTalkgroups: List<StatsLabelCount> = emptyList(),
+    val callsByHour: List<StatsHourBucket> = emptyList(),
+    val topDepartmentsByTone: List<StatsLabelCount> = emptyList(),
+    val totalCallsToday: Int = 0,
+    val callsLastMinute: Int = 0,
+    val callsLastHour: Int = 0,
+    val incidentSummary: List<StatsIncidentCategory> = emptyList(),
+    val generatedAt: Long = 0L
+)
+
 enum class ConnectionStatus {
     DISCONNECTED,
     CONNECTING,
@@ -245,6 +289,11 @@ data class ServerScannerState(
     val showListenersCount: Boolean = false,
     val listenerCount: Int = 0,
     val incidentMappingEnabled: Boolean = false,
+    val transcriptionEnabled: Boolean = false,
+    val stats: ScannerStats? = null,
+    val statsLoading: Boolean = false,
+    val statsError: String? = null,
+    val statsSystemId: Long? = null,
     val time12hFormat: Boolean = false,
     val uiAccentColor: String? = null,
     val userUiAccentColor: String? = null,
