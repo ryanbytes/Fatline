@@ -31,6 +31,8 @@ import dev.scanrelay.app.alerts.NwsSevereWeatherMonitor
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
+import dev.scanrelay.app.net.NetworkHandoffPolicy
+import dev.scanrelay.app.net.NetworkHandoffTransition
 import dev.scanrelay.app.net.ScannerRepository
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -50,15 +52,15 @@ class ScannerService : MediaLibraryService() {
 
     private val networkLossCheck = Runnable {
         val active = connectivityManager.activeNetwork
-        when {
-            active == null -> {
-                if (currentNetworkHandle != null) {
-                    currentNetworkHandle = null
-                    ScannerRepository.networkUnavailable()
-                    updateNotification("FatLine", "Waiting for network")
-                }
+        when (NetworkHandoffPolicy.transition(currentNetworkHandle, active?.networkHandle)) {
+            NetworkHandoffTransition.NETWORK_LOST -> {
+                currentNetworkHandle = null
+                ScannerRepository.networkUnavailable()
+                updateNotification("FatLine", "Waiting for network")
             }
-            active.networkHandle != currentNetworkHandle -> handleNetworkAvailable(active)
+            NetworkHandoffTransition.NETWORK_RESTORED,
+            NetworkHandoffTransition.NETWORK_SWITCHED -> active?.let(::handleNetworkAvailable)
+            NetworkHandoffTransition.NO_CHANGE -> Unit
         }
     }
 
@@ -69,7 +71,7 @@ class ScannerService : MediaLibraryService() {
 
         override fun onLost(network: Network) {
             networkHandler.post {
-                if (network.networkHandle != currentNetworkHandle) return@post
+                if (!NetworkHandoffPolicy.isCurrentLoss(network.networkHandle, currentNetworkHandle)) return@post
                 // Android often announces the replacement default network immediately before
                 // or after this callback. Give the handoff a short window before declaring offline.
                 networkHandler.removeCallbacks(networkLossCheck)
@@ -173,17 +175,19 @@ class ScannerService : MediaLibraryService() {
     private fun handleNetworkAvailable(network: Network) {
         networkHandler.removeCallbacks(networkLossCheck)
         val newHandle = network.networkHandle
-        val previous = currentNetworkHandle
+        val transition = NetworkHandoffPolicy.transition(currentNetworkHandle, newHandle)
         currentNetworkHandle = newHandle
-        when {
-            previous == null -> {
+        when (transition) {
+            NetworkHandoffTransition.NETWORK_RESTORED -> {
                 ScannerRepository.networkChanged("Network restored")
                 updateMonitoringNotification(activeProfileIds().size)
             }
-            previous != newHandle -> {
+            NetworkHandoffTransition.NETWORK_SWITCHED -> {
                 ScannerRepository.networkChanged("Network switched")
                 updateMonitoringNotification(activeProfileIds().size)
             }
+            NetworkHandoffTransition.NO_CHANGE,
+            NetworkHandoffTransition.NETWORK_LOST -> Unit
         }
     }
 
