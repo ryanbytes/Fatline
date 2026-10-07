@@ -27,6 +27,19 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun playingMediaIdIsEmptyWhenPlayerIsStopped() {
+        assertEquals(null, PlaybackQueuePolicy.playingMediaId(listOf(id("live", 1)), 0, isPlaying = false))
+    }
+
+    @Test
+    fun playingMediaIdTracksCurrentPlayingItem() {
+        val mediaIds = listOf(id("live", 1), id("replay", 2))
+
+        assertEquals(id("replay", 2), PlaybackQueuePolicy.playingMediaId(mediaIds, 1, isPlaying = true))
+        assertEquals(null, PlaybackQueuePolicy.playingMediaId(mediaIds, 4, isPlaying = true))
+    }
+
+    @Test
     fun liveOverflowRemovesOnlyLiveItems() {
         val media = buildList {
             add(id("replay", 1))

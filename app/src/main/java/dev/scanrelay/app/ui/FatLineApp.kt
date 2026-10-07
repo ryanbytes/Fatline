@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,9 +46,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -83,6 +86,8 @@ private enum class AppTab(val label: String, val glyph: String) {
     Settings("Settings", "S")
 }
 
+private const val COMPACT_UI_DENSITY_SCALE = 0.90f
+
 @Composable
 fun FatLineApp(viewModel: ScannerViewModel) {
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
@@ -91,6 +96,13 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     val currentlyPlayingCall by ScannerService.currentlyPlayingCall.collectAsStateWithLifecycle()
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(AppTab.Scanner) }
+    val systemDensity = LocalDensity.current
+    val compactDensity = remember(systemDensity) {
+        Density(
+            density = systemDensity.density * COMPACT_UI_DENSITY_SCALE,
+            fontScale = systemDensity.fontScale
+        )
+    }
 
     LaunchedEffect(profiles, scanner.servers.keys) {
         val selectionValid = selectedProfileId != null && profiles.any { it.id == selectedProfileId }
@@ -114,98 +126,100 @@ fun FatLineApp(viewModel: ScannerViewModel) {
         darkColorScheme()
     }
 
-    MaterialTheme(colorScheme = colorScheme) {
-        Surface(Modifier.fillMaxSize()) {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar {
-                        AppTab.entries.forEach { item ->
-                            NavigationBarItem(
-                                selected = tab == item,
-                                onClick = { tab = item },
-                                icon = {
-                                    if (item == AppTab.Scanner && tab != AppTab.Scanner && queuedCallCount > 0) {
-                                        BadgedBox(
-                                            badge = {
-                                                Badge {
-                                                    Text(if (queuedCallCount > 99) "99+" else queuedCallCount.toString())
+    CompositionLocalProvider(LocalDensity provides compactDensity) {
+        MaterialTheme(colorScheme = colorScheme) {
+            Surface(Modifier.fillMaxSize()) {
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar {
+                            AppTab.entries.forEach { item ->
+                                NavigationBarItem(
+                                    selected = tab == item,
+                                    onClick = { tab = item },
+                                    icon = {
+                                        if (item == AppTab.Scanner && tab != AppTab.Scanner && queuedCallCount > 0) {
+                                            BadgedBox(
+                                                badge = {
+                                                    Badge {
+                                                        Text(if (queuedCallCount > 99) "99+" else queuedCallCount.toString())
+                                                    }
                                                 }
+                                            ) {
+                                                Text(item.glyph)
                                             }
-                                        ) {
+                                        } else {
                                             Text(item.glyph)
                                         }
-                                    } else {
-                                        Text(item.glyph)
+                                    },
+                                    label = {
+                                        Text(
+                                            item.label,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
+                                        )
                                     }
-                                },
-                                label = {
-                                    Text(
-                                        item.label,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Ellipsis,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
-                                    )
-                                }
-                            )
+                                )
+                            }
                         }
                     }
-                }
-            ) { padding ->
-                when (tab) {
-                    AppTab.Scanner -> ScannerScreen(
-                        scanner = scanner,
-                        profiles = profiles,
-                        selectedProfileId = selectedProfileId,
-                        onSelectProfile = { selectedProfileId = it },
-                        queuedCallCount = queuedCallCount,
-                        currentlyPlayingCall = currentlyPlayingCall,
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(padding)
-                    )
-                    AppTab.Channels -> ChannelsScreen(
-                        scanner = scanner,
-                        profiles = profiles,
-                        selectedProfileId = selectedProfileId,
-                        onSelectProfile = { selectedProfileId = it },
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(padding)
-                    )
-                    AppTab.History -> HistoryScreen(
-                        scanner = scanner,
-                        profiles = profiles,
-                        selectedProfileId = selectedProfileId,
-                        onSelectProfile = { selectedProfileId = it },
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(padding)
-                    )
-                    AppTab.Alerts -> AlertsScreen(
-                        scanner = scanner,
-                        profiles = profiles,
-                        selectedProfileId = selectedProfileId,
-                        onSelectProfile = { selectedProfileId = it },
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(padding)
-                    )
-                    AppTab.Weather -> WeatherScreen(
-                        modifier = Modifier.fillMaxSize().padding(padding)
-                    )
-                    AppTab.Transcripts -> TranscriptsScreen(
-                        scanner = scanner,
-                        profiles = profiles,
-                        selectedProfileId = selectedProfileId,
-                        onSelectProfile = { selectedProfileId = it },
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(padding)
-                    )
-                    AppTab.Settings -> SettingsScreen(
-                        scanner = scanner,
-                        profiles = profiles,
-                        selectedProfileId = selectedProfileId,
-                        onSelectProfile = { selectedProfileId = it },
-                        viewModel = viewModel,
-                        modifier = Modifier.fillMaxSize().padding(padding)
-                    )
+                ) { padding ->
+                    when (tab) {
+                        AppTab.Scanner -> ScannerScreen(
+                            scanner = scanner,
+                            profiles = profiles,
+                            selectedProfileId = selectedProfileId,
+                            onSelectProfile = { selectedProfileId = it },
+                            queuedCallCount = queuedCallCount,
+                            currentlyPlayingCall = currentlyPlayingCall,
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize().padding(padding)
+                        )
+                        AppTab.Channels -> ChannelsScreen(
+                            scanner = scanner,
+                            profiles = profiles,
+                            selectedProfileId = selectedProfileId,
+                            onSelectProfile = { selectedProfileId = it },
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize().padding(padding)
+                        )
+                        AppTab.History -> HistoryScreen(
+                            scanner = scanner,
+                            profiles = profiles,
+                            selectedProfileId = selectedProfileId,
+                            onSelectProfile = { selectedProfileId = it },
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize().padding(padding)
+                        )
+                        AppTab.Alerts -> AlertsScreen(
+                            scanner = scanner,
+                            profiles = profiles,
+                            selectedProfileId = selectedProfileId,
+                            onSelectProfile = { selectedProfileId = it },
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize().padding(padding)
+                        )
+                        AppTab.Weather -> WeatherScreen(
+                            modifier = Modifier.fillMaxSize().padding(padding)
+                        )
+                        AppTab.Transcripts -> TranscriptsScreen(
+                            scanner = scanner,
+                            profiles = profiles,
+                            selectedProfileId = selectedProfileId,
+                            onSelectProfile = { selectedProfileId = it },
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize().padding(padding)
+                        )
+                        AppTab.Settings -> SettingsScreen(
+                            scanner = scanner,
+                            profiles = profiles,
+                            selectedProfileId = selectedProfileId,
+                            onSelectProfile = { selectedProfileId = it },
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxSize().padding(padding)
+                        )
+                    }
                 }
             }
         }
@@ -290,16 +304,6 @@ private fun ScannerScreen(
             playingCall?.let { call ->
                 item(key = "playing-" + server.profile.id + "-" + call.id) {
                     NowPlayingCard(server, call, viewModel)
-                }
-            } ?: item {
-                Card(Modifier.padding(horizontal = 16.dp)) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text("Nothing playing", style = MaterialTheme.typography.titleLarge)
-                        Text(
-                            if (server.paused) "Live feed is paused." else "No call from this scanner is playing.",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
                 }
             }
 

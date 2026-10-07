@@ -41,7 +41,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Bounded encrypted-call buffering while relay key exchange is pending
 - Automatic relay-key refresh after encrypted-audio authentication/decrypt failure
 - Media3 1.11.0 ExoPlayer background playback and `MediaLibraryService` Android Auto surface
-- Android Auto browse tree: profiles → favorited talkgroups; server items are browsable/playable and selecting a favorite sets a talkgroup hold
+- Android Auto browse tree: profiles → favorited talkgroups; server items are browsable/playable, selecting a favorite sets a talkgroup hold, and subscribed browsers are refreshed when favorite-channel metadata changes
 - Foreground-service restore cleanup for deleted/stale profiles and bounded playback queue handling
 
 ## Connection-loss and network-switch recovery
