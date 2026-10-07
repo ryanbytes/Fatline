@@ -40,7 +40,8 @@ data class TalkgroupConfig(
     val favorite: Boolean = false,
     val toneDetectionEnabled: Boolean = false,
     val toneSets: List<AlertToneSet> = emptyList(),
-    val talkgroupId: Long? = null
+    val talkgroupId: Long? = null,
+    val groups: List<String> = emptyList()
 ) {
     val key: ChannelKey get() = ChannelKey(systemRef, talkgroupRef)
     val displayName: String
@@ -254,6 +255,10 @@ data class ServerScannerState(
     val historyHasMore: Boolean = false,
     val historySystemRef: Long? = null,
     val historyTalkgroupRef: Long? = null,
+    val historyDate: String? = null,
+    val historyGroup: String? = null,
+    val historyTag: String? = null,
+    val historySort: Int = -1,
     val error: String? = null
 )
 

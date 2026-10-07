@@ -86,8 +86,28 @@ class ThinLineSocket(
     // ThinLine's public client uses a bare ["LFM"] envelope to stop/pause live traffic.
     fun stopLivefeed(): Boolean = send(ThinLineProtocol.command(ThinLineProtocol.LIVEFEED_MAP))
     fun requestConfig(): Boolean = send(ThinLineProtocol.command(ThinLineProtocol.CONFIG))
-    fun requestHistory(limit: Int, offset: Int, systemRef: Long?, talkgroups: Collection<Long>): Boolean =
-        send(ThinLineProtocol.listCalls(limit, offset, -1, systemRef, talkgroups))
+    fun requestHistory(
+        limit: Int,
+        offset: Int,
+        sort: Int,
+        systemRef: Long?,
+        talkgroupRef: Long?,
+        date: String?,
+        group: String?,
+        tag: String?
+    ): Boolean =
+        send(
+            ThinLineProtocol.listCalls(
+                limit = limit,
+                offset = offset,
+                sort = sort,
+                systemRef = systemRef,
+                talkgroupRef = talkgroupRef,
+                date = date,
+                group = group,
+                tag = tag
+            )
+        )
     fun requestCall(callId: Long, download: Boolean = false): Boolean = send(ThinLineProtocol.call(callId, download))
     fun requestPlaybackCall(callId: Long): Boolean = send(ThinLineProtocol.playbackCall(callId))
     fun send(text: String): Boolean = socket?.send(text) ?: false

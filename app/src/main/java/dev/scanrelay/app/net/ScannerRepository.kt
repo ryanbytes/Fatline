@@ -1080,7 +1080,16 @@ object ScannerRepository {
     private fun pruneQueuedLiveCalls(profileId: String) {
         appContext?.let { ScannerService.filterProfileMedia(it, profileId) }
     }
-    fun requestHistory(profileId: String, reset: Boolean = true, systemRef: Long? = null, talkgroupRef: Long? = null) {
+    fun requestHistory(
+        profileId: String,
+        reset: Boolean = true,
+        systemRef: Long? = null,
+        talkgroupRef: Long? = null,
+        date: String? = null,
+        group: String? = null,
+        tag: String? = null,
+        sort: Int = -1
+    ) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
             if (reset) {
@@ -1088,17 +1097,29 @@ object ScannerRepository {
                 session.state = session.state.copy(
                     history = emptyList(),
                     historyHasMore = false,
-                    historySystemRef = systemRef,
-                    historyTalkgroupRef = talkgroupRef
+                    historySystemRef = systemRef?.takeIf { it > 0 },
+                    historyTalkgroupRef = talkgroupRef?.takeIf { it > 0 },
+                    historyDate = date?.trim()?.takeIf { it.isNotBlank() },
+                    historyGroup = group?.trim()?.takeIf { it.isNotBlank() },
+                    historyTag = tag?.trim()?.takeIf { it.isNotBlank() },
+                    historySort = if (sort < 0) -1 else 1
                 )
             }
             val activeSystemRef = session.state.historySystemRef
             val activeTalkgroupRef = session.state.historyTalkgroupRef
+            val activeDate = session.state.historyDate
+            val activeGroup = session.state.historyGroup
+            val activeTag = session.state.historyTag
+            val activeSort = session.state.historySort
             session.socket?.requestHistory(
-                limit = 100,
+                limit = 200,
                 offset = session.historyOffset,
+                sort = activeSort,
                 systemRef = activeSystemRef,
-                talkgroups = activeTalkgroupRef?.let(::listOf).orEmpty()
+                talkgroupRef = activeTalkgroupRef,
+                date = activeDate,
+                group = activeGroup,
+                tag = activeTag
             )
         }
         publish()
@@ -2750,9 +2771,17 @@ object ScannerRepository {
             }
         }
         synchronized(session) {
-            val merged = (session.state.history + calls).associateBy { it.id }.values.sortedByDescending(::callSortKey).take(500)
+            val combined = (session.state.history + calls).associateBy { it.id }.values
+            val merged = if (session.state.historySort < 0) {
+                combined.sortedByDescending(::callSortKey)
+            } else {
+                combined.sortedBy(::callSortKey)
+            }
             session.historyOffset += calls.size
-            session.state = session.state.copy(history = merged, historyHasMore = payload.optBoolean("hasMore", false))
+            session.state = session.state.copy(
+                history = merged,
+                historyHasMore = payload.optBoolean("hasMore", false)
+            )
         }
         publish()
     }
@@ -2883,7 +2912,12 @@ object ScannerRepository {
             val avoided = key in session.state.avoided
             shouldPlay = replayRequested || (!session.state.paused && enabled && talkgroupHoldAllows && systemHoldAllows && !avoided)
             val merged = if (matchesHistoryFilter(session.state, call)) {
-                (session.state.history + call).associateBy { it.id }.values.sortedByDescending(::callSortKey).take(500)
+                val combined = (session.state.history + call).associateBy { it.id }.values
+                if (session.state.historySort < 0) {
+                    combined.sortedByDescending(::callSortKey)
+                } else {
+                    combined.sortedBy(::callSortKey)
+                }
             } else {
                 session.state.history
             }
@@ -3140,7 +3174,22 @@ object ScannerRepository {
     internal fun matchesHistoryFilter(state: ServerScannerState, call: RadioCall): Boolean {
         val systemMatches = state.historySystemRef?.let { call.systemRef == it } ?: true
         val talkgroupMatches = state.historyTalkgroupRef?.let { call.talkgroupRef == it } ?: true
-        return systemMatches && talkgroupMatches
+        val talkgroup = state.systems
+            .firstOrNull { it.systemRef == call.systemRef }
+            ?.talkgroups
+            ?.firstOrNull { it.talkgroupRef == call.talkgroupRef }
+        val groupMatches = state.historyGroup?.let { selected ->
+            talkgroup?.groups?.any { it.equals(selected, ignoreCase = true) } == true
+        } ?: true
+        val tagMatches = state.historyTag?.let { selected ->
+            talkgroup?.tag?.equals(selected, ignoreCase = true) == true
+        } ?: true
+        val dateMatches = state.historyDate?.let { selected ->
+            val cutoff = runCatching { Instant.parse(selected).toEpochMilli() }.getOrNull()
+            val callTime = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrNull()
+            cutoff != null && callTime != null && callTime >= cutoff
+        } ?: true
+        return systemMatches && talkgroupMatches && groupMatches && tagMatches && dateMatches
     }
     private fun callSortKey(call: RadioCall): Long = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
 

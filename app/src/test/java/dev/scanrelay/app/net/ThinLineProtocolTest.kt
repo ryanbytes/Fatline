@@ -38,14 +38,29 @@ class ThinLineProtocolTest {
         assertEquals("[\"LFM\"]", ThinLineProtocol.command(ThinLineProtocol.LIVEFEED_MAP))
     }
 
-    @Test fun listCallUsesDocumentedFields() {
-        val parsed = ThinLineProtocol.parseEnvelope(ThinLineProtocol.listCalls(100, 200, -1, 1, listOf(101, 102)))
+    @Test fun listCallUsesThinLineArchiveSearchFields() {
+        val parsed = ThinLineProtocol.parseEnvelope(
+            ThinLineProtocol.listCalls(
+                limit = 200,
+                offset = 400,
+                sort = 1,
+                systemRef = 1,
+                talkgroupRef = 101,
+                date = "2026-10-07T12:30:00Z",
+                group = "County",
+                tag = "Fire"
+            )
+        )
         val payload = parsed.payload as JSONObject
-        assertEquals(100, payload.getInt("limit"))
-        assertEquals(200, payload.getInt("offset"))
-        assertEquals(-1, payload.getInt("sort"))
+        assertEquals(200, payload.getInt("limit"))
+        assertEquals(400, payload.getInt("offset"))
+        assertEquals(1, payload.getInt("sort"))
         assertEquals(1L, payload.getLong("system"))
-        assertEquals(2, payload.getJSONArray("talkgroups").length())
+        assertEquals(101L, payload.getLong("talkgroup"))
+        assertEquals("2026-10-07T12:30:00Z", payload.getString("date"))
+        assertEquals("County", payload.getString("group"))
+        assertEquals("Fire", payload.getString("tag"))
+        assertFalse(payload.has("talkgroups"))
     }
 
     @Test fun callIdMatchesThinLineStringWireType() {
@@ -198,6 +213,34 @@ class ThinLineProtocolTest {
         assertEquals("Engine 3", units.first { it.matches(12345) }.label)
         assertEquals("Portable", units.first { it.matches(20042) }.label)
         assertEquals("Legacy", units.first { it.matches(45678) }.label)
+    }
+
+
+    @Test fun systemsRetainTalkgroupGroupsForArchiveFilters() {
+        val config = JSONObject(
+            """
+            {
+              "systems": [
+                {
+                  "systemRef": 1,
+                  "label": "County",
+                  "talkgroups": [
+                    {
+                      "talkgroupRef": 101,
+                      "label": "Fire Dispatch",
+                      "groups": ["Dispatch", "Public Safety", ""]
+                    }
+                  ]
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        assertEquals(
+            listOf("Dispatch", "Public Safety"),
+            ThinLineProtocol.parseSystems(config).single().talkgroups.single().groups
+        )
     }
 
 }

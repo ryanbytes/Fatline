@@ -886,6 +886,48 @@ private fun ChannelsScreen(
     }
 }
 
+private data class ArchiveMenuChoice(
+    val key: String,
+    val label: String
+)
+
+@Composable
+private fun ArchiveMenuButton(
+    title: String,
+    selectedKey: String,
+    choices: List<ArchiveMenuChoice>,
+    enabled: Boolean = true,
+    onSelect: (String) -> Unit
+) {
+    var expanded by remember(title, selectedKey) { mutableStateOf(false) }
+    val selectedLabel = choices.firstOrNull { it.key == selectedKey }?.label
+        ?: choices.firstOrNull()?.label
+        ?: "All"
+
+    Column {
+        OutlinedButton(
+            onClick = { expanded = true },
+            enabled = enabled && choices.isNotEmpty()
+        ) {
+            Text("$title: $selectedLabel")
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            choices.forEach { choice ->
+                DropdownMenuItem(
+                    text = { Text(choice.label) },
+                    onClick = {
+                        expanded = false
+                        onSelect(choice.key)
+                    }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun HistoryScreen(
     scanner: ScannerState,
@@ -897,6 +939,78 @@ private fun HistoryScreen(
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
     var historyQuery by remember(selectedProfileId) { mutableStateOf("") }
+    var archiveSystemRef by remember(selectedProfileId, server?.historySystemRef) {
+        mutableStateOf(server?.historySystemRef)
+    }
+    var archiveTalkgroupRef by remember(selectedProfileId, server?.historyTalkgroupRef) {
+        mutableStateOf(server?.historyTalkgroupRef)
+    }
+    var archiveGroup by remember(selectedProfileId, server?.historyGroup) {
+        mutableStateOf(server?.historyGroup)
+    }
+    var archiveTag by remember(selectedProfileId, server?.historyTag) {
+        mutableStateOf(server?.historyTag)
+    }
+    var archiveDate by remember(selectedProfileId, server?.historyDate) {
+        mutableStateOf(
+            server?.historyDate
+                ?.let { runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()).toLocalDate() }.getOrNull() }
+                ?.toString()
+                .orEmpty()
+        )
+    }
+    var archiveTime by remember(selectedProfileId, server?.historyDate) {
+        mutableStateOf(
+            server?.historyDate
+                ?.let { runCatching { Instant.parse(it).atZone(ZoneId.systemDefault()).toLocalTime() }.getOrNull() }
+                ?.format(DateTimeFormatter.ofPattern("HH:mm"))
+                .orEmpty()
+        )
+    }
+    var archiveSort by remember(selectedProfileId, server?.historySort) {
+        mutableStateOf(server?.historySort ?: -1)
+    }
+
+    val archiveDateIso = archiveDateTimeIso(archiveDate, archiveTime)
+    val archiveDateValid =
+        (archiveDate.isBlank() && archiveTime.isBlank()) ||
+            (archiveDate.isNotBlank() && archiveDateIso != null)
+
+    val allSystems = server?.systems.orEmpty()
+    val archiveGroups = allSystems
+        .flatMap { it.talkgroups }
+        .flatMap { it.groups }
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .distinctBy { it.lowercase() }
+        .sortedBy { it.lowercase() }
+    val archiveTags = allSystems
+        .flatMap { it.talkgroups }
+        .map { it.tag.trim() }
+        .filter(String::isNotBlank)
+        .distinctBy { it.lowercase() }
+        .sortedBy { it.lowercase() }
+    val filteredSystems = allSystems.filter { system ->
+        val groupMatches = archiveGroup == null ||
+            system.talkgroups.any { talkgroup ->
+                talkgroup.groups.any { it.equals(archiveGroup, ignoreCase = true) }
+            }
+        val tagMatches = archiveTag == null ||
+            system.talkgroups.any { it.tag.equals(archiveTag, ignoreCase = true) }
+        groupMatches && tagMatches
+    }
+    val selectedArchiveSystem = allSystems.firstOrNull { it.systemRef == archiveSystemRef }
+    val filteredTalkgroups = selectedArchiveSystem?.talkgroups.orEmpty().filter { talkgroup ->
+        val groupMatches = archiveGroup == null ||
+            talkgroup.groups.any { it.equals(archiveGroup, ignoreCase = true) }
+        val tagMatches = archiveTag == null ||
+            talkgroup.tag.equals(archiveTag, ignoreCase = true)
+        groupMatches && tagMatches
+    }
+    val favoriteArchiveChannels = allSystems.flatMap { system ->
+        system.talkgroups.filter { it.favorite }.map { talkgroup -> system to talkgroup }
+    }
+
     val normalizedHistoryQuery = historyQuery.trim().lowercase()
     val visibleHistory = server?.history.orEmpty().filter { call ->
         normalizedHistoryQuery.isEmpty() ||
@@ -910,20 +1024,22 @@ private fun HistoryScreen(
     }
     val latestCall = server?.lastCall
     val archiveFilterLabel = server?.let { current ->
-        when {
-            current.historyTalkgroupRef != null -> {
-                val tgRef = current.historyTalkgroupRef
+        val parts = buildList {
+            current.historyGroup?.let { add("group $it") }
+            current.historyTag?.let { add("tag $it") }
+            current.historySystemRef?.let { systemRef ->
+                val system = current.systems.firstOrNull { it.systemRef == systemRef }
+                add(system?.label ?: "system $systemRef")
+            }
+            current.historyTalkgroupRef?.let { tgRef ->
                 val system = current.systems.firstOrNull { it.systemRef == current.historySystemRef }
                 val talkgroup = system?.talkgroups?.firstOrNull { it.talkgroupRef == tgRef }
-                "Server filter: " + (talkgroup?.displayName ?: "TG $tgRef")
+                add(talkgroup?.displayName ?: "TG $tgRef")
             }
-            current.historySystemRef != null -> {
-                val systemRef = current.historySystemRef
-                val system = current.systems.firstOrNull { it.systemRef == systemRef }
-                "Server filter: " + (system?.label ?: "System $systemRef")
-            }
-            else -> null
+            current.historyDate?.let { add("from $it") }
+            if (current.historySort > 0) add("oldest first")
         }
+        if (parts.isEmpty()) null else "Server filter: " + parts.joinToString(" · ")
     }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -949,7 +1065,16 @@ private fun HistoryScreen(
                 ) {
                     item {
                         Button(
-                            onClick = { viewModel.requestHistory(server.profile.id, true) },
+                            onClick = {
+                                archiveSystemRef = null
+                                archiveTalkgroupRef = null
+                                archiveGroup = null
+                                archiveTag = null
+                                archiveDate = ""
+                                archiveTime = ""
+                                archiveSort = -1
+                                viewModel.requestHistory(server.profile.id, true)
+                            },
                             enabled = server.status == ConnectionStatus.CONNECTED
                         ) { Text(if (archiveFilterLabel == null) "Refresh archive" else "All archive") }
                     }
@@ -957,6 +1082,13 @@ private fun HistoryScreen(
                         item {
                             OutlinedButton(
                                 onClick = {
+                                    archiveSystemRef = call.systemRef
+                                    archiveTalkgroupRef = call.talkgroupRef
+                                    archiveGroup = null
+                                    archiveTag = null
+                                    archiveDate = ""
+                                    archiveTime = ""
+                                    archiveSort = -1
                                     viewModel.requestHistory(
                                         server.profile.id,
                                         true,
@@ -970,6 +1102,13 @@ private fun HistoryScreen(
                         item {
                             OutlinedButton(
                                 onClick = {
+                                    archiveSystemRef = call.systemRef
+                                    archiveTalkgroupRef = null
+                                    archiveGroup = null
+                                    archiveTag = null
+                                    archiveDate = ""
+                                    archiveTime = ""
+                                    archiveSort = -1
                                     viewModel.requestHistory(
                                         server.profile.id,
                                         true,
@@ -1000,6 +1139,169 @@ private fun HistoryScreen(
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold
                     )
+                }
+            }
+
+            item {
+                Card(Modifier.padding(horizontal = 16.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            "Archive search",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item {
+                                ArchiveMenuButton(
+                                    title = "Group",
+                                    selectedKey = archiveGroup.orEmpty(),
+                                    choices = listOf(ArchiveMenuChoice("", "All groups")) +
+                                        archiveGroups.map { ArchiveMenuChoice(it, it) },
+                                    onSelect = { key ->
+                                        archiveGroup = key.takeIf { it.isNotBlank() }
+                                        archiveSystemRef = null
+                                        archiveTalkgroupRef = null
+                                    }
+                                )
+                            }
+                            item {
+                                ArchiveMenuButton(
+                                    title = "Tag",
+                                    selectedKey = archiveTag.orEmpty(),
+                                    choices = listOf(ArchiveMenuChoice("", "All tags")) +
+                                        archiveTags.map { ArchiveMenuChoice(it, it) },
+                                    onSelect = { key ->
+                                        archiveTag = key.takeIf { it.isNotBlank() }
+                                        archiveSystemRef = null
+                                        archiveTalkgroupRef = null
+                                    }
+                                )
+                            }
+                            item {
+                                ArchiveMenuButton(
+                                    title = "System",
+                                    selectedKey = archiveSystemRef?.toString().orEmpty(),
+                                    choices = listOf(ArchiveMenuChoice("", "All systems")) +
+                                        filteredSystems.map {
+                                            ArchiveMenuChoice(it.systemRef.toString(), it.label)
+                                        },
+                                    onSelect = { key ->
+                                        archiveSystemRef = key.toLongOrNull()
+                                        archiveTalkgroupRef = null
+                                    }
+                                )
+                            }
+                            item {
+                                ArchiveMenuButton(
+                                    title = "Talkgroup",
+                                    selectedKey = archiveTalkgroupRef?.toString().orEmpty(),
+                                    choices = listOf(ArchiveMenuChoice("", "All talkgroups")) +
+                                        filteredTalkgroups.map {
+                                            ArchiveMenuChoice(
+                                                it.talkgroupRef.toString(),
+                                                it.displayName
+                                            )
+                                        },
+                                    enabled = archiveSystemRef != null,
+                                    onSelect = { key ->
+                                        archiveTalkgroupRef = key.toLongOrNull()
+                                    }
+                                )
+                            }
+                            if (favoriteArchiveChannels.isNotEmpty()) {
+                                item {
+                                    ArchiveMenuButton(
+                                        title = "Favorite",
+                                        selectedKey = "",
+                                        choices = listOf(ArchiveMenuChoice("", "Choose favorite")) +
+                                            favoriteArchiveChannels.map { (system, talkgroup) ->
+                                                ArchiveMenuChoice(
+                                                    system.systemRef.toString() + ":" +
+                                                        talkgroup.talkgroupRef,
+                                                    system.label + " · " + talkgroup.displayName
+                                                )
+                                            },
+                                        onSelect = { key ->
+                                            val refs = key.split(":", limit = 2)
+                                            if (refs.size == 2) {
+                                                archiveSystemRef = refs[0].toLongOrNull()
+                                                archiveTalkgroupRef = refs[1].toLongOrNull()
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                            item {
+                                ArchiveMenuButton(
+                                    title = "Sort",
+                                    selectedKey = archiveSort.toString(),
+                                    choices = listOf(
+                                        ArchiveMenuChoice("-1", "Newest"),
+                                        ArchiveMenuChoice("1", "Oldest")
+                                    ),
+                                    onSelect = { key ->
+                                        archiveSort = key.toIntOrNull()?.let { if (it < 0) -1 else 1 } ?: -1
+                                    }
+                                )
+                            }
+                        }
+                        OutlinedTextField(
+                            value = archiveDate,
+                            onValueChange = { archiveDate = it },
+                            label = { Text("From date (YYYY-MM-DD)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = archiveTime,
+                            onValueChange = { archiveTime = it },
+                            label = { Text("From time (HH:MM, optional)") },
+                            singleLine = true,
+                            enabled = archiveDate.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (!archiveDateValid) {
+                            Text(
+                                "Enter a valid date and optional 24-hour time.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    viewModel.requestHistoryFiltered(
+                                        profileId = server.profile.id,
+                                        systemRef = archiveSystemRef,
+                                        talkgroupRef = archiveTalkgroupRef,
+                                        date = archiveDateIso,
+                                        group = archiveGroup,
+                                        tag = archiveTag,
+                                        sort = archiveSort
+                                    )
+                                },
+                                enabled = server.status == ConnectionStatus.CONNECTED &&
+                                    archiveDateValid
+                            ) { Text("Search server") }
+                            OutlinedButton(
+                                onClick = {
+                                    archiveSystemRef = null
+                                    archiveTalkgroupRef = null
+                                    archiveGroup = null
+                                    archiveTag = null
+                                    archiveDate = ""
+                                    archiveTime = ""
+                                    archiveSort = -1
+                                }
+                            ) { Text("Clear fields") }
+                        }
+                        Text(
+                            "Server results load 200 calls at a time. Use More to continue the same search.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
 
@@ -2415,6 +2717,20 @@ private fun SettingsScreen(
 
         item { Spacer(Modifier.height(16.dp)) }
     }
+}
+
+private fun archiveDateTimeIso(dateText: String, timeText: String): String? {
+    val date = dateText.trim()
+    val time = timeText.trim()
+    if (date.isBlank()) return null
+    return runCatching {
+        val localDate = LocalDate.parse(date)
+        val localTime = if (time.isBlank()) LocalTime.MIDNIGHT else LocalTime.parse(time)
+        localDate.atTime(localTime)
+            .atZone(ZoneId.systemDefault())
+            .toInstant()
+            .toString()
+    }.getOrNull()
 }
 
 private fun transcriptDateBoundary(value: String, endOfDay: Boolean): Long? {
