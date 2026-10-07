@@ -164,6 +164,68 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun liveCallsRespectAdvancedArchiveFilters() {
+        val groupedSystems = listOf(
+            SystemConfig(
+                systemRef = 1,
+                label = "County",
+                talkgroups = listOf(
+                    TalkgroupConfig(
+                        systemRef = 1,
+                        talkgroupRef = 11,
+                        label = "Fire Dispatch",
+                        tag = "Fire",
+                        groups = listOf("Dispatch", "Public Safety")
+                    ),
+                    TalkgroupConfig(
+                        systemRef = 1,
+                        talkgroupRef = 12,
+                        label = "Law Dispatch",
+                        tag = "Law",
+                        groups = listOf("Dispatch")
+                    )
+                )
+            )
+        )
+        val state = ServerScannerState(
+            profile = profile,
+            systems = groupedSystems,
+            historyGroup = "Public Safety",
+            historyTag = "Fire",
+            historyDate = "2026-10-07T12:00:00Z"
+        )
+        fun call(talkgroupRef: Long, dateTime: String) = RadioCall(
+            profileId = profile.id,
+            serverName = profile.name,
+            id = talkgroupRef,
+            systemRef = 1,
+            talkgroupRef = talkgroupRef,
+            systemLabel = "County",
+            talkgroupLabel = "Talkgroup",
+            dateTime = dateTime
+        )
+
+        assertTrue(
+            ScannerRepository.matchesHistoryFilter(
+                state,
+                call(11, "2026-10-07T12:00:01Z")
+            )
+        )
+        assertFalse(
+            ScannerRepository.matchesHistoryFilter(
+                state,
+                call(12, "2026-10-07T12:00:01Z")
+            )
+        )
+        assertFalse(
+            ScannerRepository.matchesHistoryFilter(
+                state,
+                call(11, "2026-10-07T11:59:59Z")
+            )
+        )
+    }
+
+    @Test
     fun scanListSettingsMergePreservesUnrelatedPreferences() {
         val current = JSONObject(
             """
