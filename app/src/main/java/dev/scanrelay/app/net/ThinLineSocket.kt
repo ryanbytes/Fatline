@@ -26,6 +26,8 @@ class ThinLineSocket(
     private val client = OkHttpClient.Builder()
         .pingInterval(15, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
     private var socket: WebSocket? = null
     private val shutdown = AtomicBoolean(false)
@@ -152,6 +154,7 @@ class ThinLineSocket(
                 else -> error("Unsupported server URL scheme: ${uri.scheme}")
             }
             require(!uri.host.isNullOrBlank()) { "Server URL must include a host" }
+            ScannerEndpointPolicy.requireAllowedHost(uri.host)
             return URI(scheme, uri.userInfo, uri.host, uri.port, "/", null, null).toString()
         }
     }
