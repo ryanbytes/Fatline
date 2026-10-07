@@ -59,6 +59,7 @@ import dev.scanrelay.app.model.ScannerAlert
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
+import dev.scanrelay.app.weather.WeatherCard
 import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate
@@ -294,6 +295,10 @@ private fun ScannerScreen(
                     )
                 }
             }
+        }
+
+        if (profile != null) {
+            item { WeatherCard(profile) }
         }
 
         item { Spacer(Modifier.height(16.dp)) }
