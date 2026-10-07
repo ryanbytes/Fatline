@@ -12,6 +12,8 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Open and PIN-protected servers; PINs stored with Android Keystore AES-GCM and masked in the UI
 - Account profile details from `/api/account`, including verification, group, and subscription/access status
 - In-app password reset by emailed code for existing scanner accounts
+- In-app account password changes using an emailed verification code
+- Playback notification shows queued-call count and offers Skip and Clear queue controls
 - Server-issued `PNS` PIN updates replace the live reconnect credential and refresh the encrypted saved PIN
 - ThinLine-compatible WebSocket commands including `VER`, `PIN`, `CFG`, `CAL`, `LCL`, `LFM`, `ALT`, `ERR`, `XPR`, and `MAX`
 - Public-client wire parity for root WebSocket URL, `CAL` string IDs, complete `LFM` boolean maps, challenge-driven PIN authentication, and bare `LFM` live-feed pause
