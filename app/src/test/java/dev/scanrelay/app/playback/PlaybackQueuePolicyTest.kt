@@ -7,6 +7,16 @@ class PlaybackQueuePolicyTest {
     private fun id(kind: String, n: Int) = "call:p1:$kind:$n:1:1:$n"
 
     @Test
+    fun queuedCountExcludesCurrentItem() {
+        assertEquals(2, PlaybackQueuePolicy.queuedCount(mediaCount = 5, currentIndex = 2))
+    }
+
+    @Test
+    fun queuedCountIncludesAllItemsWhenNoCurrentItemIsSelected() {
+        assertEquals(3, PlaybackQueuePolicy.queuedCount(mediaCount = 3, currentIndex = -1))
+    }
+
+    @Test
     fun liveOverflowRemovesOnlyLiveItems() {
         val media = buildList {
             add(id("replay", 1))
