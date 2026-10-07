@@ -19,6 +19,13 @@ import dev.scanrelay.app.model.ConnectionStatus
 import dev.scanrelay.app.model.FavoriteTagKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerAlert
+import dev.scanrelay.app.model.ScannerStats
+import dev.scanrelay.app.model.StatsHourBucket
+import dev.scanrelay.app.model.StatsIncidentCategory
+import dev.scanrelay.app.model.StatsIncidentSubcategory
+import dev.scanrelay.app.model.StatsLabelCount
+import dev.scanrelay.app.model.StatsMinuteBucket
+import dev.scanrelay.app.model.StatsSystem
 import dev.scanrelay.app.model.ScanList
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
@@ -88,6 +95,7 @@ object ScannerRepository {
         val alertKeywordListMutex = Mutex()
         @Volatile var alertPreferenceSaveJob: Job? = null
         @Volatile var alertPreferenceRevision = 0L
+        @Volatile var statsRevision = 0L
         @Volatile var hasConnected = false
         @Volatile var disconnectNotified = false
     }
@@ -1123,6 +1131,147 @@ object ScannerRepository {
             )
         }
         publish()
+    }
+
+    fun refreshStats(profileId: String, systemId: Long? = null) {
+        val session = sessions[profileId] ?: return
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) {
+            synchronized(session) {
+                session.state = session.state.copy(
+                    statsLoading = false,
+                    statsError = "Sign in to load scanner stats"
+                )
+            }
+            publish()
+            return
+        }
+
+        val revision = synchronized(session) {
+            session.statsRevision += 1
+            session.state = session.state.copy(
+                statsLoading = true,
+                statsError = null,
+                statsSystemId = systemId?.takeIf { it > 0 }
+            )
+            session.statsRevision
+        }
+        publish()
+
+        scope.launch {
+            try {
+                val origin = httpOrigin(session.profile.baseUrl)
+                val selectedSystemId = systemId?.takeIf { it > 0 }
+                val url = if (selectedSystemId == null) {
+                    "$origin/api/stats"
+                } else {
+                    "$origin/api/stats?systemId=$selectedSystemId"
+                }
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $pin")
+                    .get()
+                    .build()
+                val parsed = parseScannerStats(executeJsonObject(request))
+
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    if (session.statsRevision != revision) return@synchronized
+                    session.state = session.state.copy(
+                        stats = parsed,
+                        statsLoading = false,
+                        statsError = null,
+                        statsSystemId = selectedSystemId
+                    )
+                }
+                publish()
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                if (!isCurrent(session)) return@launch
+                synchronized(session) {
+                    if (session.statsRevision != revision) return@synchronized
+                    session.state = session.state.copy(
+                        statsLoading = false,
+                        statsError = error.message?.takeIf { it.isNotBlank() }
+                            ?: "Failed to load stats"
+                    )
+                }
+                publish()
+            }
+        }
+    }
+
+    internal fun parseScannerStats(raw: JSONObject): ScannerStats {
+        fun labelCounts(name: String): List<StatsLabelCount> {
+            val array = raw.optJSONArray(name) ?: JSONArray()
+            return buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    add(
+                        StatsLabelCount(
+                            label = item.optString("label").trim().ifBlank { "Unknown" },
+                            count = item.optInt("count", 0)
+                        )
+                    )
+                }
+            }
+        }
+
+        val systems = raw.optJSONArray("availableSystems") ?: JSONArray()
+        val minutes = raw.optJSONArray("callsPerMinute") ?: JSONArray()
+        val hours = raw.optJSONArray("callsByHour") ?: JSONArray()
+        val incidents = raw.optJSONArray("incidentSummary") ?: JSONArray()
+
+        return ScannerStats(
+            availableSystems = buildList {
+                for (i in 0 until systems.length()) {
+                    val item = systems.optJSONObject(i) ?: continue
+                    val id = item.optLong("id").takeIf { it > 0 } ?: continue
+                    add(StatsSystem(id, item.optString("label").trim().ifBlank { "System $id" }))
+                }
+            },
+            callsPerMinute = buildList {
+                for (i in 0 until minutes.length()) {
+                    val item = minutes.optJSONObject(i) ?: continue
+                    add(StatsMinuteBucket(item.optLong("minute"), item.optInt("count", 0)))
+                }
+            },
+            topTalkgroups = labelCounts("topTalkgroups"),
+            callsByHour = buildList {
+                for (i in 0 until hours.length()) {
+                    val item = hours.optJSONObject(i) ?: continue
+                    add(StatsHourBucket(item.optInt("hour"), item.optInt("count", 0)))
+                }
+            },
+            topDepartmentsByTone = labelCounts("topDepartmentsByTone"),
+            totalCallsToday = raw.optInt("totalCallsToday", 0),
+            callsLastMinute = raw.optInt("callsLastMinute", 0),
+            callsLastHour = raw.optInt("callsLastHour", 0),
+            incidentSummary = buildList {
+                for (i in 0 until incidents.length()) {
+                    val item = incidents.optJSONObject(i) ?: continue
+                    val subs = item.optJSONArray("subcategories") ?: JSONArray()
+                    add(
+                        StatsIncidentCategory(
+                            category = item.optString("category").trim().ifBlank { "Other" },
+                            count = item.optInt("count", 0),
+                            subcategories = buildList {
+                                for (j in 0 until subs.length()) {
+                                    val sub = subs.optJSONObject(j) ?: continue
+                                    add(
+                                        StatsIncidentSubcategory(
+                                            label = sub.optString("label").trim().ifBlank { "Other" },
+                                            count = sub.optInt("count", 0)
+                                        )
+                                    )
+                                }
+                            }
+                        )
+                    )
+                }
+            },
+            generatedAt = raw.optLong("generatedAt", 0L)
+        )
     }
 
     fun refreshAlerts(profileId: String) {
@@ -2582,6 +2731,7 @@ object ScannerRepository {
         val options = payload.optJSONObject("options")
         val autoEnableNewTalkgroups = options?.optBoolean("autoEnableNewTalkgroups", false) == true
         val incidentMappingEnabled = options?.optBoolean("incidentMappingEnabled", false) == true
+        val transcriptionEnabled = options?.optBoolean("transcriptionEnabled", false) == true
         val uiAccentColor = options?.optString("uiAccentColor")?.trim()?.takeIf { it.isNotBlank() }
         val userSettings = payload.optJSONObject("userSettings")
         val userUiAccentColor = userSettings
@@ -2651,6 +2801,10 @@ object ScannerRepository {
                 showListenersCount = showListenersCount,
                 listenerCount = if (showListenersCount) session.state.listenerCount else 0,
                 incidentMappingEnabled = incidentMappingEnabled,
+                transcriptionEnabled = transcriptionEnabled,
+                stats = if (transcriptionEnabled) session.state.stats else null,
+                statsLoading = if (transcriptionEnabled) session.state.statsLoading else false,
+                statsError = if (transcriptionEnabled) session.state.statsError else null,
                 time12hFormat = time12hFormat,
                 uiAccentColor = uiAccentColor,
                 userUiAccentColor = userUiAccentColor,
