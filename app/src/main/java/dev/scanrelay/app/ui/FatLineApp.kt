@@ -74,6 +74,7 @@ private enum class AppTab(val label: String, val glyph: String) {
     Channels("Channels", "≡"),
     History("History", "H"),
     Alerts("Alerts", "!"),
+    Weather("Weather", "☼"),
     Transcripts("Transcripts", "T"),
     Settings("Settings", "S")
 }
@@ -156,6 +157,9 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                         selectedProfileId = selectedProfileId,
                         onSelectProfile = { selectedProfileId = it },
                         viewModel = viewModel,
+                        modifier = Modifier.fillMaxSize().padding(padding)
+                    )
+                    AppTab.Weather -> WeatherScreen(
                         modifier = Modifier.fillMaxSize().padding(padding)
                     )
                     AppTab.Transcripts -> TranscriptsScreen(
