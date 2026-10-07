@@ -32,6 +32,8 @@ import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.net.ScannerRepository
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,6 +46,7 @@ class ScannerService : MediaLibraryService() {
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
+    private val callByMediaId = mutableMapOf<String, RadioCall>()
 
     private val networkLossCheck = Runnable {
         val active = connectivityManager.activeNetwork
@@ -91,12 +94,14 @@ class ScannerService : MediaLibraryService() {
             )
             addListener(object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    syncCurrentlyPlayingCall()
                     val title = mediaItem?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "Listening" }
                     val subtitle = mediaItem?.mediaMetadata?.artist?.toString().orEmpty().ifBlank { "Waiting for traffic" }
                     updateNotification(title, subtitle)
                 }
 
                 override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                    syncCurrentlyPlayingCall()
                     val current = player.currentMediaItem
                     val title = current?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "FatLine" }
                     val subtitle = current?.mediaMetadata?.artist?.toString().orEmpty()
@@ -271,8 +276,13 @@ class ScannerService : MediaLibraryService() {
 
     private fun addMediaFromIntent(intent: Intent) {
         val path = intent.getStringExtra(EXTRA_AUDIO_PATH) ?: return
+        val token = intent.getStringExtra(EXTRA_CALL_TOKEN).orEmpty()
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
-        if (profileId in pausedProfiles) return
+        if (profileId in pausedProfiles) {
+            pendingCalls.remove(token)
+            return
+        }
+        val call = pendingCalls.remove(token)
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
         val systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L)
         val talkgroupRef = intent.getLongExtra(EXTRA_TALKGROUP_REF, 0L)
@@ -281,7 +291,7 @@ class ScannerService : MediaLibraryService() {
         val subtitle = intent.getStringExtra(EXTRA_SUBTITLE).orEmpty()
         val mediaKind = if (liveFeed) "live" else "replay"
         val item = MediaItem.Builder()
-            .setMediaId("call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:${System.nanoTime()}")
+            .setMediaId("call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:$token")
             .setUri(path.toUri())
             .setMediaMetadata(
                 MediaMetadata.Builder()
@@ -296,6 +306,8 @@ class ScannerService : MediaLibraryService() {
         if (player.playbackState == Player.STATE_ENDED) player.clearMediaItems()
         trimQueueForIncomingCall(liveFeed)
         player.addMediaItem(item)
+        if (call != null) callByMediaId[item.mediaId] = call
+        syncCurrentlyPlayingCall()
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         if (!player.playWhenReady) player.play()
     }
@@ -320,6 +332,13 @@ class ScannerService : MediaLibraryService() {
         } else {
             pausedProfiles -= profileId
         }
+    }
+
+    private fun syncCurrentlyPlayingCall() {
+        val activeIds = (0 until player.mediaItemCount)
+            .mapTo(mutableSetOf()) { index -> player.getMediaItemAt(index).mediaId }
+        callByMediaId.keys.retainAll(activeIds)
+        _currentlyPlayingCall.value = player.currentMediaItem?.mediaId?.let(callByMediaId::get)
     }
 
     private fun trimQueueForIncomingCall(liveFeed: Boolean) {
@@ -354,6 +373,8 @@ class ScannerService : MediaLibraryService() {
     private fun stopAudioInternal() {
         player.stop()
         player.clearMediaItems()
+        callByMediaId.clear()
+        _currentlyPlayingCall.value = null
     }
 
     private fun removeProfileMedia(profileId: String) {
@@ -495,6 +516,9 @@ class ScannerService : MediaLibraryService() {
     companion object {
         private val _queuedCallCount = MutableStateFlow(0)
         val queuedCallCount: StateFlow<Int> = _queuedCallCount.asStateFlow()
+        private val _currentlyPlayingCall = MutableStateFlow<RadioCall?>(null)
+        val currentlyPlayingCall: StateFlow<RadioCall?> = _currentlyPlayingCall.asStateFlow()
+        private val pendingCalls = ConcurrentHashMap<String, RadioCall>()
 
         private const val CHANNEL_ID = "fatline_playback"
         private const val NOTIFICATION_ID = 8101
@@ -524,6 +548,7 @@ class ScannerService : MediaLibraryService() {
         const val EXTRA_AUDIO_PATH = "audio_path"
         const val EXTRA_TITLE = "title"
         const val EXTRA_SUBTITLE = "subtitle"
+        const val EXTRA_CALL_TOKEN = "call_token"
 
         fun connect(context: Context, profileId: String) {
             ContextCompat.startForegroundService(
@@ -542,8 +567,11 @@ class ScannerService : MediaLibraryService() {
 
         fun enqueue(context: Context, call: RadioCall, liveFeed: Boolean = true) {
             val path = call.audioPath ?: return
+            val token = UUID.randomUUID().toString()
+            pendingCalls[token] = call
             val intent = Intent(context, ScannerService::class.java)
                 .setAction(ACTION_ENQUEUE)
+                .putExtra(EXTRA_CALL_TOKEN, token)
                 .putExtra(EXTRA_PROFILE_ID, call.profileId)
                 .putExtra(EXTRA_CALL_ID, call.id)
                 .putExtra(EXTRA_SYSTEM_REF, call.systemRef)
