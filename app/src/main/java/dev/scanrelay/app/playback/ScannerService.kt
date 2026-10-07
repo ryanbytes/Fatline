@@ -35,6 +35,7 @@ import dev.scanrelay.app.net.ScannerRepository
 class ScannerService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
+    private lateinit var weatherMonitor: dev.scanrelay.app.alerts.NwsSevereWeatherMonitor
     private lateinit var connectivityManager: ConnectivityManager
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
@@ -73,6 +74,7 @@ class ScannerService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         ScannerRepository.initialize(this)
+        weatherMonitor = dev.scanrelay.app.alerts.NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
         player = ExoPlayer.Builder(this).build().apply {
@@ -133,6 +135,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        weatherMonitor.stop()
         stopNetworkTracking()
         session.release()
         player.release()
