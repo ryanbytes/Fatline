@@ -27,4 +27,36 @@ class UserSettingsTest {
         assertEquals("Roboto", merged.getString("appFont"))
         assertEquals("keep", merged.getJSONArray("favorites").getString(0))
     }
+    @Test
+    fun parsesTagColorsWithNormalizedKeys() {
+        val settings = JSONObject().put(
+            "tagColors",
+            JSONObject()
+                .put("Fire Dispatch", "#ff1744")
+                .put(" LAW ", "#2979ff")
+        )
+
+        assertEquals(
+            mapOf("fire dispatch" to "#ff1744", "law" to "#2979ff"),
+            parseTagColors(settings)
+        )
+    }
+
+    @Test
+    fun mergeTagColorsPreservesOtherUserSettings() {
+        val merged = mergeTagColorsIntoSettings(
+            JSONObject()
+                .put("livefeedBacklogMinutes", 4)
+                .put("favorites", JSONArray().put("keep")),
+            mapOf("Fire Dispatch" to "#00e5ff")
+        )
+
+        assertEquals(4, merged.getInt("livefeedBacklogMinutes"))
+        assertEquals("keep", merged.getJSONArray("favorites").getString(0))
+        assertEquals(
+            "#00e5ff",
+            merged.getJSONObject("tagColors").getString("fire dispatch")
+        )
+    }
+
 }

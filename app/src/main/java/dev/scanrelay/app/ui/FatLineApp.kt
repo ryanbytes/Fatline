@@ -777,6 +777,7 @@ private fun ChannelsScreen(
                 groupTalkgroupsByTag(system.talkgroups).forEachIndexed { tagIndex, tagGroup ->
                     val tagFavorite =
                         FavoriteTagKey(system.systemRef, tagGroup.tag) in server.favoriteTags
+                    val tagRgb = TagColors.rgb(tagGroup.tag, server.tagColors)
                     item(key = "tag-" + server.profile.id + "-" + systemIndex + "-" + tagIndex + "-" + tagGroup.tag) {
                         Row(
                             Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
@@ -784,7 +785,11 @@ private fun ChannelsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(tagGroup.tag, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    tagGroup.tag,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(tagRgb.red, tagRgb.green, tagRgb.blue)
+                                )
                                 Text(
                                     tagGroup.talkgroups.count { it.enabled }.toString() + "/" +
                                         tagGroup.talkgroups.size + " enabled",
@@ -2288,6 +2293,110 @@ private fun SettingsScreen(
                         }
                         server.userSettingsError?.takeIf { it.isNotBlank() }?.let { error ->
                             Text(error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+
+            val availableTags = server.systems
+                .flatMap { it.talkgroups }
+                .map { it.tag.trim() }
+                .filter { it.isNotBlank() }
+                .distinctBy { it.lowercase() }
+                .sortedBy { it.lowercase() }
+
+            if (availableTags.isNotEmpty()) {
+                item {
+                    Card(Modifier.padding(horizontal = 16.dp)) {
+                        Column(
+                            Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                "Tag colors",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "Synced with ThinLine user settings.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            availableTags.forEach { tag ->
+                                val rgb = TagColors.rgb(tag, server.tagColors)
+                                val custom = TagColors.customColor(tag, server.tagColors)
+                                val customLabel = custom?.let { hex ->
+                                    TagColors.choices.firstOrNull {
+                                        it.hex.equals(hex, ignoreCase = true)
+                                    }?.label ?: hex
+                                } ?: "Default"
+                                var menuExpanded by remember(
+                                    server.profile.id,
+                                    tag,
+                                    custom
+                                ) { mutableStateOf(false) }
+
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        tag,
+                                        color = Color(rgb.red, rgb.green, rgb.blue),
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Column {
+                                        OutlinedButton(
+                                            onClick = { menuExpanded = true },
+                                            enabled = server.profile.pin.isNotBlank() &&
+                                                !server.userSettingsSaving
+                                        ) { Text(customLabel) }
+                                        DropdownMenu(
+                                            expanded = menuExpanded,
+                                            onDismissRequest = { menuExpanded = false }
+                                        ) {
+                                            DropdownMenuItem(
+                                                text = { Text("Default") },
+                                                onClick = {
+                                                    menuExpanded = false
+                                                    viewModel.setTagColor(
+                                                        server.profile.id,
+                                                        tag,
+                                                        null
+                                                    )
+                                                }
+                                            )
+                                            TagColors.choices.forEach { choice ->
+                                                val choiceRgb = TagColors.rgb(
+                                                    tag,
+                                                    mapOf(tag.lowercase() to choice.hex)
+                                                )
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            choice.label,
+                                                            color = Color(
+                                                                choiceRgb.red,
+                                                                choiceRgb.green,
+                                                                choiceRgb.blue
+                                                            )
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        menuExpanded = false
+                                                        viewModel.setTagColor(
+                                                            server.profile.id,
+                                                            tag,
+                                                            choice.hex
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

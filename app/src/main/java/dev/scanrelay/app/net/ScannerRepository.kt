@@ -792,6 +792,74 @@ object ScannerRepository {
         }
     }
 
+    fun setTagColor(profileId: String, tag: String, color: String?) {
+        val session = sessions[profileId] ?: return
+        val key = tag.trim().lowercase()
+        if (key.isBlank()) return
+        val pin = session.profile.pin.trim()
+
+        synchronized(session) {
+            val colors = session.state.tagColors.toMutableMap()
+            val normalizedColor = color?.trim()?.takeIf { it.isNotBlank() }
+            if (normalizedColor == null) colors.remove(key) else colors[key] = normalizedColor
+            session.state = session.state.copy(
+                tagColors = colors,
+                userSettingsSaving = pin.isNotBlank(),
+                userSettingsError = if (pin.isBlank()) {
+                    "Sign in to save tag colors"
+                } else {
+                    null
+                }
+            )
+        }
+        publish()
+        if (pin.isBlank()) return
+
+        scope.launch {
+            session.settingsMutex.withLock {
+                if (!isCurrent(session)) return@withLock
+                try {
+                    val colors = synchronized(session) { session.state.tagColors }
+                    val origin = httpOrigin(session.profile.baseUrl)
+                    val auth = "Bearer $pin"
+                    val currentRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .get()
+                        .build()
+                    val current = executeSettingsJson(currentRequest)
+                    val updated = mergeTagColorsIntoSettings(current, colors)
+                    val saveRequest = Request.Builder()
+                        .url("$origin/api/settings")
+                        .header("Authorization", auth)
+                        .post(updated.toString().toRequestBody(JSON_MEDIA_TYPE))
+                        .build()
+                    executeSettingsJson(saveRequest)
+
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            userSettingsSaving = false,
+                            userSettingsError = null
+                        )
+                    }
+                    publish()
+                } catch (error: Throwable) {
+                    if (error is CancellationException) throw error
+                    if (!isCurrent(session)) return@withLock
+                    synchronized(session) {
+                        session.state = session.state.copy(
+                            userSettingsSaving = false,
+                            userSettingsError = error.message?.takeIf { it.isNotBlank() }
+                                ?: "User settings save failed"
+                        )
+                    }
+                    publish()
+                }
+            }
+        }
+    }
+
     fun setPaused(profileId: String, paused: Boolean) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
@@ -2500,6 +2568,7 @@ object ScannerRepository {
             ?.let { it as? String }
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+        val tagColors = parseTagColors(userSettings)
         val livefeedBacklogMinutes = parseLivefeedBacklogMinutes(userSettings)
         val serverFavorites = parseFavoriteSelection(userSettings, parsed)
         val favoriteSavePending = synchronized(session) { session.favoriteSaveJob?.isActive == true }
@@ -2564,6 +2633,11 @@ object ScannerRepository {
                 time12hFormat = time12hFormat,
                 uiAccentColor = uiAccentColor,
                 userUiAccentColor = userUiAccentColor,
+                tagColors = if (session.state.userSettingsSaving) {
+                    session.state.tagColors
+                } else {
+                    tagColors
+                },
                 livefeedBacklogMinutes = if (session.state.userSettingsSaving) {
                     session.state.livefeedBacklogMinutes
                 } else {

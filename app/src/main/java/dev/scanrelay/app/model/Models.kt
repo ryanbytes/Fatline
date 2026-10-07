@@ -247,6 +247,7 @@ data class ServerScannerState(
     val time12hFormat: Boolean = false,
     val uiAccentColor: String? = null,
     val userUiAccentColor: String? = null,
+    val tagColors: Map<String, String> = emptyMap(),
     val livefeedBacklogMinutes: Int = 0,
     val userSettingsSaving: Boolean = false,
     val userSettingsError: String? = null,
