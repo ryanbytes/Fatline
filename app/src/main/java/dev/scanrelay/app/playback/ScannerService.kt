@@ -106,6 +106,10 @@ class ScannerService : MediaLibraryService() {
                 true
             )
             addListener(object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    syncCurrentlyPlayingCall()
+                }
+
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     syncCurrentlyPlayingCall()
                     val title = mediaItem?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "Listening" }
@@ -368,7 +372,12 @@ class ScannerService : MediaLibraryService() {
         val activeIds = (0 until player.mediaItemCount)
             .mapTo(mutableSetOf()) { index -> player.getMediaItemAt(index).mediaId }
         callByMediaId.keys.retainAll(activeIds)
-        _currentlyPlayingCall.value = player.currentMediaItem?.mediaId?.let(callByMediaId::get)
+        val mediaIds = List(player.mediaItemCount) { index ->
+            player.getMediaItemAt(index).mediaId
+        }
+        _currentlyPlayingCall.value = PlaybackQueuePolicy
+            .playingMediaId(mediaIds, player.currentMediaItemIndex, player.isPlaying)
+            ?.let(callByMediaId::get)
     }
 
     private fun trimQueueForIncomingCall(liveFeed: Boolean) {
