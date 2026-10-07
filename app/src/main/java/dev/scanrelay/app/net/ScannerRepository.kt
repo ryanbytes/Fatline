@@ -2996,15 +2996,9 @@ object ScannerRepository {
     }
 
     private fun handleAlert(session: Session, raw: Any?) {
-        val payload = raw as? JSONObject
-        val title = payload?.optString("title")?.takeIf { it.isNotBlank() }
-            ?: payload?.optString("type")?.takeIf { it.isNotBlank() }
-            ?: "Scanner alert"
-        val body = payload?.optString("message")?.takeIf { it.isNotBlank() }
-            ?: payload?.optString("summary")?.takeIf { it.isNotBlank() }
-            ?: payload?.toString()
-            ?: raw?.toString().orEmpty().ifBlank { "Alert received" }
-        val alert = ScannerAlert(session.profile.id, session.profile.name, title, body, payload?.optString("dateTime"))
+        val alert = parseRealtimeAlert(session.profile, raw)
+        val title = alert.title
+        val body = alert.body
         synchronized(session) {
             session.state = session.state.copy(alerts = (listOf(alert) + session.state.alerts).take(100))
         }
@@ -3014,6 +3008,24 @@ object ScannerRepository {
             AlertNotifier.post(it, session.profile.id, session.profile.name, "${session.profile.name}: $title", body, notificationId)
         }
         scheduleAlertRefresh(session)
+    }
+
+    internal fun parseRealtimeAlert(profile: ServerProfile, raw: Any?): ScannerAlert {
+        val payload = raw as? JSONObject
+        val title = payload?.optString("title")?.takeIf { it.isNotBlank() }
+            ?: payload?.optString("type")?.takeIf { it.isNotBlank() }
+            ?: "Scanner alert"
+        val body = payload?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: payload?.optString("summary")?.takeIf { it.isNotBlank() }
+            ?: payload?.toString()
+            ?: raw?.toString().orEmpty().ifBlank { "Alert received" }
+        return ScannerAlert(
+            profile.id,
+            profile.name,
+            title,
+            body,
+            payload?.optString("dateTime")
+        )
     }
 
     internal fun parseTranscripts(profile: ServerProfile, raw: JSONArray): List<TranscriptRecord> =
