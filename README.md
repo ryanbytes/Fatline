@@ -31,6 +31,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Server archive/history through `LCL`, paged results, `CAL` replay, and continuous archive playback from any loaded call toward live
 - Authenticated archived-call audio downloads to `Downloads/FatLine` on modern Android
 - Local scanner-alert notifications and transcript display when supplied by the server
+- Severe and extreme NWS warnings become Android notifications, with a separate per-server sound preference, while the scanner foreground service is active
 - Per-scanner Android notification sounds, including system-default, installed custom sounds, and silent alerts
 - Independent per-scanner disconnect notification sounds with the same default/custom/silent choices
 - Incident alerts can open mapped coordinates or geocoded addresses in the installed maps app

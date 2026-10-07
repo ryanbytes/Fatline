@@ -9,6 +9,8 @@ object AlertSoundPreferences {
     private const val PREFS = "fatline_alert_sounds"
     private const val ALERT_PREFIX = "alert:"
     private const val DISCONNECT_PREFIX = "disconnect:"
+    private const val WEATHER_PREFIX = "weather:"
+    private const val WEATHER_ENABLED_PREFIX = "weather-enabled:"
 
     fun get(context: Context, profileId: String): String? =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -34,6 +36,32 @@ object AlertSoundPreferences {
             .apply()
     }
 
+    fun getWeather(context: Context, profileId: String): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(WEATHER_PREFIX + profileId, null)
+
+    fun setWeather(context: Context, profileId: String, uri: Uri?) {
+        val value = uri?.toString() ?: SILENT
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(WEATHER_PREFIX + profileId, value)
+            .apply()
+    }
+
+    fun isWeatherSoundEnabled(context: Context, profileId: String): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(WEATHER_ENABLED_PREFIX + profileId, false)
+
+    fun setWeatherSoundEnabled(context: Context, profileId: String, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(WEATHER_ENABLED_PREFIX + profileId, enabled)
+            .apply()
+    }
+
+    fun displayWeatherName(context: Context, profileId: String): String =
+        formatDisplayName(context, getWeather(context, profileId))
+
     fun useSystemDefault(context: Context, profileId: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -53,6 +81,8 @@ object AlertSoundPreferences {
             .edit()
             .remove(ALERT_PREFIX + profileId)
             .remove(DISCONNECT_PREFIX + profileId)
+            .remove(WEATHER_PREFIX + profileId)
+            .remove(WEATHER_ENABLED_PREFIX + profileId)
             .apply()
     }
 
