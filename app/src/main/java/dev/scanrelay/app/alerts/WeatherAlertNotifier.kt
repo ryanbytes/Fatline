@@ -15,9 +15,9 @@ import dev.scanrelay.app.model.ServerProfile
 object WeatherAlertNotifier {
     private const val CHANNEL_PREFIX = "fatline_weather_"
 
-    fun post(context: Context, profile: ServerProfile, zip: String, alert: NwsSevereAlert) {
+    fun post(context: Context, profile: ServerProfile, zip: String, alert: NwsSevereAlert, playSound: Boolean = true) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        val preference = if (AlertSoundPreferences.isWeatherSoundEnabled(context, profile.id)) {
+        val preference = if (playSound && AlertSoundPreferences.isWeatherSoundEnabled(context, profile.id)) {
             AlertSoundPreferences.getWeather(context, profile.id)
         } else {
             AlertSoundPreferences.SILENT
@@ -38,6 +38,9 @@ object WeatherAlertNotifier {
             else -> channel.setSound(Uri.parse(preference), audioAttributes)
         }
         manager.createNotificationChannel(channel)
+        manager.notificationChannels
+            .filter { it.id.startsWith(channelPrefix) && it.id != channelId }
+            .forEach { manager.deleteNotificationChannel(it.id) }
 
         val open = PendingIntent.getActivity(
             context,
