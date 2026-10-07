@@ -6,6 +6,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.math.BigInteger
+import java.net.URI
 import java.security.AlgorithmParameters
 import java.security.KeyFactory
 import java.security.KeyPair
@@ -22,10 +23,15 @@ import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-class AudioCrypto(private val httpClient: OkHttpClient = OkHttpClient()) {
+class AudioCrypto(private val httpClient: OkHttpClient = OkHttpClient.Builder()
+    .followRedirects(false)
+    .followSslRedirects(false)
+    .build()) {
     fun fetchMasterKey(relayUrl: String, clientToken: String): ByteArray {
         require(relayUrl.isNotBlank()) { "Relay URL is missing" }
         require(clientToken.isNotBlank()) { "Audio client token is missing" }
+        val relayHost = URI(relayUrl).host ?: error("Relay URL must include a host")
+        ScannerEndpointPolicy.requireAllowedHost(relayHost)
 
         val pair = generateP256KeyPair()
         val requestJson = JSONObject()

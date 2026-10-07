@@ -9,6 +9,7 @@ import dev.scanrelay.app.model.AccountProfile
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.net.ScannerRepository
+import dev.scanrelay.app.net.ScannerEndpointPolicy
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -607,6 +608,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             else -> error("Unsupported server URL scheme: ${uri.scheme}")
         }
         require(!uri.host.isNullOrBlank()) { "Server URL must include a host" }
+        ScannerEndpointPolicy.requireAllowedHost(uri.host)
         return URI(scheme, null, uri.host, uri.port, null, null, null).toString().trimEnd('/')
     }
     fun connect(profile: ServerProfile) = ScannerService.connect(getApplication(), saveProfile(profile).id)

@@ -95,7 +95,10 @@ object ScannerRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, Session>()
-    private val keyHttpClient = OkHttpClient()
+    private val keyHttpClient = OkHttpClient.Builder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
     private val _state = MutableStateFlow(ScannerState())
     val state: StateFlow<ScannerState> = _state.asStateFlow()
     private val _profileCredentialUpdates = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -123,6 +126,15 @@ object ScannerRepository {
         sessions.remove(profile.id)?.let(::stopSession)
         val session = Session(profile)
         sessions[profile.id] = session
+        if (ScannerEndpointPolicy.isBlockedUrl(profile.baseUrl)) {
+            session.state = session.state.copy(
+                status = ConnectionStatus.DISCONNECTED,
+                statusText = "Blocked for privacy",
+                error = "ThinLine Radio hosted endpoints are blocked for privacy"
+            )
+            publish()
+            return
+        }
         publish()
         openSocket(session)
     }
@@ -729,6 +741,7 @@ object ScannerRepository {
             else -> error("Unsupported server URL scheme: ${uri.scheme}")
         }
         require(!uri.host.isNullOrBlank()) { "Server URL must include a host" }
+        ScannerEndpointPolicy.requireAllowedHost(uri.host)
         return URI(scheme, null, uri.host, uri.port, null, null, null).toString().trimEnd('/')
     }
     fun setLivefeedBacklogMinutes(profileId: String, minutes: Int) {
