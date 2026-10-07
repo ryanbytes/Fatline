@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.ProfileStore
+import dev.scanrelay.app.model.AccountProfile
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.net.ScannerRepository
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -27,15 +29,23 @@ data class AccountLoginState(
     val error: String? = null
 )
 
+data class AccountProfileLoadState(
+    val loading: Boolean = false,
+    val account: AccountProfile? = null,
+    val error: String? = null
+)
+
 class ScannerViewModel(application: Application) : AndroidViewModel(application) {
     private val profileStore = ProfileStore(application)
     private val channelStore = ChannelStore(application)
     private val _profiles = MutableStateFlow(profileStore.load())
     private val _accountLogin = MutableStateFlow(AccountLoginState())
+    private val _accountProfiles = MutableStateFlow<Map<String, AccountProfileLoadState>>(emptyMap())
     private val loginHttpClient = OkHttpClient()
 
     val profiles: StateFlow<List<ServerProfile>> = _profiles.asStateFlow()
     val accountLogin: StateFlow<AccountLoginState> = _accountLogin.asStateFlow()
+    val accountProfiles: StateFlow<Map<String, AccountProfileLoadState>> = _accountProfiles.asStateFlow()
     val scannerState = ScannerRepository.state
 
     init {
@@ -61,6 +71,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         ScannerService.disconnect(getApplication(), profileId)
         profileStore.delete(profileId)
         channelStore.deleteProfile(profileId)
+        _accountProfiles.update { it - profileId }
         _profiles.value = profileStore.load()
     }
 
@@ -114,6 +125,50 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                 _accountLogin.value = AccountLoginState(
                     error = error.message?.takeIf { it.isNotBlank() } ?: "Login failed"
                 )
+            }
+        }
+    }
+
+    fun refreshAccountProfile(profile: ServerProfile) {
+        val pin = profile.pin.trim()
+        if (pin.isBlank()) {
+            _accountProfiles.update {
+                it + (profile.id to AccountProfileLoadState(error = "Sign in to load account details"))
+            }
+            return
+        }
+
+        val previous = _accountProfiles.value[profile.id]?.account
+        _accountProfiles.update {
+            it + (profile.id to AccountProfileLoadState(loading = true, account = previous))
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val origin = httpOrigin(profile.baseUrl)
+                val request = Request.Builder()
+                    .url("$origin/api/account")
+                    .header("Authorization", "Bearer $pin")
+                    .get()
+                    .build()
+                dev.scanrelay.app.model.parseAccountProfile(executeJson(request))
+            }.onSuccess { account ->
+                if (_profiles.value.any { it.id == profile.id }) {
+                    _accountProfiles.update {
+                        it + (profile.id to AccountProfileLoadState(account = account))
+                    }
+                }
+            }.onFailure { error ->
+                if (_profiles.value.any { it.id == profile.id }) {
+                    _accountProfiles.update {
+                        it + (
+                            profile.id to AccountProfileLoadState(
+                                account = previous,
+                                error = error.message?.takeIf(String::isNotBlank)
+                                    ?: "Account details could not be loaded"
+                            )
+                        )
+                    }
+                }
             }
         }
     }
