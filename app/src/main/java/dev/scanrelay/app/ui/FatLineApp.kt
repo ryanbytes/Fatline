@@ -2321,6 +2321,7 @@ private fun SettingsScreen(
     val accountProfiles by viewModel.accountProfiles.collectAsStateWithLifecycle()
     val passwordRecovery by viewModel.passwordRecovery.collectAsStateWithLifecycle()
     val accountPasswordChange by viewModel.accountPasswordChange.collectAsStateWithLifecycle()
+    val accountEmailChange by viewModel.accountEmailChange.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
@@ -2341,6 +2342,9 @@ private fun SettingsScreen(
     var recoveryNewPassword by remember(editingId) { mutableStateOf("") }
     var accountPasswordCode by remember(editingId) { mutableStateOf("") }
     var accountNewPassword by remember(editingId) { mutableStateOf("") }
+    var emailChangeCode by remember(editingId) { mutableStateOf("") }
+    var emailChangeNewAddress by remember(editingId) { mutableStateOf("") }
+    var emailChangePassword by remember(editingId) { mutableStateOf("") }
     var pin by remember(editingId, editing?.pin) { mutableStateOf(editing?.pin ?: "") }
     var alertSoundLabel by remember(editingId) {
         mutableStateOf(AlertSoundPreferences.displayName(context, editingId))
@@ -2413,6 +2417,7 @@ private fun SettingsScreen(
                         viewModel.clearAccountLoginStatus()
                         viewModel.clearPasswordRecoveryStatus()
                         viewModel.clearAccountPasswordChangeStatus()
+                        viewModel.clearAccountEmailChangeStatus()
                         onSelectProfile(profile.id)
                     }) { Text(profile.name) }
                 }
@@ -2427,6 +2432,7 @@ private fun SettingsScreen(
                         viewModel.clearAccountLoginStatus()
                         viewModel.clearPasswordRecoveryStatus()
                         viewModel.clearAccountPasswordChangeStatus()
+                        viewModel.clearAccountEmailChangeStatus()
                     }) { Text("New") }
                 }
             }
@@ -2565,6 +2571,97 @@ private fun SettingsScreen(
                             Text("Billing required: ${if (account.billingRequired) "Yes" else "No"}")
                             if (account.isGroupAdmin) Text("Group administrator")
                             Text("Listener PIN expired: ${if (account.pinExpired) "Yes" else "No"}")
+                        }
+
+                        HorizontalDivider()
+                        Text(
+                            "Change account email",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Verify your current email, then request a confirmation link for the new address.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        accountEmailChange.pendingEmail?.let { pendingEmail ->
+                            Text(
+                                "Confirmation link sent to $pendingEmail. Open that link, then refresh account details.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        LaunchedEffect(accountEmailChange.pendingEmail) {
+                            if (accountEmailChange.pendingEmail != null) {
+                                emailChangeCode = ""
+                                emailChangeNewAddress = ""
+                                emailChangePassword = ""
+                            }
+                        }
+                        if (!accountEmailChange.verified) {
+                            OutlinedButton(
+                                onClick = { viewModel.requestAccountEmailChangeCode(url, editing.pin) },
+                                enabled = url.isNotBlank() && !accountEmailChange.working
+                            ) {
+                                Text(if (accountEmailChange.working) "Working…" else "Send current-email code")
+                            }
+                            if (accountEmailChange.codeSent || emailChangeCode.isNotBlank()) {
+                                OutlinedTextField(
+                                    emailChangeCode,
+                                    { emailChangeCode = it },
+                                    label = { Text("Current-email verification code") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                                Button(
+                                    onClick = {
+                                        viewModel.verifyAccountEmailChangeCode(url, editing.pin, emailChangeCode)
+                                    },
+                                    enabled = emailChangeCode.isNotBlank() && !accountEmailChange.working
+                                ) {
+                                    Text(if (accountEmailChange.working) "Verifying…" else "Verify current email")
+                                }
+                            }
+                        } else {
+                            Text(
+                                "Current email verified. Enter the new address and your account password.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            OutlinedTextField(
+                                emailChangeNewAddress,
+                                { emailChangeNewAddress = it },
+                                label = { Text("New email address") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                emailChangePassword,
+                                { emailChangePassword = it },
+                                label = { Text("Account password") },
+                                modifier = Modifier.fillMaxWidth(),
+                                visualTransformation = PasswordVisualTransformation(),
+                                singleLine = true
+                            )
+                            Button(
+                                onClick = {
+                                    viewModel.changeAccountEmail(
+                                        url,
+                                        editing.pin,
+                                        emailChangeCode,
+                                        emailChangeNewAddress,
+                                        emailChangePassword
+                                    )
+                                },
+                                enabled = emailChangeNewAddress.isNotBlank() &&
+                                    emailChangePassword.isNotBlank() &&
+                                    !accountEmailChange.working
+                            ) {
+                                Text(if (accountEmailChange.working) "Changing…" else "Change email")
+                            }
+                        }
+                        accountEmailChange.message?.takeIf(String::isNotBlank)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
+                        accountEmailChange.error?.takeIf(String::isNotBlank)?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
                         }
 
                         HorizontalDivider()
@@ -2720,6 +2817,7 @@ private fun SettingsScreen(
                                 viewModel.clearAccountLoginStatus()
                         viewModel.clearPasswordRecoveryStatus()
                         viewModel.clearAccountPasswordChangeStatus()
+                        viewModel.clearAccountEmailChangeStatus()
                             }) { Text("Delete") }
                         }
                     }
