@@ -23,6 +23,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.common.util.UnstableApi
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -31,15 +32,23 @@ import dev.scanrelay.app.alerts.NwsSevereWeatherMonitor
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
+import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.net.NetworkHandoffPolicy
 import dev.scanrelay.app.net.NetworkHandoffTransition
 import dev.scanrelay.app.net.ScannerRepository
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+@UnstableApi
 class ScannerService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
     private lateinit var session: MediaLibrarySession
@@ -49,6 +58,8 @@ class ScannerService : MediaLibraryService() {
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val libraryChildren = mutableMapOf<String, List<AndroidAutoFavorite>>()
 
     private val networkLossCheck = Runnable {
         val active = connectivityManager.activeNetwork
@@ -113,6 +124,9 @@ class ScannerService : MediaLibraryService() {
             })
         }
         session = MediaLibrarySession.Builder(this, player, LibraryCallback()).build()
+        serviceScope.launch {
+            ScannerRepository.state.collect(::refreshFavoriteLibraryChildren)
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
@@ -150,6 +164,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
         weatherMonitor.stop()
         stopNetworkTracking()
         session.release()
@@ -267,6 +282,17 @@ class ScannerService : MediaLibraryService() {
         if (activeProfileIds().isNotEmpty() || player.mediaItemCount > 0) return
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    private fun refreshFavoriteLibraryChildren(state: ScannerState) {
+        val profileIds = state.servers.keys + libraryChildren.keys
+        profileIds.forEach { profileId ->
+            val current = AndroidAutoLibraryPolicy.favoriteChannels(profileId, state)
+            val previous = libraryChildren.put(profileId, current)
+            if (AndroidAutoLibraryPolicy.childrenChanged(previous, current)) {
+                session.notifyChildrenChanged("profile:$profileId", current.size, null)
+            }
+        }
     }
 
     private inline fun withRepositoryServiceCallbacksSuppressed(block: () -> Unit) {
@@ -464,14 +490,8 @@ class ScannerService : MediaLibraryService() {
                 }
                 parentId.startsWith("profile:") -> {
                     val profileId = parentId.removePrefix("profile:")
-                    val state = ScannerRepository.state.value.servers[profileId]
-                    state?.systems.orEmpty()
-                        .filterNot { it.systemRef in state?.hiddenSystemRefs.orEmpty() }
-                        .flatMap { system ->
-                        system.talkgroups.filter { it.favorite }.map { tg ->
-                            playableItem("channel:$profileId:${tg.systemRef}:${tg.talkgroupRef}", tg.displayName, system.label)
-                        }
-                    }
+                    AndroidAutoLibraryPolicy.favoriteChannels(profileId, ScannerRepository.state.value)
+                        .map { favorite -> playableItem(favorite.mediaId, favorite.title, favorite.subtitle) }
                 }
                 else -> emptyList()
             }
