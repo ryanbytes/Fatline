@@ -26,7 +26,8 @@ import java.net.URI
 data class AccountLoginState(
     val working: Boolean = false,
     val message: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val needsPasswordReset: Boolean = false
 )
 
 data class AccountProfileLoadState(
@@ -141,6 +142,13 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                         "$origin/api/user/login",
                         JSONObject().put("email", email).put("password", password)
                     )
+                    if (AccountLoginPolicy.requiresForcedPasswordReset(login)) {
+                        _accountLogin.value = AccountLoginState(
+                            message = "Password update required",
+                            needsPasswordReset = true
+                        )
+                        return@launch
+                    }
                     login.optJSONObject("user")?.optString("pin").orEmpty().trim()
                 }
 
@@ -151,6 +159,72 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             }.onFailure { error ->
                 _accountLogin.value = AccountLoginState(
                     error = error.message?.takeIf { it.isNotBlank() } ?: "Login failed"
+                )
+            }
+        }
+    }
+
+    fun forcePasswordResetAndConnect(
+        profile: ServerProfile,
+        email: String,
+        currentPassword: String,
+        newPassword: String
+    ) {
+        if (profile.baseUrl.isBlank()) {
+            _accountLogin.value = AccountLoginState(error = "Server URL is required", needsPasswordReset = true)
+            return
+        }
+        AccountLoginPolicy.passwordValidationError(newPassword)?.let { error ->
+            _accountLogin.value = AccountLoginState(error = error, needsPasswordReset = true)
+            return
+        }
+        if (email.isBlank() || currentPassword.isBlank()) {
+            _accountLogin.value = AccountLoginState(
+                error = "Sign in again with your email and current password",
+                needsPasswordReset = true
+            )
+            return
+        }
+
+        _accountLogin.value = AccountLoginState(
+            working = true,
+            message = "Updating required password…",
+            needsPasswordReset = true
+        )
+        viewModelScope.launch(Dispatchers.IO) {
+            var passwordChanged = false
+            runCatching {
+                val origin = httpOrigin(profile.baseUrl)
+                val normalizedEmail = email.trim().lowercase()
+                postJson(
+                    "$origin/api/user/force-password-reset",
+                    JSONObject()
+                        .put("email", normalizedEmail)
+                        .put("currentPassword", currentPassword)
+                        .put("newPassword", newPassword)
+                )
+                passwordChanged = true
+
+                val login = postJson(
+                    "$origin/api/user/login",
+                    JSONObject().put("email", normalizedEmail).put("password", newPassword)
+                )
+                require(!AccountLoginPolicy.requiresForcedPasswordReset(login)) {
+                    "The server still requires a password update"
+                }
+                val pin = login.optJSONObject("user")?.optString("pin").orEmpty().trim()
+                require(pin.isNotBlank()) { "Password updated, but the server did not return a scanner PIN" }
+
+                val saved = saveProfile(profile.copy(pin = pin))
+                ScannerService.connect(getApplication(), saved.id)
+                _accountLogin.value = AccountLoginState(message = "Signed in")
+            }.onFailure { error ->
+                _accountLogin.value = AccountLoginState(
+                    error = if (passwordChanged) {
+                        "Password updated, but automatic sign-in failed. Sign in with the new password."
+                    } else {
+                        error.message?.takeIf(String::isNotBlank) ?: "Password update failed"
+                    }
                 )
             }
         }

@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.scanrelay.app.AccountLoginPolicy
 import dev.scanrelay.app.ScannerViewModel
 import dev.scanrelay.app.alerts.AlertSoundPreferences
 import dev.scanrelay.app.alerts.ServerAlertSounds
@@ -2336,6 +2337,8 @@ private fun SettingsScreen(
     var url by remember(editingId, editing?.baseUrl) { mutableStateOf(editing?.baseUrl ?: "") }
     var username by remember(editingId) { mutableStateOf("") }
     var password by remember(editingId) { mutableStateOf("") }
+    var forcedNewPassword by remember(editingId) { mutableStateOf("") }
+    var forcedConfirmPassword by remember(editingId) { mutableStateOf("") }
     var showPasswordRecovery by remember(editingId) { mutableStateOf(false) }
     var recoveryEmail by remember(editingId) { mutableStateOf("") }
     var recoveryCode by remember(editingId) { mutableStateOf("") }
@@ -2375,7 +2378,11 @@ private fun SettingsScreen(
     }
 
     LaunchedEffect(loginState.message) {
-        if (loginState.message == "Signed in") password = ""
+        if (loginState.message == "Signed in") {
+            password = ""
+            forcedNewPassword = ""
+            forcedConfirmPassword = ""
+        }
     }
 
     LaunchedEffect(passwordRecovery.message) {
@@ -2479,6 +2486,59 @@ private fun SettingsScreen(
                     }
                     loginState.error?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    if (loginState.needsPasswordReset) {
+                        HorizontalDivider()
+                        Text(
+                            "Password update required",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "Your scanner administrator requires a new password before you can connect. Use at least 8 characters with an uppercase letter, a lowercase letter, and a number.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        OutlinedTextField(
+                            forcedNewPassword,
+                            { forcedNewPassword = it },
+                            label = { Text("New password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                        AccountLoginPolicy.passwordValidationError(forcedNewPassword)?.let { error ->
+                            Text(error, style = MaterialTheme.typography.bodySmall)
+                        }
+                        OutlinedTextField(
+                            forcedConfirmPassword,
+                            { forcedConfirmPassword = it },
+                            label = { Text("Confirm new password") },
+                            modifier = Modifier.fillMaxWidth(),
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true
+                        )
+                        if (forcedConfirmPassword.isNotEmpty() && forcedConfirmPassword != forcedNewPassword) {
+                            Text("Passwords do not match", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Button(
+                            onClick = {
+                                viewModel.forcePasswordResetAndConnect(
+                                    ServerProfile(editingId, name, url, pin),
+                                    username,
+                                    password,
+                                    forcedNewPassword
+                                )
+                                onSelectProfile(editingId)
+                            },
+                            enabled = username.isNotBlank() &&
+                                password.isNotBlank() &&
+                                AccountLoginPolicy.passwordValidationError(forcedNewPassword) == null &&
+                                forcedNewPassword == forcedConfirmPassword &&
+                                !loginState.working
+                        ) {
+                            Text(if (loginState.working) "Updating…" else "Update password & connect")
+                        }
                     }
 
                     OutlinedButton(onClick = { showPasswordRecovery = !showPasswordRecovery }) {
