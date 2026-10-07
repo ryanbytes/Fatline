@@ -1272,9 +1272,8 @@ private fun HistoryScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(
                                 onClick = {
-                                    viewModel.requestHistory(
+                                    viewModel.requestHistoryFiltered(
                                         profileId = server.profile.id,
-                                        reset = true,
                                         systemRef = archiveSystemRef,
                                         talkgroupRef = archiveTalkgroupRef,
                                         date = archiveDateIso,
