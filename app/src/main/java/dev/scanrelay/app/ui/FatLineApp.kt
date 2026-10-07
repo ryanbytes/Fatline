@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -121,7 +123,21 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                             NavigationBarItem(
                                 selected = tab == item,
                                 onClick = { tab = item },
-                                icon = { Text(item.glyph) },
+                                icon = {
+                                    if (item == AppTab.Scanner && tab != AppTab.Scanner && queuedCallCount > 0) {
+                                        BadgedBox(
+                                            badge = {
+                                                Badge {
+                                                    Text(if (queuedCallCount > 99) "99+" else queuedCallCount.toString())
+                                                }
+                                            }
+                                        ) {
+                                            Text(item.glyph)
+                                        }
+                                    } else {
+                                        Text(item.glyph)
+                                    }
+                                },
                                 label = {
                                     Text(
                                         item.label,
