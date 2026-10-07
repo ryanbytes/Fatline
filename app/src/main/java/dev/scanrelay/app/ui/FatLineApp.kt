@@ -2355,6 +2355,12 @@ private fun SettingsScreen(
     var disconnectSoundLabel by remember(editingId) {
         mutableStateOf(AlertSoundPreferences.displayDisconnectName(context, editingId))
     }
+    var weatherSoundLabel by remember(editingId) {
+        mutableStateOf(AlertSoundPreferences.displayWeatherName(context, editingId))
+    }
+    var weatherSoundEnabled by remember(editingId) {
+        mutableStateOf(AlertSoundPreferences.isWeatherSoundEnabled(context, editingId))
+    }
     val alertSoundPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -2374,6 +2380,16 @@ private fun SettingsScreen(
             val picked = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
             AlertSoundPreferences.setDisconnect(context, editingId, picked)
             disconnectSoundLabel = AlertSoundPreferences.displayDisconnectName(context, editingId)
+        }
+    }
+    val weatherSoundPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            @Suppress("DEPRECATION")
+            val picked = result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            AlertSoundPreferences.setWeather(context, editingId, picked)
+            weatherSoundLabel = AlertSoundPreferences.displayWeatherName(context, editingId)
         }
     }
 
@@ -2818,6 +2834,44 @@ private fun SettingsScreen(
                         OutlinedButton(onClick = {
                             AlertSoundPreferences.useSystemDefault(context, editingId)
                             alertSoundLabel = AlertSoundPreferences.displayName(context, editingId)
+                        }) { Text("System default") }
+                    }
+
+                    Text(
+                        "Severe weather sound: " + weatherSoundLabel,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = weatherSoundEnabled,
+                            onCheckedChange = {
+                                weatherSoundEnabled = it
+                                AlertSoundPreferences.setWeatherSoundEnabled(context, editingId, it)
+                            }
+                        )
+                        Text("Play sound for new Severe or Extreme weather warnings")
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            val setting = AlertSoundPreferences.getWeather(context, editingId)
+                            val existing = when (setting) {
+                                null -> RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                                AlertSoundPreferences.SILENT -> null
+                                else -> runCatching { Uri.parse(setting) }.getOrNull()
+                            }
+                            val picker = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "FatLine severe weather sound")
+                            }
+                            weatherSoundPicker.launch(picker)
+                        }) { Text("Choose weather sound") }
+
+                        OutlinedButton(onClick = {
+                            AlertSoundPreferences.setWeather(context, editingId, null)
+                            weatherSoundLabel = AlertSoundPreferences.displayWeatherName(context, editingId)
                         }) { Text("System default") }
                     }
 
