@@ -147,7 +147,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                             message = "Password update required",
                             needsPasswordReset = true
                         )
-                        return@runCatching
+                        return@launch
                     }
                     login.optJSONObject("user")?.optString("pin").orEmpty().trim()
                 }
