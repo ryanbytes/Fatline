@@ -24,6 +24,10 @@ internal object PlaybackQueuePolicy {
         return mediaCount - currentIndex - 1
     }
 
+    fun firstQueuedIndex(mediaCount: Int, currentIndex: Int): Int {
+        return if (currentIndex in 0 until mediaCount) currentIndex + 1 else 0
+    }
+
     internal fun mediaKind(mediaId: String): String? {
         val parts = mediaId.split(':')
         if (parts.size < 3 || parts[0] != "call") return null

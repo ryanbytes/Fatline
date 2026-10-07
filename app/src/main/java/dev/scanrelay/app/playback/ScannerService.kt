@@ -32,6 +32,9 @@ import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.net.ScannerRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class ScannerService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
@@ -124,6 +127,10 @@ class ScannerService : MediaLibraryService() {
             }
             ACTION_STOP_AUDIO -> {
                 stopAudioInternal()
+                stopIfIdle()
+            }
+            ACTION_CLEAR_QUEUE -> {
+                clearQueueInternal()
                 stopIfIdle()
             }
             ACTION_REMOVE_PROFILE -> {
@@ -334,6 +341,16 @@ class ScannerService : MediaLibraryService() {
         if (player.mediaItemCount > 0 && !player.playWhenReady) player.play()
     }
 
+    private fun clearQueueInternal() {
+        val firstQueuedIndex = PlaybackQueuePolicy.firstQueuedIndex(
+            mediaCount = player.mediaItemCount,
+            currentIndex = player.currentMediaItemIndex
+        )
+        for (index in player.mediaItemCount - 1 downTo firstQueuedIndex) {
+            player.removeMediaItem(index)
+        }
+    }
+
     private fun stopAudioInternal() {
         player.stop()
         player.clearMediaItems()
@@ -373,7 +390,7 @@ class ScannerService : MediaLibraryService() {
         val clearQueue = PendingIntent.getService(
             this,
             3,
-            Intent(this, ScannerService::class.java).setAction(ACTION_STOP_AUDIO),
+            Intent(this, ScannerService::class.java).setAction(ACTION_CLEAR_QUEUE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -394,6 +411,7 @@ class ScannerService : MediaLibraryService() {
             mediaCount = player.mediaItemCount,
             currentIndex = player.currentMediaItemIndex
         )
+        _queuedCallCount.value = queuedCount
         val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))
     }
@@ -475,6 +493,9 @@ class ScannerService : MediaLibraryService() {
         .build()
 
     companion object {
+        private val _queuedCallCount = MutableStateFlow(0)
+        val queuedCallCount: StateFlow<Int> = _queuedCallCount.asStateFlow()
+
         private const val CHANNEL_ID = "fatline_playback"
         private const val NOTIFICATION_ID = 8101
         private const val PREFS = "fatline_session"
@@ -491,6 +512,7 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_SET_PROFILE_PAUSED = "dev.scanrelay.SET_PROFILE_PAUSED"
         const val ACTION_FILTER_PROFILE_MEDIA = "dev.scanrelay.FILTER_PROFILE_MEDIA"
         const val ACTION_SKIP = "dev.scanrelay.SKIP"
+        const val ACTION_CLEAR_QUEUE = "dev.scanrelay.CLEAR_QUEUE"
         const val ACTION_STOP_AUDIO = "dev.scanrelay.STOP_AUDIO"
         const val ACTION_REMOVE_PROFILE = "dev.scanrelay.REMOVE_PROFILE"
         const val EXTRA_PROFILE_ID = "profile_id"

@@ -17,6 +17,16 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun clearQueueStartsAfterCurrentCall() {
+        assertEquals(3, PlaybackQueuePolicy.firstQueuedIndex(mediaCount = 5, currentIndex = 2))
+    }
+
+    @Test
+    fun clearQueueRemovesAllItemsWhenNoCurrentCallExists() {
+        assertEquals(0, PlaybackQueuePolicy.firstQueuedIndex(mediaCount = 3, currentIndex = -1))
+    }
+
+    @Test
     fun liveOverflowRemovesOnlyLiveItems() {
         val media = buildList {
             add(id("replay", 1))
