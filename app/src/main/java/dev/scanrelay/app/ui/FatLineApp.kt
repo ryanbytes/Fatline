@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.scanrelay.app.ScannerViewModel
 import dev.scanrelay.app.alerts.AlertSoundPreferences
+import dev.scanrelay.app.alerts.ServerAlertSounds
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ConnectionStatus
 import dev.scanrelay.app.model.FavoriteTagKey
@@ -1652,6 +1655,12 @@ private fun AlertsScreen(
                         talkgroup.talkgroupRef
                     ) { mutableStateOf(false) }
 
+                    var showChannelSoundMenu by remember(
+                        server.profile.id,
+                        talkgroup.systemRef,
+                        talkgroup.talkgroupRef
+                    ) { mutableStateOf(false) }
+
                     var customKeywordsText by remember(
                         server.profile.id,
                         talkgroup.systemRef,
@@ -1693,6 +1702,34 @@ private fun AlertsScreen(
                                                 )
                                             }
                                         ) { Text("Alert off") }
+                                    }
+                                }
+                                item {
+                                    Column {
+                                        OutlinedButton(onClick = { showChannelSoundMenu = true }) {
+                                            Text(
+                                                "Sound: " +
+                                                    ServerAlertSounds.labelFor(preference?.notificationSound)
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = showChannelSoundMenu,
+                                            onDismissRequest = { showChannelSoundMenu = false }
+                                        ) {
+                                            ServerAlertSounds.choices.forEach { sound ->
+                                                DropdownMenuItem(
+                                                    text = { Text(sound.label) },
+                                                    onClick = {
+                                                        showChannelSoundMenu = false
+                                                        viewModel.setAlertNotificationSound(
+                                                            server.profile.id,
+                                                            talkgroup.key,
+                                                            sound.fileName
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                                 item {
@@ -1781,26 +1818,61 @@ private fun AlertsScreen(
                                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     items(talkgroup.toneSets, key = { it.id }) { toneSet ->
                                         val selected = toneSet.id in selectedToneSetIds
-                                        if (selected) {
-                                            Button(
-                                                onClick = {
-                                                    viewModel.setAlertToneSets(
-                                                        server.profile.id,
-                                                        talkgroup.key,
-                                                        selectedToneSetIds - toneSet.id
+                                        var showToneSoundMenu by remember(
+                                            server.profile.id,
+                                            talkgroup.systemRef,
+                                            talkgroup.talkgroupRef,
+                                            toneSet.id
+                                        ) { mutableStateOf(false) }
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            if (selected) {
+                                                Button(
+                                                    onClick = {
+                                                        viewModel.setAlertToneSets(
+                                                            server.profile.id,
+                                                            talkgroup.key,
+                                                            selectedToneSetIds - toneSet.id
+                                                        )
+                                                    }
+                                                ) { Text(toneSet.label + " ✓") }
+                                            } else {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        viewModel.setAlertToneSets(
+                                                            server.profile.id,
+                                                            talkgroup.key,
+                                                            selectedToneSetIds + toneSet.id
+                                                        )
+                                                    }
+                                                ) { Text(toneSet.label) }
+                                            }
+                                            OutlinedButton(onClick = { showToneSoundMenu = true }) {
+                                                Text(
+                                                    "Sound: " +
+                                                        ServerAlertSounds.labelFor(
+                                                            preference?.toneSetSounds?.get(toneSet.id)
+                                                        )
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = showToneSoundMenu,
+                                                onDismissRequest = { showToneSoundMenu = false }
+                                            ) {
+                                                ServerAlertSounds.choices.forEach { sound ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(sound.label) },
+                                                        onClick = {
+                                                            showToneSoundMenu = false
+                                                            viewModel.setAlertToneSetSound(
+                                                                server.profile.id,
+                                                                talkgroup.key,
+                                                                toneSet.id,
+                                                                sound.fileName
+                                                            )
+                                                        }
                                                     )
                                                 }
-                                            ) { Text(toneSet.label + " ✓") }
-                                        } else {
-                                            OutlinedButton(
-                                                onClick = {
-                                                    viewModel.setAlertToneSets(
-                                                        server.profile.id,
-                                                        talkgroup.key,
-                                                        selectedToneSetIds + toneSet.id
-                                                    )
-                                                }
-                                            ) { Text(toneSet.label) }
+                                            }
                                         }
                                     }
                                 }
