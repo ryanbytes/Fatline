@@ -31,6 +31,8 @@ required = [
     'app/src/main/java/dev/scanrelay/app/ui/UiAccent.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineProtocolTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ThinLineSocketTest.kt',
+    'app/src/main/java/dev/scanrelay/app/net/NetworkHandoffPolicy.kt',
+    'app/src/test/java/dev/scanrelay/app/net/NetworkHandoffPolicyTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt',
     'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt',
@@ -138,6 +140,8 @@ require('pingInterval(15' in socket and 'terminalDelivered' in socket and 'fun a
 require('registerDefaultNetworkCallback' in service, 'Android default-network callback missing')
 require('network.networkHandle' in service and 'NETWORK_LOSS_GRACE_MS = 650L' in service, 'network handoff identity/grace handling missing')
 require('networkUnavailable()' in repo and 'networkChanged(' in repo, 'network-aware repository recovery missing')
+require('NetworkHandoffPolicy.transition' in service and 'NetworkHandoffPolicy.isCurrentLoss' in service, 'network callback ordering must use the tested handoff policy')
+require('classifiesOfflineRestoreSwitchAndDuplicateCallbacks' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/NetworkHandoffPolicyTest.kt').read_text(), 'network handoff transition regression test missing')
 require('socketGeneration' in repo and 'isCurrent(session, generation)' in repo, 'stale socket callback suppression missing')
 require('handshakeJob' in repo and 'armHandshakeWatchdog' in repo and 'Handshake stalled; reconnecting' in repo, 'CFG/auth handshake watchdog missing')
 require('Waiting for network' in repo, 'offline retry suspension state missing')
