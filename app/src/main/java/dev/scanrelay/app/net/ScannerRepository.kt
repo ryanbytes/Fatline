@@ -11,6 +11,7 @@ import android.widget.Toast
 import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.ProfileStore
+import dev.scanrelay.app.data.ScannerPauseStore
 import dev.scanrelay.app.model.AlertKeywordList
 import dev.scanrelay.app.model.AlertPreference
 import dev.scanrelay.app.model.CallSource
@@ -108,6 +109,7 @@ object ScannerRepository {
     @Volatile private var appContext: Context? = null
     @Volatile private var channelStore: ChannelStore? = null
     @Volatile private var profileStore: ProfileStore? = null
+    @Volatile private var pauseStore: ScannerPauseStore? = null
     @Volatile private var networkAvailable = true
 
     fun initialize(context: Context) {
@@ -117,6 +119,7 @@ object ScannerRepository {
                 appContext = context.applicationContext
                 channelStore = ChannelStore(context.applicationContext)
                 profileStore = ProfileStore(context.applicationContext)
+                pauseStore = ScannerPauseStore(context.applicationContext)
             }
         }
     }
@@ -125,7 +128,9 @@ object ScannerRepository {
     fun connect(profile: ServerProfile) {
         require(profile.baseUrl.isNotBlank()) { "Server URL is required" }
         sessions.remove(profile.id)?.let(::stopSession)
-        val session = Session(profile)
+        val session = Session(profile).apply {
+            state = state.copy(paused = pauseStore?.isPaused(profile.id) == true)
+        }
         sessions[profile.id] = session
         if (ScannerEndpointPolicy.isBlockedUrl(profile.baseUrl)) {
             session.state = session.state.copy(
@@ -879,6 +884,7 @@ object ScannerRepository {
         val session = sessions[profileId] ?: return
         synchronized(session) {
             if (session.state.paused == paused) return
+            pauseStore?.setPaused(profileId, paused)
             session.state = session.state.copy(
                 paused = paused,
                 statusText = when {
