@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.ProfileStore
+import dev.scanrelay.app.data.ScannerPauseStore
 import dev.scanrelay.app.model.AccountProfile
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ServerProfile
@@ -105,6 +106,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         ScannerService.disconnect(getApplication(), profileId)
         profileStore.delete(profileId)
         channelStore.deleteProfile(profileId)
+        ScannerPauseStore(getApplication()).deleteProfile(profileId)
         _accountProfiles.update { it - profileId }
         _profiles.value = profileStore.load()
     }

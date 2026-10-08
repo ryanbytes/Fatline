@@ -25,7 +25,7 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - The selected scanner uses ThinLine's server-provided UI accent color, with the authenticated user's accent override taking precedence
 - Newly authorized/re-scoped talkgroups follow ThinLine's `autoEnableNewTalkgroups` policy without disturbing existing saved selections
 - Per-talkgroup and per-system All/None controls; system bulk changes persist in one batch and emit one live-feed update
-- Pause / resume live scanning without losing channel selections
+- Pause / resume live scanning without losing channel selections; per-server Pause state persists through explicit reconnects and foreground-service restarts
 - Talkgroup hold and system hold
 - Avoid / unavoid, clear avoids, and skip current audio
 - Server archive/history through `LCL`, paged results, `CAL` replay, and continuous archive playback from any loaded call toward live

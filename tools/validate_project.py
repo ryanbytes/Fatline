@@ -36,6 +36,8 @@ required = [
     'app/src/test/java/dev/scanrelay/app/net/AudioCryptoTest.kt',
     'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt',
     'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt',
+    'app/src/main/java/dev/scanrelay/app/data/ScannerPauseStore.kt',
+    'app/src/test/java/dev/scanrelay/app/data/ScannerPauseStoreTest.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt',
     'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt',
@@ -144,6 +146,14 @@ require('registerDefaultNetworkCallback' in service, 'Android default-network ca
 require('network.networkHandle' in service and 'NETWORK_LOSS_GRACE_MS = 650L' in service, 'network handoff identity/grace handling missing')
 require('networkUnavailable()' in repo and 'networkChanged(' in repo, 'network-aware repository recovery missing')
 require('NetworkHandoffPolicy.transition' in service and 'NetworkHandoffPolicy.isCurrentLoss' in service, 'network callback ordering must use the tested handoff policy')
+pause_store = (ROOT / 'app/src/main/java/dev/scanrelay/app/data/ScannerPauseStore.kt').read_text()
+pause_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/data/ScannerPauseStoreTest.kt').read_text()
+require('ScannerPauseStore(context.applicationContext)' in repo and 'state.copy(paused = pauseStore?.isPaused(profile.id) == true)' in repo, 'reconnected sessions must restore persisted pause choice')
+require('pauseStore?.setPaused(profileId, paused)' in repo and 'paused = paused' in repo, 'pause/resume changes must be persisted')
+require('pausedProfiles.addAll(validIds.filter(pauseStore::isPaused))' in service, 'foreground restart must restore paused scanner list')
+require('pauseStore.isPaused(profileId)' in service and 'ScannerPausePolicy.suppressIncomingAudio(' in service, 'service must reject queued live audio from persisted paused profiles')
+require('ScannerPauseStore(getApplication()).deleteProfile(profileId)' in viewmodel, 'deleted scanner pause preference must be removed')
+require('pausedScannerRejectsLiveCallsButAllowsManualReplays' in pause_tests and 'fun deleteProfile(profileId: String)' in pause_store, 'pause persistence policy regression test missing')
 require('classifiesOfflineRestoreSwitchAndDuplicateCallbacks' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/NetworkHandoffPolicyTest.kt').read_text(), 'network handoff transition regression test missing')
 require('socketGeneration' in repo and 'isCurrent(session, generation)' in repo, 'stale socket callback suppression missing')
 require('handshakeJob' in repo and 'armHandshakeWatchdog' in repo and 'Handshake stalled; reconnecting' in repo, 'CFG/auth handshake watchdog missing')
@@ -166,7 +176,7 @@ require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playbac
 require('fun playNow(profileId: String, callId: Long)' in repo and 'session.pendingImmediateReplay.remove(id)' in repo, 'manual replay priority must survive asynchronous server CAL')
 require('fun playNow(profileId: String, callId: Long)' in viewmodel and 'playImmediately = playImmediately' in repo, 'manual replay must reach playback service')
 require('EXTRA_PLAY_IMMEDIATELY' in service and 'player.seekTo(position, 0L)' in service, 'selected recent call must start immediately')
-require('if (liveFeed && profileId in pausedProfiles)' in service, 'paused scanning must still permit manual replay')
+require('ScannerPausePolicy.suppressIncomingAudio(' in service and 'liveFeed = liveFeed,' in service and 'paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)' in service and 'liveFeed && paused' in pause_store, 'paused scanning must suppress live calls but permit manual replay')
 require('immediateReplayInsertsBeforeCurrentWithoutDiscardingQueue' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'manual replay priority queue regression missing')
 
 notification_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt').read_text()
