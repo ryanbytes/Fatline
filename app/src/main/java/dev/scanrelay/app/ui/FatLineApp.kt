@@ -2021,6 +2021,12 @@ private fun AlertsScreen(
                         if (localTranscriptSaved) {
                             Text("Saved on this device.", style = MaterialTheme.typography.bodySmall)
                         }
+                        if (localTranscriptEnabled && server != null) {
+                            Text(
+                                "Status: " + server.localTranscriptMonitorStatus,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                         Text(
                             "Monitoring requires FatLine's foreground scanner service to be running. " +
                                 "Polling delayed transcripts requires a scanner PIN and server transcript access. " +
