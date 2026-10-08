@@ -191,6 +191,16 @@ require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServi
 require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
 require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIndex' in service, 'bounded playback queue handling missing')
 require('queuedCallCount' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
+navigation = ui.split('NavigationBar {', 1)[1].split(') { padding ->', 1)[0]
+require(
+    'primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Alerts)' in ui
+    and 'moreNavigationTabs = AppTab.entries.filterNot { it in primaryNavigationTabs }' in ui
+    and 'Box(Modifier.weight(1f))' in navigation
+    and 'moreNavigationTabs.forEach { item ->' in navigation
+    and 'DropdownMenu(' in navigation
+    and 'fontSize = 9.sp' not in navigation,
+    'mobile navigation must keep every destination reachable without seven cramped bottom labels'
+)
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun NowPlayingCard(', 1)[0]
 require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
