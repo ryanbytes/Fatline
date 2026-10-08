@@ -189,6 +189,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                             profiles = profiles,
                             selectedProfileId = selectedProfileId,
                             onSelectProfile = { selectedProfileId = it },
+                            currentlyPlayingCall = currentlyPlayingCall,
                             viewModel = viewModel,
                             modifier = Modifier.fillMaxSize().padding(padding)
                         )
@@ -1064,6 +1065,7 @@ private fun HistoryScreen(
     profiles: List<ServerProfile>,
     selectedProfileId: String?,
     onSelectProfile: (String) -> Unit,
+    currentlyPlayingCall: RadioCall?,
     viewModel: ScannerViewModel,
     modifier: Modifier
 ) {
@@ -1152,7 +1154,7 @@ private fun HistoryScreen(
             call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery) == true ||
             call.transcript?.lowercase()?.contains(normalizedHistoryQuery) == true
     }
-    val latestCall = server?.lastCall
+    val playingCall = currentlyPlayingCall?.takeIf { it.profileId == server?.profile?.id }
     val archiveFilterLabel = server?.let { current ->
         val parts = buildList {
             current.historyGroup?.let { add("group $it") }
@@ -1208,7 +1210,7 @@ private fun HistoryScreen(
                             enabled = server.status == ConnectionStatus.CONNECTED
                         ) { Text(if (archiveFilterLabel == null) "Refresh archive" else "All archive") }
                     }
-                    latestCall?.let { call ->
+                    playingCall?.let { call ->
                         item {
                             OutlinedButton(
                                 onClick = {
