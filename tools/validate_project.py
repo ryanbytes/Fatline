@@ -154,8 +154,12 @@ require('startForeground' in service and 'START_STICKY' in service, 'foreground 
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
 require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
 require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIndex' in service, 'bounded playback queue handling missing')
-require('queuedCallCount' in ui and 'Playback queue' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
-require('queuedCalls' in ui and 'Show queue' in ui and 'entry.call.talkgroupLabel' in ui, 'cross-server queue preview missing')
+require('queuedCallCount' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
+scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('@Composable\\nprivate fun ScannerStatusCard(', 1)[0]
+scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('@Composable\\nprivate fun NowPlayingCard(', 1)[0]
+require('Playback queue' not in scanner_screen, 'separate playback queue card must be removed')
+require('queuedCalls' in scanner_card and 'Queue · $queuedCallCount waiting' in scanner_card and 'entry.call.talkgroupLabel' in scanner_card, 'queue count and cross-server preview must live in scanner status card')
+require('clearPlaybackQueue' in scanner_card and 'ACTION_CLEAR_QUEUE' in service and 'fun clearQueue(context: Context)' in service and 'clearPlaybackQueue()' in viewmodel, 'expanded queue must expose existing clear action')
 require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text() and 'queuedPreviewListsCallsAfterCurrentPlayback' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'queued-call ordering regression test missing')
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
