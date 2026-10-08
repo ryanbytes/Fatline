@@ -171,6 +171,7 @@ class ScannerService : MediaLibraryService() {
         startForeground(NOTIFICATION_ID, notification(initialText.title, subtitle))
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
+            ACTION_RESUME_CONNECTIONS -> restoreConnections()
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
             ACTION_DISCONNECT_ALL -> disconnectAll()
             ACTION_ENQUEUE -> addMediaFromIntent(intent)
@@ -297,7 +298,7 @@ class ScannerService : MediaLibraryService() {
     private fun restoreConnections() {
         val savedIds = activeProfileIds()
         val profiles = ProfileStore(this).load().associateBy { it.id }
-        val validIds = savedIds.filterTo(mutableSetOf()) { profiles.containsKey(it) }
+        val validIds = SessionRestorePolicy.valid(savedIds, profiles.keys)
         if (validIds != savedIds) persistActiveProfiles(validIds)
         pausedProfiles.clear()
         pausedProfiles.addAll(validIds.filter(pauseStore::isPaused))
@@ -309,7 +310,10 @@ class ScannerService : MediaLibraryService() {
             return
         }
 
-        validIds.mapNotNull(profiles::get).forEach(ScannerRepository::connect)
+        // Opening the Activity also sends RESUME when a foreground service is already
+        // alive. Never reconnect an established session or disrupt its audio and alerts.
+        SessionRestorePolicy.missing(validIds, ScannerRepository.state.value.servers.keys)
+            .mapNotNull(profiles::get).forEach(ScannerRepository::connect)
         updateMonitoringNotification(validIds.size)
     }
 
@@ -772,6 +776,7 @@ class ScannerService : MediaLibraryService() {
 
         @Volatile private var suppressRepositoryServiceCallbacks = false
 
+        const val ACTION_RESUME_CONNECTIONS = "dev.scanrelay.RESUME_CONNECTIONS"
         const val ACTION_CONNECT = "dev.scanrelay.CONNECT"
         const val ACTION_DISCONNECT = "dev.scanrelay.DISCONNECT"
         const val ACTION_DISCONNECT_ALL = "dev.scanrelay.DISCONNECT_ALL"
@@ -795,6 +800,21 @@ class ScannerService : MediaLibraryService() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_SUBTITLE = "subtitle"
         const val EXTRA_CALL_TOKEN = "call_token"
+
+        /**
+         * Called only from a visible Activity. Android may not restart a media-playback
+         * foreground service after process death, so recover sessions on next app launch.
+         * This deliberately does not run from BOOT_COMPLETED or after explicit disconnect.
+         */
+        fun resumeActiveConnections(context: Context) {
+            val active = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getStringSet(KEY_ACTIVE_PROFILES, emptySet()).orEmpty()
+            if (active.isEmpty()) return
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ScannerService::class.java).setAction(ACTION_RESUME_CONNECTIONS)
+            )
+        }
 
         fun connect(context: Context, profileId: String) {
             ContextCompat.startForegroundService(
