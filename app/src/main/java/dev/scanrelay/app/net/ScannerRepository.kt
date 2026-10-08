@@ -2007,6 +2007,16 @@ object ScannerRepository {
             .build()
         return parseAlertKeywordLists(executeJsonArray(request))
     }
+    /** Replay the most recently received live call without needing a Now Playing card. */
+    fun replayLast(profileId: String) {
+        val session = sessions[profileId] ?: return
+        val call = synchronized(session) { lastReplayCandidate(session.state) } ?: return
+        playNow(profileId, call.id)
+    }
+
+    internal fun lastReplayCandidate(state: ServerScannerState): RadioCall? =
+        state.recentCalls.firstOrNull() ?: state.lastCall
+
     fun playNow(profileId: String, callId: Long) {
         val session = sessions[profileId] ?: return
         val existing = (session.state.recentCalls + session.state.history).firstOrNull { it.id == callId }
