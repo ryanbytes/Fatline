@@ -24,6 +24,14 @@ internal object PlaybackQueuePolicy {
         return mediaCount - currentIndex - 1
     }
 
+    /**
+     * Put an explicitly chosen replay before the current call, keeping the
+     * interrupted call and all pending calls after it in their existing order.
+     */
+    fun immediateInsertIndex(mediaCount: Int, currentIndex: Int): Int {
+        return if (currentIndex in 0 until mediaCount) currentIndex else 0
+    }
+
     fun firstQueuedIndex(mediaCount: Int, currentIndex: Int): Int {
         return if (currentIndex in 0 until mediaCount) currentIndex + 1 else 0
     }
