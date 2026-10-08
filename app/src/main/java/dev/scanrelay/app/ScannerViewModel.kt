@@ -719,6 +719,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         toneAlerts: Boolean? = null,
         keywordAlerts: Boolean? = null
     ) = ScannerRepository.setAlertPreference(profileId, key, alertEnabled, toneAlerts, keywordAlerts)
+    fun replayLast(profileId: String) = ScannerRepository.replayLast(profileId)
     fun replay(profileId: String, callId: Long) = ScannerRepository.replay(profileId, callId)
     fun playNow(profileId: String, callId: Long) = ScannerRepository.playNow(profileId, callId)
     fun continueHistory(profileId: String, callId: Long) = ScannerRepository.continueHistory(profileId, callId)

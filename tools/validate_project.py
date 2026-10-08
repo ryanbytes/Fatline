@@ -220,6 +220,14 @@ require('stoppedOrPausedPlaybackDoesNotShowStaleCallMetadata' in notification_te
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
+
+scanner_status_controls = scanner_card.split('LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp))', 1)[1]
+require('viewModel.replayLast(server.profile.id)' in scanner_status_controls and 'Text("Replay last")' in scanner_status_controls, 'scanner must expose Replay last independently of Now Playing')
+require('fun replayLast(profileId: String)' in repo and 'lastReplayCandidate(session.state)' in repo and 'playNow(profileId, call.id)' in repo, 'Replay last must select and immediately play most recent call')
+require('fun replayLast(profileId: String)' in viewmodel, 'Replay last ViewModel binding missing')
+replay_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()
+require('replayLastChoosesMostRecentReceivedLiveCall' in replay_tests and 'replayLastFallsBackToLastReceivedWhenRecentListEmpty' in replay_tests, 'Replay last selection regression tests missing')
+
 require('                    CallRow(' not in recent_main and 'onDownload' not in recent_main, 'recent live call list must not use History actions')
 require('.clickable(' in recent_row and 'onClick = onPlay' in recent_row and 'OutlinedButton(' not in recent_row and 'Button(' not in recent_row, 'recent live rows must be tappable without buttons')
 

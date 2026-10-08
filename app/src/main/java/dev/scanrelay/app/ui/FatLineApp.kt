@@ -441,16 +441,28 @@ private fun ScannerStatusCard(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
-                    enabled = server.status == ConnectionStatus.CONNECTED
-                ) { Text(if (server.paused) "Resume" else "Pause") }
-                OutlinedButton(onClick = viewModel::skip) { Text("Skip") }
-                OutlinedButton(
-                    onClick = { viewModel.clearHold(server.profile.id) },
-                    enabled = server.hold != null || server.holdSystemRef != null
-                ) { Text("Clear hold") }
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                item {
+                    Button(
+                        onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
+                        enabled = server.status == ConnectionStatus.CONNECTED
+                    ) { Text(if (server.paused) "Resume" else "Pause") }
+                }
+                item {
+                    OutlinedButton(
+                        onClick = { viewModel.replayLast(server.profile.id) },
+                        enabled = server.recentCalls.isNotEmpty() || server.lastCall != null
+                    ) { Text("Replay last") }
+                }
+                item {
+                    OutlinedButton(onClick = viewModel::skip) { Text("Skip") }
+                }
+                item {
+                    OutlinedButton(
+                        onClick = { viewModel.clearHold(server.profile.id) },
+                        enabled = server.hold != null || server.holdSystemRef != null
+                    ) { Text("Clear hold") }
+                }
             }
         }
     }
