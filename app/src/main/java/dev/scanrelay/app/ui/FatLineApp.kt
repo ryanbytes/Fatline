@@ -394,6 +394,7 @@ private fun ScannerStatusCard(
                 Text(
                     "Queue · $queuedCallCount waiting" +
                         if (queuedCallCount > 0) " (all scanners)" else "",
+                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
