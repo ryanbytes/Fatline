@@ -145,6 +145,7 @@ require('keyHttpClient = OkHttpClient()' in repo or 'keyHttpClient = OkHttpClien
 require('.followRedirects(false)' in repo and '.followSslRedirects(false)' in repo, 'scanner HTTP client must not follow redirects')
 require('ScannerEndpointPolicy.requireAllowedHost(uri.host)' in socket and 'ScannerEndpointPolicy.requireAllowedHost(relayHost)' in crypto, 'ThinLine-hosted endpoints must be blocked before socket or relay requests')
 require('ScannerEndpointPolicy.requireAllowedHost(uri.host)' in viewmodel, 'ThinLine-hosted account endpoints must be blocked')
+require('"thinlineradio.com", "thinlineds.com"' in (ROOT / 'app/src/main/java/dev/scanrelay/app/net/ScannerEndpointPolicy.kt').read_text(), 'vendor domain privacy policy must cover both owned domain families')
 require('refreshing audio key' in repo and 'bufferEncryptedCallLocked' in repo, 'encrypted-audio key rotation recovery missing')
 require('ScannerService.removeProfile' not in repo and 'ScannerService::stopAudio' not in repo, 'repository must not control service disconnect lifecycle')
 
