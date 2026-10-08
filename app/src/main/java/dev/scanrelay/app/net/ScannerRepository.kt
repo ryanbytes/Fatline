@@ -29,6 +29,7 @@ import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.SystemHealthAlert
 import dev.scanrelay.app.model.TranscriptRecord
+import dev.scanrelay.app.playback.PlaybackCachePolicy
 import dev.scanrelay.app.playback.PlaybackQueueStore
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.CancellationException
@@ -3223,9 +3224,10 @@ object ScannerRepository {
         val protectedPaths = PlaybackQueueStore(context).protectedAudioPaths()
         // Queued and currently playing files are never candidates for eviction.
         // Keep the newest 150 *unprotected* files to bound unrelated cache growth.
-        files.filterNot { it.absolutePath in protectedPaths }
-            .drop(150)
-            .forEach { it.delete() }
+        val evictable = PlaybackCachePolicy.evictablePaths(
+            files.map { it.absolutePath }, protectedPaths
+        ).toSet()
+        files.filter { it.absolutePath in evictable }.forEach { it.delete() }
     }
 
     private fun labels(systems: List<SystemConfig>, systemRef: Long, talkgroupRef: Long): Pair<String, String> {
