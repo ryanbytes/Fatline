@@ -195,6 +195,13 @@ require('queuedCallsSurviveSnapshotRoundTripInOrder' in queue_store_tests and 'c
 
 queue_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text()
 queue_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text()
+
+require('shouldEnqueueLiveCall(' in queue_policy and 'liveCallKey(' in queue_policy, 'stable live call identity deduplication missing')
+require('if (liveFeed && !PlaybackQueuePolicy.shouldEnqueueLiveCall(' in service and 'pendingCalls.remove(token)' in service, 'duplicate live deliveries must be dropped before queue trimming')
+require('rememberLiveCall(CallKey(profileId, callId))' in service and 'RECENT_LIVE_ID_LIMIT' in service, 'recent live deduplication must be bounded across reconnects')
+require('PlaybackQueuePolicy.liveCallKey(entry.mediaId)?.let(::rememberLiveCall)' in service, 'recovered queued calls must populate the recent-live identity window')
+require('recentlyAcceptedLiveCalls.removeAll { it.profileId == profileId }' in service, 'explicit scanner disconnect must clear its recent-live identity window')
+require('reconnectCannotQueueDuplicateLiveCallOrEvictOtherWaitingCalls' in queue_tests and 'recentlyPlayedLiveCallsAreNotReplayedWhenServerResendsBacklog' in queue_tests, 'reconnect deduplication tests missing')
 require('removeLiveProfileMedia(profileId)' in service and 'isLiveCallForProfile(' in service and 'isLiveCallForProfile(' in queue_policy, 'pausing a scanner must remove only its live calls')
 require('removeProfileMedia(profileId)' in service, 'disconnect must still remove all audio for its scanner')
 require('pausingScannerFiltersOnlyItsLiveMediaAndPreservesManualReplay' in queue_tests and 'malformedMediaIdentifiersAreNeverMatchedAsLiveCalls' in queue_tests, 'paused scanner manual replay regression coverage missing')

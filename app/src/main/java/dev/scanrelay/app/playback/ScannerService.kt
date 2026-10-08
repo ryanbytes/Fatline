@@ -33,6 +33,7 @@ import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.data.ScannerPausePolicy
 import dev.scanrelay.app.data.ScannerPauseStore
 import dev.scanrelay.app.model.ChannelKey
+import dev.scanrelay.app.model.CallKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.net.NetworkHandoffPolicy
@@ -67,6 +68,8 @@ class ScannerService : MediaLibraryService() {
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
+    // Keep recent accepted live IDs through socket reconnects. Bounded in memory.
+    private val recentlyAcceptedLiveCalls = LinkedHashSet<CallKey>()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val libraryChildren = mutableMapOf<String, List<AndroidAutoFavorite>>()
 
@@ -184,7 +187,10 @@ class ScannerService : MediaLibraryService() {
                 stopIfIdle()
             }
             ACTION_REMOVE_PROFILE -> {
-                intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::removeProfileMedia)
+                intent.getStringExtra(EXTRA_PROFILE_ID)?.let { profileId ->
+                    removeProfileMedia(profileId)
+                    recentlyAcceptedLiveCalls.removeAll { it.profileId == profileId }
+                }
                 stopIfIdle()
             }
             null -> restoreConnections()
@@ -259,6 +265,7 @@ class ScannerService : MediaLibraryService() {
 
     private fun disconnectProfile(profileId: String) {
         pausedProfiles -= profileId
+        recentlyAcceptedLiveCalls.removeAll { it.profileId == profileId }
         val active = activeProfileIds().apply { remove(profileId) }
         persistActiveProfiles(active)
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnect(profileId) }
@@ -272,6 +279,7 @@ class ScannerService : MediaLibraryService() {
 
     private fun disconnectAll() {
         pausedProfiles.clear()
+        recentlyAcceptedLiveCalls.clear()
         persistActiveProfiles(emptySet())
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnectAll() }
         stopAudioInternal()
@@ -383,7 +391,12 @@ class ScannerService : MediaLibraryService() {
             return
         }
 
-        recovered.forEach { callByMediaId[it.mediaId] = it.call }
+        recovered.forEach { entry ->
+            callByMediaId[entry.mediaId] = entry.call
+            if (entry.liveFeed) {
+                PlaybackQueuePolicy.liveCallKey(entry.mediaId)?.let(::rememberLiveCall)
+            }
+        }
         player.setMediaItems(recovered.map { mediaItemFor(it.call, it.mediaId) })
         if (snapshot.calls.first().mediaId == recovered.first().mediaId && snapshot.positionMs > 0L) {
             player.seekTo(0, snapshot.positionMs)
@@ -422,6 +435,20 @@ class ScannerService : MediaLibraryService() {
         )
     }
 
+    private fun rememberLiveCall(key: CallKey) {
+        // The same call may be resent during reconnect backlog; don't let repeats
+        // fill the bounded queue and evict other waiting calls.
+        recentlyAcceptedLiveCalls.remove(key)
+        recentlyAcceptedLiveCalls.add(key)
+        while (recentlyAcceptedLiveCalls.size > PlaybackQueuePolicy.RECENT_LIVE_ID_LIMIT) {
+            val iterator = recentlyAcceptedLiveCalls.iterator()
+            if (iterator.hasNext()) {
+                iterator.next()
+                iterator.remove()
+            }
+        }
+    }
+
     private fun addMediaFromIntent(intent: Intent) {
         val path = intent.getStringExtra(EXTRA_AUDIO_PATH) ?: return
         val token = intent.getStringExtra(EXTRA_CALL_TOKEN).orEmpty()
@@ -435,6 +462,15 @@ class ScannerService : MediaLibraryService() {
             return
         }
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
+        if (liveFeed && !PlaybackQueuePolicy.shouldEnqueueLiveCall(
+                profileId = profileId,
+                callId = callId,
+                recentlyAccepted = recentlyAcceptedLiveCalls,
+                mediaIds = List(player.mediaItemCount) { player.getMediaItemAt(it).mediaId }
+            )) {
+            pendingCalls.remove(token)
+            return
+        }
         val systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L)
         val talkgroupRef = intent.getLongExtra(EXTRA_TALKGROUP_REF, 0L)
         val playImmediately = intent.getBooleanExtra(EXTRA_PLAY_IMMEDIATELY, false)
@@ -466,6 +502,7 @@ class ScannerService : MediaLibraryService() {
             player.addMediaItem(item)
         }
         callByMediaId[item.mediaId] = call
+        if (liveFeed && callId > 0L) rememberLiveCall(CallKey(profileId, callId))
         syncCurrentlyPlayingCall()
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         if (!player.playWhenReady) player.play()
