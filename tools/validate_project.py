@@ -160,7 +160,7 @@ require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playbac
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.replay(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to replay')
-require('CallRow(' not in recent_main and 'onDownload' not in recent_main, 'recent live call list must not use History actions')
+require('                    CallRow(' not in recent_main and 'onDownload' not in recent_main, 'recent live call list must not use History actions')
 require('.clickable(' in recent_row and 'onClick = onPlay' in recent_row and 'OutlinedButton(' not in recent_row and 'Button(' not in recent_row, 'recent live rows must be tappable without buttons')
 
 require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
