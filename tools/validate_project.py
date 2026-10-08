@@ -39,6 +39,8 @@ required = [
     'app/src/main/java/dev/scanrelay/app/data/ScannerPauseStore.kt',
     'app/src/test/java/dev/scanrelay/app/data/ScannerPauseStoreTest.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt',
+    'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueueStore.kt',
+    'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueueStoreTest.kt',
     'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt',
     'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt',
@@ -179,6 +181,17 @@ require('Playback queue' not in scanner_screen, 'separate playback queue card mu
 require('queuedCalls' in scanner_card and 'Queue · $queuedCallCount waiting' in scanner_card and 'entry.call.talkgroupLabel' in scanner_card, 'queue count and cross-server preview must live in scanner status card')
 require('clearPlaybackQueue' in scanner_card and 'ACTION_CLEAR_QUEUE' in service and 'fun clearQueue(context: Context)' in service and 'clearPlaybackQueue()' in viewmodel, 'expanded queue must expose existing clear action')
 require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text() and 'queuedPreviewListsCallsAfterCurrentPlayback' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'queued-call ordering regression test missing')
+
+queue_store = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueueStore.kt').read_text()
+queue_store_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueueStoreTest.kt').read_text()
+require('PlaybackQueueStore(this)' in service and 'restoreSavedPlaybackQueue()' in service and 'persistPlaybackQueue()' in service, 'buffered playback must restore and persist across service restart')
+require('recoveryStartIndex(' in service and 'recoveryStartIndex(' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text(), 'playback restore must not replay completed calls')
+require('PlaybackQueueStore(context).protectedAudioPaths()' in repo and 'PlaybackCachePolicy.evictablePaths(' in repo, 'audio cache cleanup must not delete queued audio')
+require('!(entry.liveFeed && pauseStore.isPaused(entry.call.profileId))' in service, 'recovered queue must respect scanner pause settings')
+require('player.setMediaItems(recovered.map' in service and 'player.prepare()' in service and 'snapshot.playWhenReady' in service, 'recovered media must preserve saved playback intent')
+require('if (snapshot == null)' in service and 'File(it).isFile' in service, 'queue recovery must skip missing audio')
+require('queuedCallsSurviveSnapshotRoundTripInOrder' in queue_store_tests and 'cachePruningProtectsAllQueuedFilesAcrossProfiles' in queue_store_tests and 'serviceRecoveryKeepsCurrentAndPendingCallsButNotCompletedOnes' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'queue recovery and cache safety tests missing')
+
 
 queue_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text()
 queue_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text()

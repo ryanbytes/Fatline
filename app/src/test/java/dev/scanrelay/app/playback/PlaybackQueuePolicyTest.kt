@@ -66,6 +66,15 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun serviceRecoveryKeepsCurrentAndPendingCallsButNotCompletedOnes() {
+        val mediaIds = listOf(id("live", 1), id("live", 2), id("live", 3), id("replay", 4))
+        val first = PlaybackQueuePolicy.recoveryStartIndex(mediaIds.size, 1)
+        assertEquals(listOf(id("live", 2), id("live", 3), id("replay", 4)), mediaIds.drop(first))
+        assertEquals(0, PlaybackQueuePolicy.recoveryStartIndex(2, -1))
+        assertEquals(0, PlaybackQueuePolicy.recoveryStartIndex(0, -1))
+    }
+
+    @Test
     fun queuedPreviewListsCallsAfterCurrentPlayback() {
         val media = listOf(id("live", 1), id("replay", 2), id("live", 3))
         assertEquals(listOf(id("replay", 2), id("live", 3)), PlaybackQueuePolicy.queuedMediaIds(media, 0))
