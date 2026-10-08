@@ -374,6 +374,7 @@ class ScannerService : MediaLibraryService() {
         val recovered = snapshot.calls.filter { entry ->
             entry.call.profileId in active &&
                 entry.call.profileId in configured &&
+                !(entry.liveFeed && pauseStore.isPaused(entry.call.profileId)) &&
                 entry.call.audioPath?.let { File(it).isFile } == true
         }
         if (recovered.isEmpty()) {
