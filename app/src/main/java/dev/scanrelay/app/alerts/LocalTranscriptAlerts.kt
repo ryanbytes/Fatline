@@ -11,7 +11,7 @@ import java.util.Locale
 internal object LocalTranscriptAlertPolicy {
     const val MAX_TERMS = 50
     const val FAST_POLL_MS = 30_000L
-    const val SAVER_POLL_MS = 300_000L
+    const val SAVER_POLL_MS = 60_000L
 
     // WebSocket CALL transcripts are always matched as they arrive. Only the
     // fallback HTTP scan for delayed transcription uses the selected cadence.
