@@ -28,6 +28,10 @@ internal object PlaybackQueuePolicy {
         return if (currentIndex in 0 until mediaCount) currentIndex + 1 else 0
     }
 
+    fun queuedMediaIds(mediaIds: List<String>, currentIndex: Int): List<String> {
+        return mediaIds.drop(firstQueuedIndex(mediaIds.size, currentIndex))
+    }
+
     fun playingMediaId(mediaIds: List<String>, currentIndex: Int, isPlaying: Boolean): String? {
         return mediaIds.getOrNull(currentIndex).takeIf { isPlaying }
     }

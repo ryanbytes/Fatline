@@ -48,6 +48,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+data class QueuedCall(val call: RadioCall, val liveFeed: Boolean)
+
 @UnstableApi
 class ScannerService : MediaLibraryService() {
     private lateinit var player: ExoPlayer
@@ -173,6 +175,9 @@ class ScannerService : MediaLibraryService() {
         stopNetworkTracking()
         session.release()
         player.release()
+        _currentlyPlayingCall.value = null
+        _queuedCallCount.value = 0
+        _queuedCalls.value = emptyList()
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnectAll() }
         super.onDestroy()
     }
@@ -378,6 +383,13 @@ class ScannerService : MediaLibraryService() {
         _currentlyPlayingCall.value = PlaybackQueuePolicy
             .playingMediaId(mediaIds, player.currentMediaItemIndex, player.isPlaying)
             ?.let(callByMediaId::get)
+        _queuedCalls.value = PlaybackQueuePolicy
+            .queuedMediaIds(mediaIds, player.currentMediaItemIndex)
+            .mapNotNull { mediaId ->
+                callByMediaId[mediaId]?.let { call ->
+                    QueuedCall(call, liveFeed = PlaybackQueuePolicy.mediaKind(mediaId) == "live")
+                }
+            }
     }
 
     private fun trimQueueForIncomingCall(liveFeed: Boolean) {
@@ -551,6 +563,8 @@ class ScannerService : MediaLibraryService() {
         val queuedCallCount: StateFlow<Int> = _queuedCallCount.asStateFlow()
         private val _currentlyPlayingCall = MutableStateFlow<RadioCall?>(null)
         val currentlyPlayingCall: StateFlow<RadioCall?> = _currentlyPlayingCall.asStateFlow()
+        private val _queuedCalls = MutableStateFlow<List<QueuedCall>>(emptyList())
+        val queuedCalls: StateFlow<List<QueuedCall>> = _queuedCalls.asStateFlow()
         private val pendingCalls = ConcurrentHashMap<String, RadioCall>()
 
         private const val CHANNEL_ID = "fatline_playback"
