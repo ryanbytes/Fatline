@@ -162,6 +162,11 @@ require('30_000L' in repo, 'bounded reconnect backoff missing')
 
 # Background playback / Auto / service lifecycle.
 require('MediaLibraryService' in service and 'MediaLibrarySession' in service and 'ExoPlayer' in service, 'Media3 Android Auto/media service missing')
+
+audio_config = service.split('setAudioAttributes(', 1)[1].split('addListener(', 1)[0]
+require(re.search(r'\\.build\\(\\),\\s*(?://[^\\n]*\\n\\s*)*false\\s*\\)', audio_config) is not None, 'scanner playback must not request audio focus or duck other apps')
+require('android:foregroundServiceType="mediaPlayback"' in manifest_text and 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' in manifest_text and 'START_STICKY' in service, 'background playback must use a persistent media foreground service')
+
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
 require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
