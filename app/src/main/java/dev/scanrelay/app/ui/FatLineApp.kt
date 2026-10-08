@@ -1922,6 +1922,9 @@ private fun AlertsScreen(
     var localTranscriptEnabled by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId?.let(viewModel::localTranscriptAlertsEnabled) == true)
     }
+    var localTranscriptBatterySaver by remember(selectedProfileId) {
+        mutableStateOf(selectedProfileId?.let(viewModel::localTranscriptBatterySaver) ?: true)
+    }
     var localTranscriptSaved by remember(selectedProfileId) { mutableStateOf(false) }
     val normalizedQuery = alertQuery.trim().lowercase()
     val normalizedPreferenceQuery = preferenceQuery.trim().lowercase()
@@ -1981,8 +1984,8 @@ private fun AlertsScreen(
                     ) {
                         Text("Local transcript alerts", fontWeight = FontWeight.SemiBold)
                         Text(
-                            "Match phrases on this phone. When a scanner is connected, FatLine checks " +
-                                "new transcripts every 30 seconds in the background, even if live audio is paused.",
+                            "Match phrases on this phone. Live CALL transcripts are checked as received. " +
+                                "Delayed transcripts are polled in the background even if audio is paused.",
                             style = MaterialTheme.typography.bodySmall
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1994,6 +1997,16 @@ private fun AlertsScreen(
                                 }
                             )
                             Text("Monitor transcripts and notify on matches")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = localTranscriptBatterySaver,
+                                onCheckedChange = {
+                                    localTranscriptBatterySaver = it
+                                    localTranscriptSaved = false
+                                }
+                            )
+                            Text("Battery saver (5-minute checks instead of 30 seconds)")
                         }
                         OutlinedTextField(
                             value = localTranscriptRules,
@@ -2012,7 +2025,8 @@ private fun AlertsScreen(
                         Button(
                             onClick = {
                                 viewModel.configureLocalTranscriptAlerts(
-                                    selectedProfileId, localTranscriptRules, localTranscriptEnabled
+                                    selectedProfileId, localTranscriptRules,
+                                    localTranscriptEnabled, localTranscriptBatterySaver
                                 )
                                 localTranscriptSaved = true
                             },
@@ -2029,6 +2043,8 @@ private fun AlertsScreen(
                         }
                         Text(
                             "Monitoring requires FatLine's foreground scanner service to be running. " +
+                                "Battery saver may delay late-transcript matches by about 5 minutes; " +
+                                "live calls can match immediately when the scanner sends their text. " +
                                 "Polling delayed transcripts requires a scanner PIN and server transcript access. " +
                                 "Existing server alert notifications are replaced while this monitor is enabled. " +
                                 "No ThinLine-hosted push connection is used.",

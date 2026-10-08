@@ -1237,8 +1237,8 @@ object ScannerRepository {
     }
 
     /** Enable or disable local transcript monitoring; never registers a push token. */
-    fun configureLocalTranscriptAlerts(profileId: String, rawRules: String, enabled: Boolean) {
-        localTranscriptStore?.configure(profileId, rawRules, enabled)
+    fun configureLocalTranscriptAlerts(profileId: String, rawRules: String, enabled: Boolean, batterySaver: Boolean) {
+        localTranscriptStore?.configure(profileId, rawRules, enabled, batterySaver)
         sessions[profileId]?.let(::startTranscriptMonitor)
     }
 
@@ -1274,14 +1274,15 @@ object ScannerRepository {
                     else -> {
                         try {
                             pollRecentTranscripts(session, store)
-                            updateTranscriptMonitorStatus(session, "Monitoring · checking every 30 seconds")
+                            val cadence = if (store.batterySaver(profileId)) "5 minutes" else "30 seconds"
+                            updateTranscriptMonitorStatus(session, "Monitoring · checking every $cadence")
                         } catch (error: Throwable) {
                             if (error is CancellationException) throw error
                             updateTranscriptMonitorStatus(session, "Transcript API unavailable · retrying")
                         }
                     }
                 }
-                delay(30_000L)
+                delay(LocalTranscriptAlertPolicy.pollIntervalMs(store.batterySaver(profileId)))
             }
         }
     }
