@@ -36,9 +36,9 @@ class LocalTranscriptAlertPolicyTest {
     }
 
     @Test
-    fun batterySaverReducesPeriodicNetworkChecksTenfold() {
+    fun batterySaverHalvesPeriodicNetworkChecks() {
         assertEquals(30_000L, LocalTranscriptAlertPolicy.pollIntervalMs(false))
-        assertEquals(300_000L, LocalTranscriptAlertPolicy.pollIntervalMs(true))
+        assertEquals(60_000L, LocalTranscriptAlertPolicy.pollIntervalMs(true))
     }
 
     @Test

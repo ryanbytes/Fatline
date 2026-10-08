@@ -2006,7 +2006,7 @@ private fun AlertsScreen(
                                     localTranscriptSaved = false
                                 }
                             )
-                            Text("Battery saver (5-minute checks instead of 30 seconds)")
+                            Text("Battery saver (1-minute checks instead of 30 seconds)")
                         }
                         OutlinedTextField(
                             value = localTranscriptRules,
@@ -2043,7 +2043,7 @@ private fun AlertsScreen(
                         }
                         Text(
                             "Monitoring requires FatLine's foreground scanner service to be running. " +
-                                "Battery saver may delay late-transcript matches by about 5 minutes; " +
+                                "Battery saver may delay late-transcript matches by about 1 minute; " +
                                 "live calls can match immediately when the scanner sends their text. " +
                                 "Polling delayed transcripts requires a scanner PIN and server transcript access. " +
                                 "Existing server alert notifications are replaced while this monitor is enabled. " +
