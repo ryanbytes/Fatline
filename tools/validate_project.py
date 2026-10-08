@@ -37,6 +37,8 @@ required = [
     'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt',
     'app/src/test/java/dev/scanrelay/app/data/ChannelStoreTest.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt',
+    'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt',
+    'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt',
     'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt',
     'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt',
 ]
@@ -161,6 +163,13 @@ require('Playback queue' not in scanner_screen, 'separate playback queue card mu
 require('queuedCalls' in scanner_card and 'Queue · $queuedCallCount waiting' in scanner_card and 'entry.call.talkgroupLabel' in scanner_card, 'queue count and cross-server preview must live in scanner status card')
 require('clearPlaybackQueue' in scanner_card and 'ACTION_CLEAR_QUEUE' in service and 'fun clearQueue(context: Context)' in service and 'clearPlaybackQueue()' in viewmodel, 'expanded queue must expose existing clear action')
 require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text() and 'queuedPreviewListsCallsAfterCurrentPlayback' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'queued-call ordering regression test missing')
+
+notification_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt').read_text()
+notification_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt').read_text()
+require('if (!isPlaying) return PlaybackNotificationText("FatLine", "Waiting for traffic")' in notification_policy, 'idle notifications must not claim stale playback metadata')
+require('updatePlaybackNotification()' in service and 'PlaybackNotificationPolicy.display(' in service, 'player notification must use current playback state')
+require('override fun onIsPlayingChanged(isPlaying: Boolean)' in service and 'updatePlaybackNotification()' in service.split('override fun onIsPlayingChanged(isPlaying: Boolean)', 1)[1].split('}', 1)[0], 'playback state changes must refresh notification')
+require('stoppedOrPausedPlaybackDoesNotShowStaleCallMetadata' in notification_tests, 'stale playback notification regression test missing')
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.replay(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to replay')
