@@ -322,7 +322,8 @@ class ScannerService : MediaLibraryService() {
         val path = intent.getStringExtra(EXTRA_AUDIO_PATH) ?: return
         val token = intent.getStringExtra(EXTRA_CALL_TOKEN).orEmpty()
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
-        if (profileId in pausedProfiles) {
+        val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
+        if (liveFeed && profileId in pausedProfiles) {
             pendingCalls.remove(token)
             return
         }
@@ -330,7 +331,7 @@ class ScannerService : MediaLibraryService() {
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
         val systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L)
         val talkgroupRef = intent.getLongExtra(EXTRA_TALKGROUP_REF, 0L)
-        val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
+        val playImmediately = intent.getBooleanExtra(EXTRA_PLAY_IMMEDIATELY, false)
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Radio traffic" }
         val subtitle = intent.getStringExtra(EXTRA_SUBTITLE).orEmpty()
         val mediaKind = if (liveFeed) "live" else "replay"
@@ -349,7 +350,15 @@ class ScannerService : MediaLibraryService() {
 
         if (player.playbackState == Player.STATE_ENDED) player.clearMediaItems()
         trimQueueForIncomingCall(liveFeed)
-        player.addMediaItem(item)
+        if (playImmediately) {
+            val position = PlaybackQueuePolicy.immediateInsertIndex(
+                player.mediaItemCount, player.currentMediaItemIndex
+            )
+            player.addMediaItem(position, item)
+            player.seekTo(position, 0L)
+        } else {
+            player.addMediaItem(item)
+        }
         if (call != null) callByMediaId[item.mediaId] = call
         syncCurrentlyPlayingCall()
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
@@ -610,6 +619,7 @@ class ScannerService : MediaLibraryService() {
         const val EXTRA_SYSTEM_REF = "system_ref"
         const val EXTRA_TALKGROUP_REF = "talkgroup_ref"
         const val EXTRA_LIVE_FEED = "live_feed"
+        const val EXTRA_PLAY_IMMEDIATELY = "play_immediately"
         const val EXTRA_PAUSED = "paused"
         const val EXTRA_AUDIO_PATH = "audio_path"
         const val EXTRA_TITLE = "title"
@@ -631,7 +641,12 @@ class ScannerService : MediaLibraryService() {
             context.startService(Intent(context, ScannerService::class.java).setAction(ACTION_DISCONNECT_ALL))
         }
 
-        fun enqueue(context: Context, call: RadioCall, liveFeed: Boolean = true) {
+        fun enqueue(
+            context: Context,
+            call: RadioCall,
+            liveFeed: Boolean = true,
+            playImmediately: Boolean = false
+        ) {
             val path = call.audioPath ?: return
             val token = UUID.randomUUID().toString()
             pendingCalls[token] = call
@@ -643,6 +658,7 @@ class ScannerService : MediaLibraryService() {
                 .putExtra(EXTRA_SYSTEM_REF, call.systemRef)
                 .putExtra(EXTRA_TALKGROUP_REF, call.talkgroupRef)
                 .putExtra(EXTRA_LIVE_FEED, liveFeed)
+                .putExtra(EXTRA_PLAY_IMMEDIATELY, playImmediately)
                 .putExtra(EXTRA_AUDIO_PATH, path)
                 .putExtra(EXTRA_TITLE, call.talkgroupLabel)
                 .putExtra(EXTRA_SUBTITLE, "${call.serverName} · ${call.systemLabel}")
