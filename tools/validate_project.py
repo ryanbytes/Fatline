@@ -178,7 +178,6 @@ require('volume = PlaybackVolumePolicy.gain(_outputVolumePercent.value)' in serv
 require('player.volume = PlaybackVolumePolicy.gain(normalized)' in service and 'volumeStore.save(normalized)' in service, 'volume action must change and persist ExoPlayer volume only')
 require('ACTION_SET_OUTPUT_VOLUME -> setOutputVolumeInternal(' in service and 'fun setOutputVolume(context: Context, percent: Int)' in service, 'scanner volume service action missing')
 require('fun setOutputVolume(percent: Int)' in viewmodel and 'viewModel.setOutputVolume(pendingVolume)' in ui, 'scanner volume UI and ViewModel missing')
-require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
 require('fun gain(percent: Int): Float = clamp(percent) / 100f' in volume_policy and 'outputVolumeControlsOnlyPlayerGain' in volume_tests, 'independent output gain policy test missing')
 require('AudioManager' not in service and 'setStreamVolume(' not in service, 'scanner volume must never set the OS shared stream volume')
 
@@ -190,6 +189,7 @@ require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIn
 require('queuedCallCount' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun NowPlayingCard(', 1)[0]
+require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
 require('Playback queue' not in scanner_screen, 'separate playback queue card must be removed')
 require('queuedCalls' in scanner_card and 'Queue · $queuedCallCount waiting' in scanner_card and 'entry.call.talkgroupLabel' in scanner_card, 'queue count and cross-server preview must live in scanner status card')
 require('clearPlaybackQueue' in scanner_card and 'ACTION_CLEAR_QUEUE' in service and 'fun clearQueue(context: Context)' in service and 'clearPlaybackQueue()' in viewmodel, 'expanded queue must expose existing clear action')
