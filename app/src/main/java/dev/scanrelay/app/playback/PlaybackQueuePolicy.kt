@@ -1,6 +1,30 @@
 package dev.scanrelay.app.playback
 
+import dev.scanrelay.app.model.CallKey
+
 internal object PlaybackQueuePolicy {
+    const val RECENT_LIVE_ID_LIMIT = 512
+
+    /** An incoming live call is identified by server profile and call ID, not by a random media token. */
+    fun liveCallKey(mediaId: String): CallKey? {
+        val parts = mediaId.split(':')
+        if (parts.size != 7 || parts[0] != "call" || parts[2] != "live") return null
+        val profileId = parts[1].takeIf(String::isNotBlank) ?: return null
+        val callId = parts[3].toLongOrNull()?.takeIf { it > 0L } ?: return null
+        return CallKey(profileId, callId)
+    }
+
+    fun shouldEnqueueLiveCall(
+        profileId: String,
+        callId: Long,
+        recentlyAccepted: Set<CallKey>,
+        mediaIds: List<String>
+    ): Boolean {
+        if (callId <= 0L) return true
+        val key = CallKey(profileId, callId)
+        return key !in recentlyAccepted && mediaIds.none { liveCallKey(it) == key }
+    }
+
     const val LIVE_LIMIT = 30
     const val REPLAY_LIMIT = 500
 
