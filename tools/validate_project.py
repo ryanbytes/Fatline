@@ -176,7 +176,7 @@ require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playbac
 require('fun playNow(profileId: String, callId: Long)' in repo and 'session.pendingImmediateReplay.remove(id)' in repo, 'manual replay priority must survive asynchronous server CAL')
 require('fun playNow(profileId: String, callId: Long)' in viewmodel and 'playImmediately = playImmediately' in repo, 'manual replay must reach playback service')
 require('EXTRA_PLAY_IMMEDIATELY' in service and 'player.seekTo(position, 0L)' in service, 'selected recent call must start immediately')
-require('if (liveFeed && profileId in pausedProfiles)' in service, 'paused scanning must still permit manual replay')
+require('ScannerPausePolicy.suppressIncomingAudio(' in service and 'liveFeed = liveFeed,' in service and 'paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)' in service and 'liveFeed && paused' in pause_store, 'paused scanning must suppress live calls but permit manual replay')
 require('immediateReplayInsertsBeforeCurrentWithoutDiscardingQueue' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'manual replay priority queue regression missing')
 
 notification_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt').read_text()
