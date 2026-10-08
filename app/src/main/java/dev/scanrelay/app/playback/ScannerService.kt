@@ -110,22 +110,17 @@ class ScannerService : MediaLibraryService() {
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     syncCurrentlyPlayingCall()
+                    updatePlaybackNotification()
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     syncCurrentlyPlayingCall()
-                    val title = mediaItem?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "Listening" }
-                    val subtitle = mediaItem?.mediaMetadata?.artist?.toString().orEmpty().ifBlank { "Waiting for traffic" }
-                    updateNotification(title, subtitle)
+                    updatePlaybackNotification()
                 }
 
                 override fun onTimelineChanged(timeline: Timeline, reason: Int) {
                     syncCurrentlyPlayingCall()
-                    val current = player.currentMediaItem
-                    val title = current?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "FatLine" }
-                    val subtitle = current?.mediaMetadata?.artist?.toString().orEmpty()
-                        .ifBlank { "Scanner service active" }
-                    updateNotification(title, subtitle)
+                    updatePlaybackNotification()
                 }
             })
         }
@@ -138,7 +133,13 @@ class ScannerService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, notification("FatLine", "Scanner service active"))
+        val initialText = if (::player.isInitialized) currentPlaybackNotification()
+            else PlaybackNotificationText("FatLine", "Scanner service active")
+        val queued = if (::player.isInitialized) PlaybackQueuePolicy.queuedCount(
+            player.mediaItemCount, player.currentMediaItemIndex
+        ) else 0
+        val subtitle = if (queued > 0) "${initialText.subtitle} · $queued queued" else initialText.subtitle
+        startForeground(NOTIFICATION_ID, notification(initialText.title, subtitle))
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
@@ -284,7 +285,11 @@ class ScannerService : MediaLibraryService() {
 
     private fun updateMonitoringNotification(count: Int) {
         if (count <= 0) return
-        updateNotification("FatLine", "Monitoring $count server${if (count == 1) "" else "s"}")
+        if (::player.isInitialized && player.isPlaying) {
+            updatePlaybackNotification()
+        } else {
+            updateNotification("FatLine", "Monitoring $count server${if (count == 1) "" else "s"}")
+        }
     }
 
     private fun stopIfIdle() {
@@ -476,6 +481,20 @@ class ScannerService : MediaLibraryService() {
             .addAction(0, "Clear queue", clearQueue)
             .addAction(0, "Disconnect all", stop)
             .build()
+    }
+
+    private fun currentPlaybackNotification(): PlaybackNotificationText {
+        val metadata = player.currentMediaItem?.mediaMetadata
+        return PlaybackNotificationPolicy.display(
+            isPlaying = player.isPlaying,
+            title = metadata?.title?.toString(),
+            artist = metadata?.artist?.toString()
+        )
+    }
+
+    private fun updatePlaybackNotification() {
+        val display = currentPlaybackNotification()
+        updateNotification(display.title, display.subtitle)
     }
 
     private fun updateNotification(title: String, text: String) {
