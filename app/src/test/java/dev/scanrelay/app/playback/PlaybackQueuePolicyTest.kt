@@ -24,6 +24,7 @@ class PlaybackQueuePolicyTest {
     @Test
     fun malformedMediaIdentifiersAreNeverMatchedAsLiveCalls() {
         assertEquals(false, PlaybackQueuePolicy.isLiveCallForProfile("live:1", "p1"))
+        assertEquals(false, PlaybackQueuePolicy.isLiveCallForProfile("call:p1:live", "p1"))
         assertEquals(false, PlaybackQueuePolicy.isLiveCallForProfile("call:p1:replay:3", "p1"))
         assertEquals(false, PlaybackQueuePolicy.isLiveCallForProfile("call:p2:live:3", "p1"))
     }
