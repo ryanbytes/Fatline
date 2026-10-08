@@ -27,6 +27,22 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun queuedPreviewListsCallsAfterCurrentPlayback() {
+        val media = listOf(id("live", 1), id("replay", 2), id("live", 3))
+        assertEquals(listOf(id("replay", 2), id("live", 3)), PlaybackQueuePolicy.queuedMediaIds(media, 0))
+        assertEquals(listOf(id("live", 3)), PlaybackQueuePolicy.queuedMediaIds(media, 1))
+        assertEquals(emptyList<String>(), PlaybackQueuePolicy.queuedMediaIds(media, 2))
+    }
+
+    @Test
+    fun queuedPreviewIncludesWholeQueueWithoutValidCurrentItem() {
+        val media = listOf(id("live", 1), id("replay", 2))
+        assertEquals(media, PlaybackQueuePolicy.queuedMediaIds(media, -1))
+        assertEquals(media, PlaybackQueuePolicy.queuedMediaIds(media, 99))
+        assertEquals(emptyList<String>(), PlaybackQueuePolicy.queuedMediaIds(emptyList(), -1))
+    }
+
+    @Test
     fun playingMediaIdIsEmptyWhenPlayerIsStopped() {
         assertEquals(null, PlaybackQueuePolicy.playingMediaId(listOf(id("live", 1)), 0, isPlaying = false))
     }
