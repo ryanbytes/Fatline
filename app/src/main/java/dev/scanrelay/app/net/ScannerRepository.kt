@@ -1143,17 +1143,21 @@ object ScannerRepository {
         date: String? = null,
         group: String? = null,
         tag: String? = null,
-        sort: Int = -1
+        sort: Int = -1,
+        talkgroupRefs: List<Long> = emptyList()
     ) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
             if (reset) {
+                val selectedTalkgroupRefs = (talkgroupRefs + listOfNotNull(talkgroupRef))
+                    .filter { it > 0 }.distinct()
                 session.historyOffset = 0
                 session.state = session.state.copy(
                     history = emptyList(),
                     historyHasMore = false,
                     historySystemRef = systemRef?.takeIf { it > 0 },
-                    historyTalkgroupRef = talkgroupRef?.takeIf { it > 0 },
+                    historyTalkgroupRef = selectedTalkgroupRefs.singleOrNull(),
+                    historyTalkgroupRefs = if (selectedTalkgroupRefs.size > 1) selectedTalkgroupRefs else emptyList(),
                     historyDate = date?.trim()?.takeIf { it.isNotBlank() },
                     historyGroup = group?.trim()?.takeIf { it.isNotBlank() },
                     historyTag = tag?.trim()?.takeIf { it.isNotBlank() },
@@ -1162,6 +1166,7 @@ object ScannerRepository {
             }
             val activeSystemRef = session.state.historySystemRef
             val activeTalkgroupRef = session.state.historyTalkgroupRef
+            val activeTalkgroupRefs = session.state.historyTalkgroupRefs
             val activeDate = session.state.historyDate
             val activeGroup = session.state.historyGroup
             val activeTag = session.state.historyTag
@@ -1174,7 +1179,8 @@ object ScannerRepository {
                 talkgroupRef = activeTalkgroupRef,
                 date = activeDate,
                 group = activeGroup,
-                tag = activeTag
+                tag = activeTag,
+                talkgroupRefs = activeTalkgroupRefs
             )
         }
         publish()
@@ -3444,7 +3450,8 @@ object ScannerRepository {
 
     internal fun matchesHistoryFilter(state: ServerScannerState, call: RadioCall): Boolean {
         val systemMatches = state.historySystemRef?.let { call.systemRef == it } ?: true
-        val talkgroupMatches = state.historyTalkgroupRef?.let { call.talkgroupRef == it } ?: true
+        val talkgroupMatches = (state.historyTalkgroupRef?.let { call.talkgroupRef == it } ?: true) &&
+            (state.historyTalkgroupRefs.isEmpty() || call.talkgroupRef in state.historyTalkgroupRefs)
         val talkgroup = state.systems
             .firstOrNull { it.systemRef == call.systemRef }
             ?.talkgroups
