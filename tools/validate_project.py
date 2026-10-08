@@ -26,6 +26,8 @@ required = [
     'app/src/main/java/dev/scanrelay/app/data/ProfileStore.kt',
     'app/src/main/java/dev/scanrelay/app/data/ChannelStore.kt',
     'app/src/main/java/dev/scanrelay/app/alerts/AlertSoundPreferences.kt',
+    'app/src/main/java/dev/scanrelay/app/alerts/LocalTranscriptAlerts.kt',
+    'app/src/test/java/dev/scanrelay/app/alerts/LocalTranscriptAlertPolicyTest.kt',
     'app/src/main/java/dev/scanrelay/app/ui/FatLineApp.kt',
     'app/src/main/java/dev/scanrelay/app/ui/ServerDateTime.kt',
     'app/src/main/java/dev/scanrelay/app/ui/UiAccent.kt',
@@ -257,6 +259,20 @@ require('                    CallRow(' not in recent_main and 'onDownload' not i
 require('.clickable(' in recent_row and 'onClick = onPlay' in recent_row and 'OutlinedButton(' not in recent_row and 'Button(' not in recent_row, 'recent live rows must be tappable without buttons')
 
 require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
+
+local_monitor = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/LocalTranscriptAlerts.kt').read_text()
+local_monitor_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/alerts/LocalTranscriptAlertPolicyTest.kt').read_text()
+require('fun configureLocalTranscriptAlerts(' in repo and 'fun configureLocalTranscriptAlerts(' in viewmodel and 'Local transcript alerts' in ui, 'local transcript rules must be editable in app')
+require('fun startTranscriptMonitor(' in repo and 'delay(30_000L)' in repo and 'pollRecentTranscripts(session, store)' in repo, 'transcript monitor must run in the foreground scanner service independently of audio pause')
+require('api/transcripts?limit=100&offset=0&pin=' in repo and 'executeJsonArray(request)' in repo, 'monitor must poll server transcript API, not a hosted relay')
+require('store.baseline(' in repo and 'store.isNewSinceEnable(' in repo and 'store.accept(profileId, callId)' in repo, 'monitor must skip historical calls and deduplicate live/polled calls')
+require('processLocalTranscript(session, id, call.transcript' in repo and 'row.reviewedTranscript' in repo, 'monitor must process both live and delayed transcript text')
+require('localTranscriptStore?.alerts(session.profile.id, session.profile.name)' in repo and 'store.addAlert(alert)' in repo, 'locally generated alerts must survive refresh and restarts')
+require('session.transcriptMonitorJob?.cancel()' in repo and 'session.profile.pin.isNotBlank()' in repo, 'monitor must stop at disconnect and use authenticated scanner API')
+require('LocalTranscriptAlertPolicy.matches(' in repo and 'fun matches(transcript: String, rules: List<String>)' in local_monitor, 'local transcript phrase matching missing')
+require('phrasesMatchRegardlessOfCaseAndSeparator' in local_monitor_tests and 'wordBoundariesAvoidAccidentalMatches' in local_monitor_tests, 'phrase matching regression tests missing')
+require('LocalTranscriptAlertStore(getApplication()).clearProfile(profileId)' in viewmodel, 'deleting scanner must erase its local rules and alerts')
+require('localTranscriptMonitorStatus' in ui and 'Transcript API unavailable' in repo, 'monitor status and API error visibility missing')
 
 # User-visible ThinLine parity / enhancements.
 require('setMany' in channel_store and 'setSystemEnabled' in repo, 'batched system-level channel update missing')

@@ -216,6 +216,7 @@ data class ServerScannerState(
     val recentCalls: List<RadioCall> = emptyList(),
     val lastCall: RadioCall? = null,
     val alerts: List<ScannerAlert> = emptyList(),
+    val localTranscriptMonitorStatus: String = "Off",
     val alertsLoading: Boolean = false,
     val alertsError: String? = null,
     val transcripts: List<TranscriptRecord> = emptyList(),

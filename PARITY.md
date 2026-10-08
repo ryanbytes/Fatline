@@ -25,6 +25,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | Archive/history filters, replay, continue, downloads | Implemented | Long-history pagination, queued playback, authenticated downloads |
 | Queue count, preview, clear, durable recovery, de-duplication | Implemented | Android service restart and Wi-Fi/cellular handoff tests |
 | Server alert preferences, keyword/tone matching, alert listing | Implemented | Validate against authorized self-hosted server responses |
+| On-device transcript keyword/phrase alerts | Implemented (opt-in) | Verify 30-second polling while paused, deduplication, notification sound, and late transcripts on-device |
 | Transcripts, filtering and pagination | Implemented | Server-provided transcript and date edge cases |
 | Account login, password/email changes, server account details | Implemented | Privacy-safe endpoint and authentication tests |
 | Android Auto MediaLibrary browse/play | Implemented | Test with an Android Auto host |
@@ -42,7 +43,8 @@ account information, or encryption keys to ThinLine-hosted services):
 ## Deliberately excluded by user request
 
 - **Physical scanner keypad, simulated signal meter and scanning sweep**: not required; this is a streaming client, not a hardware scanner emulator.
-- **Push alerts** and native remote-push registration: not required for this FatLine parity target.
+- **Push alerts** and native remote-push registration: not required for this FatLine parity target. Local notifications from received or polled transcript text are allowed and replace server-alert notifications when explicitly enabled.
+- Server-URL validation during setup and a dedicated AI-summary UI are not required.
 - ThinLine subscription/advertising flows, duplicate ads, or app-side analytics/tracking: not added.
 - ThinLine-hosted account or relay calls: blocked by existing privacy policy.
 

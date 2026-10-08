@@ -9,6 +9,9 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.widget.Toast
 import dev.scanrelay.app.alerts.AlertNotifier
+import dev.scanrelay.app.alerts.LocalTranscriptAlertPolicy
+import dev.scanrelay.app.alerts.LocalTranscriptAlertStore
+import dev.scanrelay.app.alerts.localTranscriptAlert
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.MonitoringOverrides
 import dev.scanrelay.app.data.reconcileMonitoringOverrides
@@ -90,6 +93,7 @@ object ScannerRepository {
         @Volatile var favoriteSaveJob: Job? = null
         @Volatile var favoriteRevision = 0L
         @Volatile var alertRefreshJob: Job? = null
+        @Volatile var transcriptMonitorJob: Job? = null
         val alertPreferenceMutex = Mutex()
         val alertKeywordListMutex = Mutex()
         @Volatile var alertPreferenceSaveJob: Job? = null
@@ -114,6 +118,7 @@ object ScannerRepository {
     @Volatile private var channelStore: ChannelStore? = null
     @Volatile private var profileStore: ProfileStore? = null
     @Volatile private var pauseStore: ScannerPauseStore? = null
+    @Volatile private var localTranscriptStore: LocalTranscriptAlertStore? = null
     @Volatile private var networkAvailable = true
 
     fun initialize(context: Context) {
@@ -124,6 +129,7 @@ object ScannerRepository {
                 channelStore = ChannelStore(context.applicationContext)
                 profileStore = ProfileStore(context.applicationContext)
                 pauseStore = ScannerPauseStore(context.applicationContext)
+                localTranscriptStore = LocalTranscriptAlertStore(context.applicationContext)
             }
         }
     }
@@ -138,7 +144,8 @@ object ScannerRepository {
                 paused = pauseStore?.isPaused(profile.id) == true,
                 hold = savedOverrides.hold,
                 holdSystemRef = savedOverrides.holdSystemRef,
-                avoided = savedOverrides.avoided
+                avoided = savedOverrides.avoided,
+                alerts = localTranscriptStore?.alerts(profile.id, profile.name).orEmpty()
             )
         }
         sessions[profile.id] = session
@@ -153,6 +160,7 @@ object ScannerRepository {
         }
         publish()
         openSocket(session)
+        startTranscriptMonitor(session)
     }
 
     @Synchronized
@@ -1208,7 +1216,7 @@ object ScannerRepository {
                 if (!isCurrent(session)) return@launch
                 synchronized(session) {
                     session.state = session.state.copy(
-                        alerts = alerts.take(500),
+                        alerts = (localTranscriptStore?.alerts(session.profile.id, session.profile.name).orEmpty() + alerts).take(500),
                         alertsLoading = false,
                         alertsError = null
                     )
@@ -1224,6 +1232,116 @@ object ScannerRepository {
                     )
                 }
                 publish()
+            }
+        }
+    }
+
+    /** Enable or disable local transcript monitoring; never registers a push token. */
+    fun configureLocalTranscriptAlerts(profileId: String, rawRules: String, enabled: Boolean) {
+        localTranscriptStore?.configure(profileId, rawRules, enabled)
+        sessions[profileId]?.let(::startTranscriptMonitor)
+    }
+
+    private fun updateTranscriptMonitorStatus(session: Session, status: String) {
+        val changed = synchronized(session) {
+            if (!isCurrent(session) || session.state.localTranscriptMonitorStatus == status) false
+            else {
+                session.state = session.state.copy(localTranscriptMonitorStatus = status)
+                true
+            }
+        }
+        if (changed) publish()
+    }
+
+    private fun startTranscriptMonitor(session: Session) {
+        session.transcriptMonitorJob?.cancel()
+        session.transcriptMonitorJob = null
+        val store = localTranscriptStore ?: return
+        val profileId = session.profile.id
+        if (!store.active(profileId)) {
+            updateTranscriptMonitorStatus(session, "Off")
+            return
+        }
+        session.transcriptMonitorJob = scope.launch {
+            // Reuse the foreground scanner service. No additional WebSocket is opened.
+            // Pausing live audio never interrupts transcript polling.
+            while (isCurrent(session) && store.active(profileId)) {
+                when {
+                    !networkAvailable || session.state.status != ConnectionStatus.CONNECTED ->
+                        updateTranscriptMonitorStatus(session, "Waiting for scanner connection")
+                    session.profile.pin.isBlank() ->
+                        updateTranscriptMonitorStatus(session, "Live transcripts only · PIN required to poll")
+                    else -> {
+                        try {
+                            pollRecentTranscripts(session, store)
+                            updateTranscriptMonitorStatus(session, "Monitoring · checking every 30 seconds")
+                        } catch (error: Throwable) {
+                            if (error is CancellationException) throw error
+                            updateTranscriptMonitorStatus(session, "Transcript API unavailable · retrying")
+                        }
+                    }
+                }
+                delay(30_000L)
+            }
+        }
+    }
+
+    private fun pollRecentTranscripts(session: Session, store: LocalTranscriptAlertStore) {
+        val profileId = session.profile.id
+        val pin = session.profile.pin.trim()
+        if (pin.isBlank()) return
+        val origin = httpOrigin(session.profile.baseUrl)
+        val request = Request.Builder()
+            .url("$origin/api/transcripts?limit=100&offset=0&pin=${encodeQuery(pin)}")
+            .header("Authorization", "Bearer $pin")
+            .get()
+            .build()
+        val records = parseTranscripts(session.profile, executeJsonArray(request))
+        if (!isCurrent(session) || !store.active(profileId)) return
+        val firstPoll = !store.bootstrapped(profileId)
+        if (firstPoll) {
+            store.baseline(profileId, records.filterNot { store.isNewSinceEnable(profileId, it.timestamp) }
+                .map { it.callId })
+        }
+        records.asReversed().forEach { row ->
+            if (!isCurrent(session) || !store.active(profileId)) return@forEach
+            val text = row.reviewedTranscript?.takeIf(String::isNotBlank)
+                ?: row.transcript
+            if (text.isNotBlank()) {
+                processLocalTranscript(session, row.callId, text,
+                    row.systemLabel, row.talkgroupLabel ?: row.talkgroupName)
+            }
+        }
+    }
+
+    private fun processLocalTranscript(
+        session: Session,
+        callId: Long,
+        transcript: String,
+        systemLabel: String?,
+        talkgroupLabel: String?
+    ) {
+        val store = localTranscriptStore ?: return
+        val profileId = session.profile.id
+        if (!isCurrent(session) || !store.active(profileId)) return
+        val matches = LocalTranscriptAlertPolicy.matches(transcript, store.rules(profileId))
+        if (matches.isEmpty() || !store.accept(profileId, callId)) return
+        val alert = localTranscriptAlert(
+            profileId, session.profile.name, callId, transcript, matches,
+            systemLabel, talkgroupLabel
+        )
+        store.addAlert(alert)
+        synchronized(session) {
+            session.state = session.state.copy(
+                alerts = (listOf(alert) + session.state.alerts).take(500)
+            )
+        }
+        publish()
+        appContext?.let { context ->
+            val notificationId = ("transcript:$profileId:$callId").hashCode() and Int.MAX_VALUE
+            runCatching {
+                AlertNotifier.post(context, profileId, session.profile.name,
+                    "${session.profile.name}: ${alert.title}", alert.body, notificationId)
             }
         }
     }
@@ -2314,6 +2432,8 @@ object ScannerRepository {
         session.scanListSaveJob?.cancel()
         session.favoriteSaveJob?.cancel()
         session.alertRefreshJob?.cancel()
+        session.transcriptMonitorJob?.cancel()
+        session.transcriptMonitorJob = null
         session.socketGeneration++
         val old = session.socket
         session.socket = null
@@ -2601,6 +2721,7 @@ object ScannerRepository {
                     session.reconnectAttempt = 0
                 }
                 handleConfig(session, envelope.payload as? JSONObject ?: return)
+                startTranscriptMonitor(session)
             }
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
                 val callFlag = envelope.flag?.toString()
@@ -3057,6 +3178,9 @@ object ScannerRepository {
             )
         }
         publish()
+        if (!replayRequested && !call.transcript.isNullOrBlank()) {
+            processLocalTranscript(session, id, call.transcript, systemLabel, talkgroupLabel)
+        }
         if (shouldPlay && path != null) {
             ScannerService.enqueue(context, call, liveFeed = !replayRequested, playImmediately = playImmediately)
         }
@@ -3085,9 +3209,11 @@ object ScannerRepository {
             session.state = session.state.copy(alerts = (listOf(alert) + session.state.alerts).take(100))
         }
         publish()
-        appContext?.let {
-            val notificationId = (session.profile.id.hashCode() * 31 + body.hashCode()).absoluteValue
-            AlertNotifier.post(it, session.profile.id, session.profile.name, "${session.profile.name}: $title", body, notificationId)
+        if (localTranscriptStore?.active(session.profile.id) != true) {
+            appContext?.let {
+                val notificationId = (session.profile.id.hashCode() * 31 + body.hashCode()).absoluteValue
+                AlertNotifier.post(it, session.profile.id, session.profile.name, "${session.profile.name}: $title", body, notificationId)
+            }
         }
         scheduleAlertRefresh(session)
     }

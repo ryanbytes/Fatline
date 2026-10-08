@@ -1916,6 +1916,13 @@ private fun AlertsScreen(
     var keywordListEditorLabel by remember(selectedProfileId) { mutableStateOf("") }
     var keywordListEditorDescription by remember(selectedProfileId) { mutableStateOf("") }
     var keywordListEditorKeywords by remember(selectedProfileId) { mutableStateOf("") }
+    var localTranscriptRules by remember(selectedProfileId) {
+        mutableStateOf(selectedProfileId?.let(viewModel::localTranscriptRules).orEmpty())
+    }
+    var localTranscriptEnabled by remember(selectedProfileId) {
+        mutableStateOf(selectedProfileId?.let(viewModel::localTranscriptAlertsEnabled) == true)
+    }
+    var localTranscriptSaved by remember(selectedProfileId) { mutableStateOf(false) }
     val normalizedQuery = alertQuery.trim().lowercase()
     val normalizedPreferenceQuery = preferenceQuery.trim().lowercase()
     val visibleAlerts = server?.alerts.orEmpty().filter { alert ->
@@ -1965,6 +1972,72 @@ private fun AlertsScreen(
             }
         }
 
+        if (selectedProfileId != null) {
+            item {
+                Card(Modifier.padding(horizontal = 16.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Local transcript alerts", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Match phrases on this phone. When a scanner is connected, FatLine checks " +
+                                "new transcripts every 30 seconds in the background, even if live audio is paused.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = localTranscriptEnabled,
+                                onCheckedChange = {
+                                    localTranscriptEnabled = it
+                                    localTranscriptSaved = false
+                                }
+                            )
+                            Text("Monitor transcripts and notify on matches")
+                        }
+                        OutlinedTextField(
+                            value = localTranscriptRules,
+                            onValueChange = {
+                                localTranscriptRules = it
+                                localTranscriptSaved = false
+                            },
+                            label = { Text("Keywords or phrases") },
+                            supportingText = {
+                                Text("Separate terms with commas or new lines. Matches whole words, ignoring case.")
+                            },
+                            minLines = 3,
+                            maxLines = 6,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            onClick = {
+                                viewModel.configureLocalTranscriptAlerts(
+                                    selectedProfileId, localTranscriptRules, localTranscriptEnabled
+                                )
+                                localTranscriptSaved = true
+                            },
+                            enabled = !localTranscriptEnabled || localTranscriptRules.isNotBlank()
+                        ) { Text("Save local rules") }
+                        if (localTranscriptSaved) {
+                            Text("Saved on this device.", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (localTranscriptEnabled && server != null) {
+                            Text(
+                                "Status: " + server.localTranscriptMonitorStatus,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Text(
+                            "Monitoring requires FatLine's foreground scanner service to be running. " +
+                                "Polling delayed transcripts requires a scanner PIN and server transcript access. " +
+                                "Existing server alert notifications are replaced while this monitor is enabled. " +
+                                "No ThinLine-hosted push connection is used.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
         if (server == null) {
             item { Text("Connect the selected scanner to load alerts.", modifier = Modifier.padding(16.dp)) }
         } else {
