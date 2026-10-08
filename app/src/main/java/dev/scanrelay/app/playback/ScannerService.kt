@@ -110,22 +110,17 @@ class ScannerService : MediaLibraryService() {
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     syncCurrentlyPlayingCall()
+                    updatePlaybackNotification()
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     syncCurrentlyPlayingCall()
-                    val title = mediaItem?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "Listening" }
-                    val subtitle = mediaItem?.mediaMetadata?.artist?.toString().orEmpty().ifBlank { "Waiting for traffic" }
-                    updateNotification(title, subtitle)
+                    updatePlaybackNotification()
                 }
 
                 override fun onTimelineChanged(timeline: Timeline, reason: Int) {
                     syncCurrentlyPlayingCall()
-                    val current = player.currentMediaItem
-                    val title = current?.mediaMetadata?.title?.toString().orEmpty().ifBlank { "FatLine" }
-                    val subtitle = current?.mediaMetadata?.artist?.toString().orEmpty()
-                        .ifBlank { "Scanner service active" }
-                    updateNotification(title, subtitle)
+                    updatePlaybackNotification()
                 }
             })
         }
@@ -284,7 +279,11 @@ class ScannerService : MediaLibraryService() {
 
     private fun updateMonitoringNotification(count: Int) {
         if (count <= 0) return
-        updateNotification("FatLine", "Monitoring $count server${if (count == 1) "" else "s"}")
+        if (::player.isInitialized && player.isPlaying) {
+            updatePlaybackNotification()
+        } else {
+            updateNotification("FatLine", "Monitoring $count server${if (count == 1) "" else "s"}")
+        }
     }
 
     private fun stopIfIdle() {
@@ -476,6 +475,16 @@ class ScannerService : MediaLibraryService() {
             .addAction(0, "Clear queue", clearQueue)
             .addAction(0, "Disconnect all", stop)
             .build()
+    }
+
+    private fun updatePlaybackNotification() {
+        val metadata = player.currentMediaItem?.mediaMetadata
+        val display = PlaybackNotificationPolicy.display(
+            isPlaying = player.isPlaying,
+            title = metadata?.title?.toString(),
+            artist = metadata?.artist?.toString()
+        )
+        updateNotification(display.title, display.subtitle)
     }
 
     private fun updateNotification(title: String, text: String) {
