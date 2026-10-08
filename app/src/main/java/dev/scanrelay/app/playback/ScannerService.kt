@@ -103,7 +103,9 @@ class ScannerService : MediaLibraryService() {
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
-        player = ExoPlayer.Builder(this).build().apply {
+        player = ExoPlayer.Builder(this)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
+            .build().apply {
             setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
