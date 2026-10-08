@@ -157,6 +157,12 @@ require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIn
 require('queuedCallCount' in ui and 'Playback queue' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
 require('queuedCalls' in ui and 'Show queue' in ui and 'entry.call.talkgroupLabel' in ui, 'cross-server queue preview missing')
 require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text() and 'queuedPreviewListsCallsAfterCurrentPlayback' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'queued-call ordering regression test missing')
+recent_main = ui.split('Text("Recent live calls"', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
+recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
+require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.replay(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to replay')
+require('CallRow(' not in recent_main and 'onDownload' not in recent_main, 'recent live call list must not use History actions')
+require('.clickable(' in recent_row and 'onClick = onPlay' in recent_row and 'OutlinedButton(' not in recent_row and 'Button(' not in recent_row, 'recent live rows must be tappable without buttons')
+
 require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
 
 # User-visible ThinLine parity / enhancements.
