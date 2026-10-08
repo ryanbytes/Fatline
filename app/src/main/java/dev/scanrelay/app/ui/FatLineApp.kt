@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -102,6 +103,9 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     val currentlyPlayingCall by ScannerService.currentlyPlayingCall.collectAsStateWithLifecycle()
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(AppTab.Scanner) }
+    var moreMenuExpanded by remember { mutableStateOf(false) }
+    val primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Alerts)
+    val moreNavigationTabs = AppTab.entries.filterNot { it in primaryNavigationTabs }
     val systemDensity = LocalDensity.current
     val compactDensity = remember(systemDensity) {
         Density(
@@ -138,10 +142,13 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                 Scaffold(
                     bottomBar = {
                         NavigationBar {
-                            AppTab.entries.forEach { item ->
+                            primaryNavigationTabs.forEach { item ->
                                 NavigationBarItem(
                                     selected = tab == item,
-                                    onClick = { tab = item },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        tab = item
+                                    },
                                     icon = {
                                         if (item == AppTab.Scanner && tab != AppTab.Scanner && queuedCallCount > 0) {
                                             BadgedBox(
@@ -157,16 +164,38 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                             Text(item.glyph)
                                         }
                                     },
-                                    label = {
-                                        Text(
-                                            item.label,
-                                            maxLines = 1,
-                                            softWrap = false,
-                                            overflow = TextOverflow.Ellipsis,
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp)
+                                    label = { Text(item.label, maxLines = 1, softWrap = false) }
+                                )
+                            }
+                            Box(Modifier.weight(1f)) {
+                                Row(Modifier.fillMaxWidth()) {
+                                    NavigationBarItem(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        selected = tab in moreNavigationTabs,
+                                        onClick = { moreMenuExpanded = true },
+                                        icon = { Text("⋯") },
+                                        label = { Text("More", maxLines = 1, softWrap = false) }
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = moreMenuExpanded,
+                                    onDismissRequest = { moreMenuExpanded = false }
+                                ) {
+                                    moreNavigationTabs.forEach { item ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    item.label,
+                                                    fontWeight = if (tab == item) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            },
+                                            onClick = {
+                                                tab = item
+                                                moreMenuExpanded = false
+                                            }
                                         )
                                     }
-                                )
+                                }
                             }
                         }
                     }

@@ -38,7 +38,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | --- | --- | --- |
 | Compact, truthful playback and connection status | **Partially implemented** | Verify legible states and metadata on-device; simplify or remove radio-style HUD elements if they obstruct actual client use |
 | Automatic server-assigned feed sync | **Not implemented** | Only explore privacy-preserving sync directly with the user's own scanner server; never call ThinLine-hosted account/telemetry endpoints |
-| Mobile app usability | **Unverified** | Check screen density, hierarchy, legibility, navigation and accessibility on actual phone, without copying a radio-scanner faceplate |
+| Mobile app usability | **Partially improved; device-unverified** | Bottom navigation now shows Scanner, Channels, History and Alerts plus a More menu containing Weather, Transcripts and Settings; confirm narrow-screen labels, pop-up reachability, accessibility and layout on an actual phone |
 | Runtime interoperability | **Unverified** | Test phone process death, encrypted/audio relay, rapid reconnects, Android Auto, queue limits, background mixing, and resume behavior |
 
 ## Deliberately excluded by user request

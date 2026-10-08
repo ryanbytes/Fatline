@@ -9,6 +9,7 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 ## Current feature set
 
 - Android 8.0+ (`minSdk 26`), compile/target SDK 36
+- Five-item compact bottom navigation with Scanner, Channels, History and Alerts directly accessible; Weather, Transcripts and Settings are in More instead of using seven tiny tab labels
 - Kotlin + Jetpack Compose
 - Multiple scanner servers connected simultaneously
 - Open and PIN-protected servers; PINs stored with Android Keystore AES-GCM and masked in the UI
