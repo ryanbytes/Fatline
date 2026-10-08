@@ -220,6 +220,7 @@ channels_tree = ui.split('private fun ChannelsScreen(', 1)[1].split('private dat
 require('expandedSystems by remember(selectedProfileId)' in channels_tree and 'expandedTags by remember(selectedProfileId)' in channels_tree, 'tree expansion state must reset per scanner')
 require('if (systemExpanded) {' in channels_tree and 'if (tagExpanded) {' in channels_tree, 'system/tag children must be collapsible')
 require('normalizedQuery.isNotEmpty() ||' in channels_tree and 'tagKey in expandedTags' in channels_tree, 'channel search must reveal matching tree branches')
+require(channels_tree.count('enabled = normalizedQuery.isEmpty()') >= 2, 'search-revealed tree headers must not offer inert collapse actions')
 require('"Expand system"' in channels_tree and '"Collapse system"' in channels_tree and '"Expand tag"' in channels_tree and '"Collapse tag"' in channels_tree, 'tree nodes must expose accessible expand/collapse controls')
 require('viewModel.setTalkgroup(' in channels_tree and 'viewModel.setChannels(' in channels_tree and 'setScanListChannel(' in channels_tree, 'tree must retain channel and scan list controls')
 
