@@ -35,6 +35,7 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - Talkgroup hold and system hold, saved per scanner across explicit reconnects and foreground-service restarts
 - Avoid / unavoid, clear avoids, and skip current audio; avoided channels persist per scanner and stale references are removed when the server changes its authorized scope
 - Server archive/history through `LCL`, paged results, `CAL` replay, and continuous archive playback from any loaded call toward live
+- Archive filtering supports selecting multiple talkgroups from one system via the server's `LCL` `talkgroups` array, maintaining the same selection across paginated results
 - Authenticated archived-call audio downloads to `Downloads/FatLine` on modern Android
 - Local scanner-alert notifications and transcript display when supplied by the server
 - Opt-in per-scanner background transcript monitor: checks the scanner's authenticated transcript API every 30 seconds while the foreground scanner service is active, including when playback is paused; matches whole words or phrases locally and sends device notifications without server-originated alerts, relay telemetry, or push registrations
