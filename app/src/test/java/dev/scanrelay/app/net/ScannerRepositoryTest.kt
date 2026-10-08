@@ -63,6 +63,33 @@ class ScannerRepositoryTest {
     )
 
     @Test
+    fun replayLastChoosesMostRecentReceivedLiveCall() {
+        val old = RadioCall(
+            profileId = profile.id, serverName = profile.name, id = 25L,
+            systemRef = 1, talkgroupRef = 11, systemLabel = "One",
+            talkgroupLabel = "One-A", dateTime = ""
+        )
+        val newer = old.copy(id = 26L)
+        val state = ServerScannerState(
+            profile = profile,
+            recentCalls = listOf(newer, old),
+            lastCall = old
+        )
+        assertEquals(26L, ScannerRepository.lastReplayCandidate(state)?.id)
+    }
+
+    @Test
+    fun replayLastFallsBackToLastReceivedWhenRecentListEmpty() {
+        val call = RadioCall(
+            profileId = profile.id, serverName = profile.name, id = 99L,
+            systemRef = 1, talkgroupRef = 11, systemLabel = "One",
+            talkgroupLabel = "One-A", dateTime = ""
+        )
+        assertEquals(99L, ScannerRepository.lastReplayCandidate(ServerScannerState(profile = profile, lastCall = call))?.id)
+        assertEquals(null, ScannerRepository.lastReplayCandidate(ServerScannerState(profile = profile)))
+    }
+
+    @Test
     fun liveAlertPrefersTitleMessageAndCarriesTimestamp() {
         val alert = ScannerRepository.parseRealtimeAlert(
             profile,
