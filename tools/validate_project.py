@@ -41,6 +41,8 @@ required = [
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt',
     'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueueStore.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueueStoreTest.kt',
+    'app/src/main/java/dev/scanrelay/app/playback/PlaybackVolumeStore.kt',
+    'app/src/test/java/dev/scanrelay/app/playback/PlaybackVolumeStoreTest.kt',
     'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt',
     'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt',
@@ -169,6 +171,17 @@ audio_config = service.split('setAudioAttributes(', 1)[1].split('addListener(', 
 require(re.search(r'\.build\(\),\s*(?://[^\n]*\n\s*)*false\s*\)', audio_config) is not None, 'scanner playback must not request audio focus or duck other apps')
 require('android:foregroundServiceType="mediaPlayback"' in manifest_text and 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' in manifest_text and 'START_STICKY' in service, 'background playback must use a persistent media foreground service')
 require('android.permission.WAKE_LOCK' in manifest_text and '.setWakeMode(C.WAKE_MODE_LOCAL)' in service, 'screen-off background playback must hold a local wake lock while audio is active')
+
+volume_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackVolumeStore.kt').read_text()
+volume_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackVolumeStoreTest.kt').read_text()
+require('volume = PlaybackVolumePolicy.gain(_outputVolumePercent.value)' in service, 'startup must restore independent scanner playback gain')
+require('player.volume = PlaybackVolumePolicy.gain(normalized)' in service and 'volumeStore.save(normalized)' in service, 'volume action must change and persist ExoPlayer volume only')
+require('ACTION_SET_OUTPUT_VOLUME -> setOutputVolumeInternal(' in service and 'fun setOutputVolume(context: Context, percent: Int)' in service, 'scanner volume service action missing')
+require('fun setOutputVolume(percent: Int)' in viewmodel and 'viewModel.setOutputVolume(pendingVolume)' in ui, 'scanner volume UI and ViewModel missing')
+require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
+require('fun gain(percent: Int): Float = clamp(percent) / 100f' in volume_policy and 'outputVolumeControlsOnlyPlayerGain' in volume_tests, 'independent output gain policy test missing')
+require('AudioManager' not in service and 'setStreamVolume(' not in service, 'scanner volume must never set the OS shared stream volume')
+
 
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
