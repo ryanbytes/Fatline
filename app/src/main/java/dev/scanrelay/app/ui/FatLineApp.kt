@@ -404,6 +404,7 @@ private fun ScannerStatusCard(
                 }
             }
             if (queueExpanded && queuedCalls.isNotEmpty()) {
+                OutlinedButton(onClick = viewModel::clearPlaybackQueue) { Text("Clear queue") }
                 queuedCalls.take(5).forEachIndexed { index, entry ->
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
