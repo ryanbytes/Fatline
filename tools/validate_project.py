@@ -274,6 +274,19 @@ require('phrasesMatchRegardlessOfCaseAndSeparator' in local_monitor_tests and 'w
 require('LocalTranscriptAlertStore(getApplication()).clearProfile(profileId)' in viewmodel, 'deleting scanner must erase its local rules and alerts')
 require('localTranscriptMonitorStatus' in ui and 'Transcript API unavailable' in repo, 'monitor status and API error visibility missing')
 
+# A normal app relaunch must revive previously active sessions without restarting
+# still-running scanner sockets, reviving disconnected profiles or using boot receivers.
+main_activity = (ROOT / 'app/src/main/java/dev/scanrelay/app/MainActivity.kt').read_text()
+restore_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/SessionRestorePolicy.kt').read_text()
+restore_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/SessionRestorePolicyTest.kt').read_text()
+require('ScannerService.resumeActiveConnections(this)' in main_activity, 'app launch must recover explicitly active scanner sessions')
+require('ACTION_RESUME_CONNECTIONS -> restoreConnections()' in service and 'fun resumeActiveConnections(context: Context)' in service, 'service resume command missing')
+require('if (active.isEmpty()) return' in service and 'getStringSet(KEY_ACTIVE_PROFILES, emptySet())' in service, 'explicit disconnect must not restart scanner')
+require('SessionRestorePolicy.missing(validIds, ScannerRepository.state.value.servers.keys)' in service, 'app launch must not restart already active sockets')
+require('fun valid(savedIds:' in restore_policy and 'fun missing(validIds:' in restore_policy, 'session recovery reconciliation policy missing')
+require('ignoresStaleOrDeletedProfiles' in restore_tests and 'resumesOnlyMissingSessionsWithoutReconnectingWorkingSocket' in restore_tests and 'explicitDisconnectDoesNotReopenAnyScanner' in restore_tests, 'session recovery regression tests missing')
+require('BOOT_COMPLETED' not in manifest_text, 'do not start a media playback service from boot on Android 15+')
+
 # User-visible ThinLine parity / enhancements.
 require('setMany' in channel_store and 'setSystemEnabled' in repo, 'batched system-level channel update missing')
 require('knownKey' in channel_store and 'reconcileChannelSelection' in channel_store, 'newly scoped channel tracking missing')
