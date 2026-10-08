@@ -26,8 +26,8 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Newly authorized/re-scoped talkgroups follow ThinLine's `autoEnableNewTalkgroups` policy without disturbing existing saved selections
 - Per-talkgroup and per-system All/None controls; system bulk changes persist in one batch and emit one live-feed update
 - Pause / resume live scanning without losing channel selections; per-server Pause state persists through explicit reconnects and foreground-service restarts
-- Talkgroup hold and system hold
-- Avoid / unavoid, clear avoids, and skip current audio
+- Talkgroup hold and system hold, saved per scanner across explicit reconnects and foreground-service restarts
+- Avoid / unavoid, clear avoids, and skip current audio; avoided channels persist per scanner and stale references are removed when the server changes its authorized scope
 - Server archive/history through `LCL`, paged results, `CAL` replay, and continuous archive playback from any loaded call toward live
 - Authenticated archived-call audio downloads to `Downloads/FatLine` on modern Android
 - Local scanner-alert notifications and transcript display when supplied by the server
