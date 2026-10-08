@@ -1274,7 +1274,7 @@ object ScannerRepository {
                     else -> {
                         try {
                             pollRecentTranscripts(session, store)
-                            val cadence = if (store.batterySaver(profileId)) "5 minutes" else "30 seconds"
+                            val cadence = if (store.batterySaver(profileId)) "1 minute" else "30 seconds"
                             updateTranscriptMonitorStatus(session, "Monitoring · checking every $cadence")
                         } catch (error: Throwable) {
                             if (error is CancellationException) throw error
