@@ -96,7 +96,8 @@ class ThinLineSocket(
         talkgroupRef: Long?,
         date: String?,
         group: String?,
-        tag: String?
+        tag: String?,
+        talkgroupRefs: List<Long> = emptyList()
     ): Boolean =
         send(
             ThinLineProtocol.listCalls(
@@ -107,7 +108,8 @@ class ThinLineSocket(
                 talkgroupRef = talkgroupRef,
                 date = date,
                 group = group,
-                tag = tag
+                tag = tag,
+                talkgroupRefs = talkgroupRefs
             )
         )
     fun requestCall(callId: Long, download: Boolean = false): Boolean = send(ThinLineProtocol.call(callId, download))
