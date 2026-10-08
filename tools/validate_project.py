@@ -166,6 +166,7 @@ require('MediaLibraryService' in service and 'MediaLibrarySession' in service an
 audio_config = service.split('setAudioAttributes(', 1)[1].split('addListener(', 1)[0]
 require(re.search(r'\.build\(\),\s*(?://[^\n]*\n\s*)*false\s*\)', audio_config) is not None, 'scanner playback must not request audio focus or duck other apps')
 require('android:foregroundServiceType="mediaPlayback"' in manifest_text and 'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK' in manifest_text and 'START_STICKY' in service, 'background playback must use a persistent media foreground service')
+require('android.permission.WAKE_LOCK' in manifest_text and '.setWakeMode(C.WAKE_MODE_LOCAL)' in service, 'screen-off background playback must hold a local wake lock while audio is active')
 
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')
 require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServiceCallbacksSuppressed' in service, 'disconnect service callback suppression missing')
