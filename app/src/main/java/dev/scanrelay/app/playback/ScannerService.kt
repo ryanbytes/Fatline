@@ -109,7 +109,9 @@ class ScannerService : MediaLibraryService() {
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
                     .build(),
-                true
+                // Do not request audio focus: mix scanner traffic with music, navigation,
+                // podcasts, and other apps without pausing or ducking their volume.
+                false
             )
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
