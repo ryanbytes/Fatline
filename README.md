@@ -40,7 +40,9 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Encrypted-audio compatibility for non-ThinLine-hosted relays using P-256 ECDH, HKDF-SHA256 (`tlr-audio-key-wrap-v1`), and AES-256-GCM; key exchange to `thinlineradio.com` is blocked for privacy
 - Bounded encrypted-call buffering while relay key exchange is pending
 - Automatic relay-key refresh after encrypted-audio authentication/decrypt failure
-- Media3 1.11.0 ExoPlayer background playback and `MediaLibraryService` Android Auto surface
+- Media3 1.11.0 ExoPlayer foreground-service background playback and `MediaLibraryService` Android Auto surface
+- Audio-focus-free scanner mixing: FatLine does not request focus, so music and podcasts can normally continue at their own volume while scanner calls play (Android telephony, exclusive audio paths, and third-party players may still impose interruptions)
+- Pausing a scanner suppresses only live traffic, preserving user-requested replay audio
 - Android Auto browse tree: profiles → favorited talkgroups; server items are browsable/playable, selecting a favorite sets a talkgroup hold, and subscribed browsers are refreshed when favorite-channel metadata changes
 - Foreground-service restore cleanup for deleted/stale profiles and bounded playback queue handling
 
