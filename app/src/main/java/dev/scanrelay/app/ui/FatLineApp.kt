@@ -338,7 +338,7 @@ private fun ScannerScreen(
                     RecentLiveCallRow(
                         call = call,
                         time12hFormat = server.time12hFormat,
-                        onPlay = { viewModel.replay(call.profileId, call.id) }
+                        onPlay = { viewModel.playNow(call.profileId, call.id) }
                     )
                 }
             }

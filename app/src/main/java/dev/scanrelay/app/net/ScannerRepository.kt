@@ -74,6 +74,7 @@ object ScannerRepository {
         var historyOffset = 0
         val pendingEncrypted = ArrayDeque<JSONObject>()
         val pendingReplay = mutableSetOf<Long>()
+        val pendingImmediateReplay = mutableSetOf<Long>()
         val continueReplayQueue = ArrayDeque<Long>()
         var continueReplayPending: Long? = null
         var continueReplayRestoreLivefeed = false
@@ -1974,6 +1975,28 @@ object ScannerRepository {
             .build()
         return parseAlertKeywordLists(executeJsonArray(request))
     }
+    fun playNow(profileId: String, callId: Long) {
+        val session = sessions[profileId] ?: return
+        val existing = (session.state.recentCalls + session.state.history).firstOrNull { it.id == callId }
+        val path = existing?.audioPath
+        if (existing != null && path != null && File(path).isFile) {
+            appContext?.let { ScannerService.enqueue(it, existing, liveFeed = false, playImmediately = true) }
+            return
+        }
+        synchronized(session) {
+            session.pendingReplay += callId
+            session.pendingImmediateReplay += callId
+        }
+        if (session.socket?.requestPlaybackCall(callId) != true) {
+            synchronized(session) {
+                session.pendingReplay.remove(callId)
+                session.pendingImmediateReplay.remove(callId)
+                session.state = session.state.copy(error = "Cannot play call while scanner is disconnected")
+            }
+            publish()
+        }
+    }
+
     fun replay(profileId: String, callId: Long) {
         val session = sessions[profileId] ?: return
         val existing = session.state.history.firstOrNull { it.id == callId }
@@ -2256,6 +2279,7 @@ object ScannerRepository {
         synchronized(session) {
             session.pendingEncrypted.clear()
             session.pendingReplay.clear()
+            session.pendingImmediateReplay.clear()
             session.masterKey?.fill(0)
             session.masterKey = null
             session.keyJob = null
@@ -2947,8 +2971,10 @@ object ScannerRepository {
 
         val shouldPlay: Boolean
         var replayRequested = false
+        var playImmediately = false
         synchronized(session) {
             val locallyRequestedReplay = session.pendingReplay.remove(id)
+            playImmediately = session.pendingImmediateReplay.remove(id)
             replayRequested = callFlag == ThinLineProtocol.PLAY_FLAG || locallyRequestedReplay
             val enabled = session.state.systems.flatMap { it.talkgroups }.firstOrNull { it.key == key }?.enabled == true
             val talkgroupHoldAllows = session.state.hold?.let { it == key } ?: true
@@ -2977,7 +3003,9 @@ object ScannerRepository {
             )
         }
         publish()
-        if (shouldPlay && path != null) ScannerService.enqueue(context, call, liveFeed = !replayRequested)
+        if (shouldPlay && path != null) {
+            ScannerService.enqueue(context, call, liveFeed = !replayRequested, playImmediately = playImmediately)
+        }
 
         val continueAfterCall = synchronized(session) {
             if (session.continueReplayPending == id) {
