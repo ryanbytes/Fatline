@@ -35,7 +35,7 @@ account information, or encryption keys to ThinLine-hosted services):
 
 | Area | Status | Work |
 | --- | --- | --- |
-| ThinLine v26.10.01 mobile scanner HUD | **Not matched** | Tag-colored glass display, truthful LIVE/SCAN/RX/HOLD SYS/HOLD TG/PAUSE annunciators, system/tag/TGID/unit text, and compact mobile behavior |
+| ThinLine v26.10.01 mobile scanner HUD | **Partial** | State-derived annunciators, talkgroup/system/TGID/unit text and optional tag-color backlight implemented; compare geometry/behavior on-device and refine glass presentation |
 | Signal meter / scanning sweep | **Not matched** | Implement only if there is a real signal/scanning state; never synthesize signal data or fake active transmissions |
 | Scanner keypad | **Not matched** | Identify actual public-client commands/operations, implement real actions, and test them; no decorative or nonfunctional controls |
 | Automatic server-assigned feed sync | **Not implemented** | Only explore privacy-preserving sync directly with the user's own scanner server; never call ThinLine-hosted account/telemetry endpoints |
