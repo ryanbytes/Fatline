@@ -16,6 +16,8 @@ FatLine is a clean implementation of the public server/client protocol. It does 
 - Required account password changes when a ThinLine administrator flags an account for reset
 - In-app account email changes with current-address verification and a new-address confirmation link
 - Playback notification shows queued-call count and offers Skip and Clear queue controls
+- Buffered current and waiting calls are journaled locally, preserving queue order and resume intent across socket reconnects and foreground-service restarts; the cache pruner protects their local audio files
+- Restoring playback skips missing cached files and audio from scanners that were explicitly disconnected, deleted, or paused; explicit Clear queue and Disconnect all still clear playback
 - Server-issued `PNS` PIN updates replace the live reconnect credential and refresh the encrypted saved PIN
 - ThinLine-compatible WebSocket commands including `VER`, `PIN`, `CFG`, `CAL`, `LCL`, `LFM`, `ALT`, `ERR`, `XPR`, and `MAX`
 - Public-client wire parity for root WebSocket URL, `CAL` string IDs, complete `LFM` boolean maps, challenge-driven PIN authentication, and bare `LFM` live-feed pause
