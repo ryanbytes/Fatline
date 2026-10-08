@@ -24,6 +24,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | Recent live calls, tap to play, **Replay last** | Implemented | Correct most recent call with and without active playback |
 | Archive/history filters, replay, continue, downloads | Implemented | Long-history pagination, queued playback, authenticated downloads |
 | Queue count, preview, clear, durable recovery, de-duplication | Implemented | Android service restart and Wi-Fi/cellular handoff tests |
+| Reopen-app recovery of previously active scanner sessions | Implemented | Kill the foreground service, reopen app, and verify old connections resume without disrupting existing ones; no boot auto-start |
 | Server alert preferences, keyword/tone matching, alert listing | Implemented | Validate against authorized self-hosted server responses |
 | On-device transcript keyword/phrase alerts | Implemented (opt-in) | Verify 30-second polling while paused, deduplication, notification sound, and late transcripts on-device |
 | Transcripts, filtering and pagination | Implemented | Server-provided transcript and date edge cases |
