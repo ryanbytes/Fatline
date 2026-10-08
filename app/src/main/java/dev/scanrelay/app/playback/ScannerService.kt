@@ -346,6 +346,81 @@ class ScannerService : MediaLibraryService() {
         }
     }
 
+    private fun mediaItemFor(call: RadioCall, mediaId: String): MediaItem =
+        MediaItem.Builder()
+            .setMediaId(mediaId)
+            .setUri(requireNotNull(call.audioPath).toUri())
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(call.talkgroupLabel)
+                    .setArtist("${call.serverName} · ${call.systemLabel}")
+                    .setIsBrowsable(false)
+                    .setIsPlayable(true)
+                    .build()
+            )
+            .build()
+
+    private fun restoreSavedPlaybackQueue() {
+        val snapshot = playbackQueueStore.load()
+        if (snapshot == null) {
+            restoringQueue = false
+            return
+        }
+
+        // Retain audio only for scanners that are still configured and connected
+        // by the user; never resurrect a disconnected/deleted profile.
+        val active = activeProfileIds()
+        val configured = ProfileStore(this).load().mapTo(mutableSetOf()) { it.id }
+        val recovered = snapshot.calls.filter { entry ->
+            entry.call.profileId in active &&
+                entry.call.profileId in configured &&
+                entry.call.audioPath?.let { File(it).isFile } == true
+        }
+        if (recovered.isEmpty()) {
+            playbackQueueStore.save(null)
+            restoringQueue = false
+            return
+        }
+
+        recovered.forEach { callByMediaId[it.mediaId] = it.call }
+        player.setMediaItems(recovered.map { mediaItemFor(it.call, it.mediaId) })
+        if (snapshot.calls.first().mediaId == recovered.first().mediaId && snapshot.positionMs > 0L) {
+            player.seekTo(0, snapshot.positionMs)
+        }
+        player.prepare()
+        if (snapshot.playWhenReady) player.play()
+        restoringQueue = false
+        syncCurrentlyPlayingCall()
+    }
+
+    private fun persistPlaybackQueue() {
+        if (restoringQueue || releasingPlayer || !::playbackQueueStore.isInitialized) return
+        if (player.playbackState == Player.STATE_ENDED) {
+            playbackQueueStore.save(null)
+            return
+        }
+        val start = PlaybackQueuePolicy.recoveryStartIndex(
+            player.mediaItemCount, player.currentMediaItemIndex
+        )
+        val entries = (start until player.mediaItemCount).mapNotNull { index ->
+            val mediaId = player.getMediaItemAt(index).mediaId
+            callByMediaId[mediaId]?.takeIf { !it.audioPath.isNullOrBlank() }?.let { call ->
+                SavedPlaybackCall(
+                    mediaId = mediaId,
+                    call = call,
+                    liveFeed = PlaybackQueuePolicy.mediaKind(mediaId) == "live"
+                )
+            }
+        }
+        playbackQueueStore.save(
+            if (entries.isEmpty()) null else SavedPlaybackQueue(
+                calls = entries,
+                positionMs = player.currentPosition.coerceAtLeast(0L),
+                playWhenReady = player.playWhenReady
+            )
+        )
+    }
+
     private fun addMediaFromIntent(intent: Intent) {
         val path = intent.getStringExtra(EXTRA_AUDIO_PATH) ?: return
         val token = intent.getStringExtra(EXTRA_CALL_TOKEN).orEmpty()
@@ -358,26 +433,25 @@ class ScannerService : MediaLibraryService() {
             pendingCalls.remove(token)
             return
         }
-        val call = pendingCalls.remove(token)
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
         val systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L)
         val talkgroupRef = intent.getLongExtra(EXTRA_TALKGROUP_REF, 0L)
         val playImmediately = intent.getBooleanExtra(EXTRA_PLAY_IMMEDIATELY, false)
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Radio traffic" }
         val subtitle = intent.getStringExtra(EXTRA_SUBTITLE).orEmpty()
+        val call = pendingCalls.remove(token) ?: RadioCall(
+            profileId = profileId,
+            serverName = subtitle.substringBefore(" · ").ifBlank { "Scanner" },
+            id = callId,
+            systemRef = systemRef,
+            talkgroupRef = talkgroupRef,
+            systemLabel = subtitle.substringAfter(" · ", "System $systemRef"),
+            talkgroupLabel = title,
+            dateTime = "",
+            audioPath = path
+        )
         val mediaKind = if (liveFeed) "live" else "replay"
-        val item = MediaItem.Builder()
-            .setMediaId("call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:$token")
-            .setUri(path.toUri())
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(title)
-                    .setArtist(subtitle)
-                    .setIsBrowsable(false)
-                    .setIsPlayable(true)
-                    .build()
-            )
-            .build()
+        val item = mediaItemFor(call, "call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:$token")
 
         if (player.playbackState == Player.STATE_ENDED) player.clearMediaItems()
         trimQueueForIncomingCall(liveFeed)
@@ -390,7 +464,7 @@ class ScannerService : MediaLibraryService() {
         } else {
             player.addMediaItem(item)
         }
-        if (call != null) callByMediaId[item.mediaId] = call
+        callByMediaId[item.mediaId] = call
         syncCurrentlyPlayingCall()
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
         if (!player.playWhenReady) player.play()
