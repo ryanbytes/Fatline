@@ -155,8 +155,8 @@ require('suppressRepositoryServiceCallbacks' in service and 'withRepositoryServi
 require('validIds' in service and 'persistActiveProfiles' in service and 'stopIfIdle' in service, 'stale-profile restart cleanup missing')
 require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIndex' in service, 'bounded playback queue handling missing')
 require('queuedCallCount' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
-scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('@Composable\\nprivate fun ScannerStatusCard(', 1)[0]
-scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('@Composable\\nprivate fun NowPlayingCard(', 1)[0]
+scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
+scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun NowPlayingCard(', 1)[0]
 require('Playback queue' not in scanner_screen, 'separate playback queue card must be removed')
 require('queuedCalls' in scanner_card and 'Queue · $queuedCallCount waiting' in scanner_card and 'entry.call.talkgroupLabel' in scanner_card, 'queue count and cross-server preview must live in scanner status card')
 require('clearPlaybackQueue' in scanner_card and 'ACTION_CLEAR_QUEUE' in service and 'fun clearQueue(context: Context)' in service and 'clearPlaybackQueue()' in viewmodel, 'expanded queue must expose existing clear action')
