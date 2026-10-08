@@ -32,6 +32,10 @@ internal object PlaybackQueuePolicy {
         return if (currentIndex in 0 until mediaCount) currentIndex else 0
     }
 
+    /** Never restore already completed calls preceding the current media item. */
+    fun recoveryStartIndex(mediaCount: Int, currentIndex: Int): Int =
+        if (currentIndex in 0 until mediaCount) currentIndex else 0
+
     fun firstQueuedIndex(mediaCount: Int, currentIndex: Int): Int {
         return if (currentIndex in 0 until mediaCount) currentIndex + 1 else 0
     }
