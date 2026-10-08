@@ -534,6 +534,8 @@ private fun ChannelsScreen(
     val server = selectedProfileId?.let { scanner.servers[it] }
     var channelQuery by remember(selectedProfileId) { mutableStateOf("") }
     var favoritesOnly by remember(selectedProfileId) { mutableStateOf(false) }
+    var expandedSystems by remember(selectedProfileId) { mutableStateOf<Set<Long>>(emptySet()) }
+    var expandedTags by remember(selectedProfileId) { mutableStateOf<Set<FavoriteTagKey>>(emptySet()) }
     var newScanListName by remember(selectedProfileId) { mutableStateOf("") }
     var editingScanListId by remember(selectedProfileId) { mutableStateOf<String?>(null) }
     val editingScanList = server?.scanLists?.firstOrNull { it.id == editingScanListId }
@@ -819,31 +821,53 @@ private fun ChannelsScreen(
             visibleSystems.forEachIndexed { systemIndex, system ->
                 val fullSystem = server.systems.firstOrNull { it.systemRef == system.systemRef } ?: system
                 val systemFavorite = system.systemRef in server.favoriteSystemRefs
+                val systemExpanded = normalizedQuery.isNotEmpty() ||
+                    system.systemRef in expandedSystems
                 item(key = "system-" + server.profile.id + "-" + systemIndex + "-" + system.systemRef) {
                     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                         Column(
                             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                "SYSTEM",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                system.label,
-                                modifier = Modifier.fillMaxWidth(),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                system.talkgroups.count { it.enabled }.toString() + "/" + system.talkgroups.size + " enabled",
-                                modifier = Modifier.fillMaxWidth(),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable(
+                                        onClickLabel = if (systemExpanded) "Collapse system" else "Expand system",
+                                        role = Role.Button,
+                                        onClick = {
+                                            expandedSystems = if (system.systemRef in expandedSystems) {
+                                                expandedSystems - system.systemRef
+                                            } else {
+                                                expandedSystems + system.systemRef
+                                            }
+                                        }
+                                    )
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(if (systemExpanded) "▾" else "▸", style = MaterialTheme.typography.titleMedium)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(
+                                        "SYSTEM",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        system.label,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        system.talkgroups.count { it.enabled }.toString() + "/" +
+                                            system.talkgroups.size + " enabled · " + system.talkgroups.size + " shown",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -896,29 +920,50 @@ private fun ChannelsScreen(
                     }
                 }
 
+                if (systemExpanded) {
                 groupTalkgroupsByTag(system.talkgroups).forEachIndexed { tagIndex, tagGroup ->
-                    val tagFavorite =
-                        FavoriteTagKey(system.systemRef, tagGroup.tag) in server.favoriteTags
+                    val tagKey = FavoriteTagKey(system.systemRef, tagGroup.tag)
+                    val tagFavorite = tagKey in server.favoriteTags
+                    val tagExpanded = normalizedQuery.isNotEmpty() || tagKey in expandedTags
                     val tagRgb = TagColors.rgb(tagGroup.tag, server.tagColors)
                     item(key = "tag-" + server.profile.id + "-" + systemIndex + "-" + tagIndex + "-" + tagGroup.tag) {
                         Column(
                             Modifier.fillMaxWidth().padding(start = 28.dp, end = 16.dp, top = 6.dp, bottom = 2.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                tagGroup.tag,
-                                modifier = Modifier.fillMaxWidth(),
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(tagRgb.red, tagRgb.green, tagRgb.blue),
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                tagGroup.talkgroups.count { it.enabled }.toString() + "/" +
-                                    tagGroup.talkgroups.size + " enabled",
-                                modifier = Modifier.fillMaxWidth(),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Row(
+                                Modifier.fillMaxWidth()
+                                    .clickable(
+                                        onClickLabel = if (tagExpanded) "Collapse tag" else "Expand tag",
+                                        role = Role.Button,
+                                        onClick = {
+                                            expandedTags = if (tagKey in expandedTags) {
+                                                expandedTags - tagKey
+                                            } else {
+                                                expandedTags + tagKey
+                                            }
+                                        }
+                                    )
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(if (tagExpanded) "▾" else "▸", style = MaterialTheme.typography.titleMedium)
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        tagGroup.tag,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(tagRgb.red, tagRgb.green, tagRgb.blue),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        tagGroup.talkgroups.count { it.enabled }.toString() + "/" +
+                                            tagGroup.talkgroups.size + " enabled",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                            }
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -962,6 +1007,7 @@ private fun ChannelsScreen(
                         }
                     }
 
+                    if (tagExpanded) {
                     itemsIndexed(
                         tagGroup.talkgroups,
                         key = { talkgroupIndex, tg ->
@@ -969,7 +1015,7 @@ private fun ChannelsScreen(
                                 talkgroupIndex + "-" + tg.systemRef + "-" + tg.talkgroupRef
                         }
                     ) { _, tg ->
-                        Card(Modifier.fillMaxWidth().padding(start = 32.dp, end = 16.dp, top = 3.dp, bottom = 3.dp)) {
+                        Card(Modifier.fillMaxWidth().padding(start = 44.dp, end = 16.dp, top = 3.dp, bottom = 3.dp)) {
                             Column(
                                 Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
                                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -1044,7 +1090,9 @@ private fun ChannelsScreen(
                             }
                         }
                     }
+                    } // tag-expanded channel children
                 }
+                } // system-expanded tag children
             }
         }
 
