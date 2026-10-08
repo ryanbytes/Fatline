@@ -36,6 +36,12 @@ class LocalTranscriptAlertPolicyTest {
     }
 
     @Test
+    fun batterySaverReducesPeriodicNetworkChecksTenfold() {
+        assertEquals(30_000L, LocalTranscriptAlertPolicy.pollIntervalMs(false))
+        assertEquals(300_000L, LocalTranscriptAlertPolicy.pollIntervalMs(true))
+    }
+
+    @Test
     fun rulesAreBoundedAndCannotBeEmpty() {
         val rules = LocalTranscriptAlertPolicy.terms((1..90).joinToString(",") { "keyword$it" })
         assertEquals(50, rules.size)
