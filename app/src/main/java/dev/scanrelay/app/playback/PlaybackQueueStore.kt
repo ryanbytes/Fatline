@@ -86,6 +86,16 @@ internal object PlaybackQueueCodec {
     }
 }
 
+/** Keep buffered audio even when newer traffic pushes cache beyond its normal limit. */
+internal object PlaybackCachePolicy {
+    fun evictablePaths(
+        newestFirst: List<String>,
+        protectedPaths: Set<String>,
+        retainUnprotected: Int = 150
+    ): List<String> =
+        newestFirst.filterNot { it in protectedPaths }.drop(retainUnprotected)
+}
+
 internal class PlaybackQueueStore(context: Context) {
     private val prefs = context.getSharedPreferences("fatline_playback_queue", Context.MODE_PRIVATE)
 
