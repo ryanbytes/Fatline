@@ -661,7 +661,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         date: String? = null,
         group: String? = null,
         tag: String? = null,
-        sort: Int = -1
+        sort: Int = -1,
+        talkgroupRefs: List<Long> = emptyList()
     ) = ScannerRepository.requestHistory(
         profileId = profileId,
         reset = true,
@@ -670,7 +671,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         date = date,
         group = group,
         tag = tag,
-        sort = sort
+        sort = sort,
+        talkgroupRefs = talkgroupRefs
     )
 
     fun localTranscriptRules(profileId: String): String =
