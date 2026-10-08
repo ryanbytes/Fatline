@@ -309,8 +309,9 @@ require('alertToneSetIdsTrimDropBlanksAndDeduplicate' in (ROOT / 'app/src/test/j
 require('PasswordVisualTransformation' in ui, 'PIN field must be visually masked')
 require('/api/cm-auth/login' not in viewmodel and '/api/cm-auth/session' not in viewmodel, 'central account credentials must not be sent from FatLine')
 require('LazyRow' in ui, 'profile selector should remain scrollable with many servers')
-require('tg.displayName,\n                                        maxLines = 1,\n                                        overflow = TextOverflow.Ellipsis' in ui, 'channel names must ellipsize instead of wrapping into narrow vertical strips')
-require('LazyRow(\n                                modifier = Modifier.fillMaxWidth(),\n                                horizontalArrangement = Arrangement.spacedBy(6.dp)' in ui, 'talkgroup actions must scroll independently below the channel label')
+require(re.search(r'tg\.displayName,\s*maxLines\s*=\s*1,\s*overflow\s*=\s*TextOverflow\.Ellipsis', ui) is not None, 'channel names must ellipsize instead of wrapping into narrow vertical strips')
+require(re.search(r'Text\(\s*"SYSTEM".*?system\.label', ui, re.S) is not None, 'system sections must be explicitly labeled')
+require(re.search(r'Text\(\s*"CHANNEL".*?tg\.displayName,.*?LazyRow\(\s*modifier\s*=\s*Modifier\.fillMaxWidth\(\),\s*horizontalArrangement\s*=\s*Arrangement\.spacedBy\(6\.dp\)', ui, re.S) is not None, 'channel rows must be labeled and their actions must scroll independently')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
