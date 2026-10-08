@@ -37,6 +37,16 @@ class PlaybackQueueStoreTest {
     }
 
     @Test
+    fun cachePruningProtectsAllQueuedFilesAcrossProfiles() {
+        val newest = (1..200).map { "/cache/$it.mp3" }
+        val pinned = setOf(newest[0], newest[190], newest[199])
+        val evicted = PlaybackCachePolicy.evictablePaths(newest, pinned)
+        assertEquals(47, evicted.size)
+        assertTrue(evicted.none { it in pinned })
+        assertTrue(evicted.contains("/cache/198.mp3"))
+    }
+
+    @Test
     fun savedPausedPlaybackDoesNotAutoResume() {
         val saved = SavedPlaybackQueue(
             calls = listOf(SavedPlaybackCall("call:one:replay:1:4:120:a", call(1), false)),
