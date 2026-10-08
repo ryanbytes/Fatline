@@ -649,6 +649,11 @@ class ScannerService : MediaLibraryService() {
             runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
+        fun clearQueue(context: Context) {
+            val intent = Intent(context, ScannerService::class.java).setAction(ACTION_CLEAR_QUEUE)
+            runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
+
         fun stopAudio(context: Context) {
             if (suppressRepositoryServiceCallbacks) return
             val intent = Intent(context, ScannerService::class.java).setAction(ACTION_STOP_AUDIO)

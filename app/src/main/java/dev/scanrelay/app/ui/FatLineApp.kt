@@ -247,8 +247,6 @@ private fun ScannerScreen(
     val profile = profiles.firstOrNull { it.id == selectedProfileId }
     val server = selectedProfileId?.let { scanner.servers[it] }
     val playingCall = currentlyPlayingCall?.takeIf { it.profileId == server?.profile?.id }
-    var queueExpanded by remember { mutableStateOf(false) }
-
     LazyColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -270,59 +268,6 @@ private fun ScannerScreen(
             }
         }
 
-        item {
-            Card(Modifier.padding(horizontal = 16.dp)) {
-                Column(
-                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Playback queue", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                if (queuedCallCount == 1) "1 call queued" else "$queuedCallCount calls queued",
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        if (queuedCalls.isNotEmpty()) {
-                            OutlinedButton(onClick = { queueExpanded = !queueExpanded }) {
-                                Text(if (queueExpanded) "Hide queue" else "Show queue")
-                            }
-                        }
-                    }
-                    if (queueExpanded && queuedCalls.isNotEmpty()) {
-                        HorizontalDivider()
-                        queuedCalls.take(5).forEachIndexed { index, entry ->
-                            Column {
-                                Text(
-                                    "${index + 1}. ${entry.call.talkgroupLabel}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                Text(
-                                    "${if (entry.liveFeed) "Live" else "Replay"} · ${entry.call.serverName} · ${entry.call.systemLabel}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-                        if (queuedCalls.size > 5) {
-                            Text(
-                                "+ ${queuedCalls.size - 5} more calls",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
-                }
-            }
-        }
 
         if (profile == null) {
             item {
@@ -344,7 +289,7 @@ private fun ScannerScreen(
                 }
             }
         } else {
-            item { ScannerStatusCard(server, viewModel) }
+            item { ScannerStatusCard(server, queuedCallCount, queuedCalls, viewModel) }
 
             playingCall?.let { call ->
                 item(key = "playing-" + server.profile.id + "-" + call.id) {
@@ -404,7 +349,13 @@ private fun ScannerScreen(
 }
 
 @Composable
-private fun ScannerStatusCard(server: ServerScannerState, viewModel: ScannerViewModel) {
+private fun ScannerStatusCard(
+    server: ServerScannerState,
+    queuedCallCount: Int,
+    queuedCalls: List<QueuedCall>,
+    viewModel: ScannerViewModel
+) {
+    var queueExpanded by remember { mutableStateOf(false) }
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -434,6 +385,47 @@ private fun ScannerStatusCard(server: ServerScannerState, viewModel: ScannerView
                     if (server.serverVersion.isNullOrBlank()) "" else " · Server " + server.serverVersion,
                 style = MaterialTheme.typography.bodySmall
             )
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Queue · $queuedCallCount waiting" +
+                        if (queuedCallCount > 0) " (all scanners)" else "",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                if (queuedCalls.isNotEmpty()) {
+                    OutlinedButton(onClick = { queueExpanded = !queueExpanded }) {
+                        Text(if (queueExpanded) "Hide" else "Show")
+                    }
+                }
+            }
+            if (queueExpanded && queuedCalls.isNotEmpty()) {
+                OutlinedButton(onClick = viewModel::clearPlaybackQueue) { Text("Clear queue") }
+                queuedCalls.take(5).forEachIndexed { index, entry ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            "${index + 1}. ${entry.call.talkgroupLabel}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            "${if (entry.liveFeed) "Live" else "Replay"} · ${entry.call.serverName} · ${entry.call.systemLabel}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+                if (queuedCalls.size > 5) {
+                    Text("+ ${queuedCalls.size - 5} more calls", style = MaterialTheme.typography.bodySmall)
+                }
+            }
 
             if (server.showListenersCount && server.status == ConnectionStatus.CONNECTED) {
                 Text(
