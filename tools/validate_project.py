@@ -173,6 +173,12 @@ require('Playback queue' not in scanner_screen, 'separate playback queue card mu
 require('queuedCalls' in scanner_card and 'Queue · $queuedCallCount waiting' in scanner_card and 'entry.call.talkgroupLabel' in scanner_card, 'queue count and cross-server preview must live in scanner status card')
 require('clearPlaybackQueue' in scanner_card and 'ACTION_CLEAR_QUEUE' in service and 'fun clearQueue(context: Context)' in service and 'clearPlaybackQueue()' in viewmodel, 'expanded queue must expose existing clear action')
 require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text() and 'queuedPreviewListsCallsAfterCurrentPlayback' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'queued-call ordering regression test missing')
+
+queue_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text()
+queue_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text()
+require('removeLiveProfileMedia(profileId)' in service and 'isLiveCallForProfile(' in service and 'isLiveCallForProfile(' in queue_policy, 'pausing a scanner must remove only its live calls')
+require('removeProfileMedia(profileId)' in service, 'disconnect must still remove all audio for its scanner')
+require('pausingScannerFiltersOnlyItsLiveMediaAndPreservesManualReplay' in queue_tests and 'malformedMediaIdentifiersAreNeverMatchedAsLiveCalls' in queue_tests, 'paused scanner manual replay regression coverage missing')
 require('fun playNow(profileId: String, callId: Long)' in repo and 'session.pendingImmediateReplay.remove(id)' in repo, 'manual replay priority must survive asynchronous server CAL')
 require('fun playNow(profileId: String, callId: Long)' in viewmodel and 'playImmediately = playImmediately' in repo, 'manual replay must reach playback service')
 require('EXTRA_PLAY_IMMEDIATELY' in service and 'player.seekTo(position, 0L)' in service, 'selected recent call must start immediately')
