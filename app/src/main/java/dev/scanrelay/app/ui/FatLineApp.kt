@@ -833,6 +833,7 @@ private fun ChannelsScreen(
                                 Modifier.fillMaxWidth()
                                     .clickable(
                                         onClickLabel = if (systemExpanded) "Collapse system" else "Expand system",
+                                        enabled = normalizedQuery.isEmpty(),
                                         role = Role.Button,
                                         onClick = {
                                             expandedSystems = if (system.systemRef in expandedSystems) {
@@ -935,6 +936,7 @@ private fun ChannelsScreen(
                                 Modifier.fillMaxWidth()
                                     .clickable(
                                         onClickLabel = if (tagExpanded) "Collapse tag" else "Expand tag",
+                                        enabled = normalizedQuery.isEmpty(),
                                         role = Role.Button,
                                         onClick = {
                                             expandedTags = if (tagKey in expandedTags) {
