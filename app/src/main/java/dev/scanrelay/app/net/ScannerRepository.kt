@@ -1242,24 +1242,43 @@ object ScannerRepository {
         sessions[profileId]?.let(::startTranscriptMonitor)
     }
 
+    private fun updateTranscriptMonitorStatus(session: Session, status: String) {
+        val changed = synchronized(session) {
+            if (!isCurrent(session) || session.state.localTranscriptMonitorStatus == status) false
+            else {
+                session.state = session.state.copy(localTranscriptMonitorStatus = status)
+                true
+            }
+        }
+        if (changed) publish()
+    }
+
     private fun startTranscriptMonitor(session: Session) {
         session.transcriptMonitorJob?.cancel()
         session.transcriptMonitorJob = null
         val store = localTranscriptStore ?: return
         val profileId = session.profile.id
-        if (!store.active(profileId)) return
+        if (!store.active(profileId)) {
+            updateTranscriptMonitorStatus(session, "Off")
+            return
+        }
         session.transcriptMonitorJob = scope.launch {
-            // The foreground media service owns the scanner connection. Pausing audio
-            // does not pause monitoring. No second WebSocket is opened.
+            // Reuse the foreground scanner service. No additional WebSocket is opened.
+            // Pausing live audio never interrupts transcript polling.
             while (isCurrent(session) && store.active(profileId)) {
-                if (networkAvailable &&
-                    session.state.status == ConnectionStatus.CONNECTED &&
-                    session.profile.pin.isNotBlank()) {
-                    try {
-                        pollRecentTranscripts(session, store)
-                    } catch (error: Throwable) {
-                        if (error is CancellationException) throw error
-                        // Retry next cycle without impacting live audio or the socket.
+                when {
+                    !networkAvailable || session.state.status != ConnectionStatus.CONNECTED ->
+                        updateTranscriptMonitorStatus(session, "Waiting for scanner connection")
+                    session.profile.pin.isBlank() ->
+                        updateTranscriptMonitorStatus(session, "Live transcripts only · PIN required to poll")
+                    else -> {
+                        try {
+                            pollRecentTranscripts(session, store)
+                            updateTranscriptMonitorStatus(session, "Monitoring · checking every 30 seconds")
+                        } catch (error: Throwable) {
+                            if (error is CancellationException) throw error
+                            updateTranscriptMonitorStatus(session, "Transcript API unavailable · retrying")
+                        }
                     }
                 }
                 delay(30_000L)
@@ -2702,6 +2721,7 @@ object ScannerRepository {
                     session.reconnectAttempt = 0
                 }
                 handleConfig(session, envelope.payload as? JSONObject ?: return)
+                startTranscriptMonitor(session)
             }
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
                 val callFlag = envelope.flag?.toString()
