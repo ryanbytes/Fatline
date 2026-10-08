@@ -216,6 +216,14 @@ require('call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery)' in u
 require('call.transcript?.lowercase()?.contains(normalizedHistoryQuery)' in ui, 'history search must include transcripts')
 require('recentCalls' in models and 'session.state.recentCalls' in repo, 'dedicated live recent-call state missing')
 require('server.recentCalls' in ui and 'server.history.take(10)' not in ui, 'scanner recent list must not reuse archive history')
+channels_tree = ui.split('private fun ChannelsScreen(', 1)[1].split('private data class ArchiveMenuChoice(', 1)[0]
+require('expandedSystems by remember(selectedProfileId)' in channels_tree and 'expandedTags by remember(selectedProfileId)' in channels_tree, 'tree expansion state must reset per scanner')
+require('if (systemExpanded) {' in channels_tree and 'if (tagExpanded) {' in channels_tree, 'system/tag children must be collapsible')
+require('normalizedQuery.isNotEmpty() ||' in channels_tree and 'tagKey in expandedTags' in channels_tree, 'channel search must reveal matching tree branches')
+require(channels_tree.count('enabled = normalizedQuery.isEmpty()') >= 2, 'search-revealed tree headers must not offer inert collapse actions')
+require('"Expand system"' in channels_tree and '"Collapse system"' in channels_tree and '"Expand tag"' in channels_tree and '"Collapse tag"' in channels_tree, 'tree nodes must expose accessible expand/collapse controls')
+require('viewModel.setTalkgroup(' in channels_tree and 'viewModel.setChannels(' in channels_tree and 'setScanListChannel(' in channels_tree, 'tree must retain channel and scan list controls')
+
 require('durationSeconds = payload.optDouble("duration")' in repo, 'live call duration metadata must be preserved')
 require('UnitAlias' in models and 'parseUnits' in protocol, 'ThinLine unit alias parsing missing')
 require('resolveCallSources' in repo and 'formatUnitDisplay' in repo, 'multi-source unit alias resolution missing')
