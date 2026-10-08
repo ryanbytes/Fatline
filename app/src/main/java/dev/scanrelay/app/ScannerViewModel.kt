@@ -3,6 +3,7 @@ package dev.scanrelay.app
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.scanrelay.app.alerts.LocalTranscriptAlertStore
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.data.ScannerPauseStore
@@ -107,6 +108,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         profileStore.delete(profileId)
         channelStore.deleteProfile(profileId)
         ScannerPauseStore(getApplication()).deleteProfile(profileId)
+        LocalTranscriptAlertStore(getApplication()).clearProfile(profileId)
         _accountProfiles.update { it - profileId }
         _profiles.value = profileStore.load()
     }
@@ -670,6 +672,15 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         tag = tag,
         sort = sort
     )
+
+    fun localTranscriptRules(profileId: String): String =
+        LocalTranscriptAlertStore(getApplication()).rawRules(profileId)
+
+    fun localTranscriptAlertsEnabled(profileId: String): Boolean =
+        LocalTranscriptAlertStore(getApplication()).enabled(profileId)
+
+    fun configureLocalTranscriptAlerts(profileId: String, rules: String, enabled: Boolean) =
+        ScannerRepository.configureLocalTranscriptAlerts(profileId, rules, enabled)
 
     fun refreshAlerts(profileId: String) = ScannerRepository.refreshAlerts(profileId)
     fun refreshTranscripts(
