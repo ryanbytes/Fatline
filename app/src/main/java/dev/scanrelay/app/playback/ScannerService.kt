@@ -62,6 +62,7 @@ class ScannerService : MediaLibraryService() {
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var pauseStore: ScannerPauseStore
     private lateinit var playbackQueueStore: PlaybackQueueStore
+    private lateinit var volumeStore: PlaybackVolumeStore
     private var restoringQueue = true
     private var releasingPlayer = false
     private val networkHandler = Handler(Looper.getMainLooper())
@@ -108,12 +109,15 @@ class ScannerService : MediaLibraryService() {
         ScannerRepository.initialize(this)
         pauseStore = ScannerPauseStore(this)
         playbackQueueStore = PlaybackQueueStore(this)
+        volumeStore = PlaybackVolumeStore(this)
+        _outputVolumePercent.value = volumeStore.percent()
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
         player = ExoPlayer.Builder(this)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .build().apply {
+            volume = PlaybackVolumePolicy.gain(_outputVolumePercent.value)
             setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -170,6 +174,9 @@ class ScannerService : MediaLibraryService() {
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
             ACTION_DISCONNECT_ALL -> disconnectAll()
             ACTION_ENQUEUE -> addMediaFromIntent(intent)
+            ACTION_SET_OUTPUT_VOLUME -> setOutputVolumeInternal(
+                intent.getIntExtra(EXTRA_VOLUME_PERCENT, PlaybackVolumePolicy.DEFAULT_PERCENT)
+            )
             ACTION_SET_PROFILE_PAUSED -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let { profileId ->
                 setProfilePausedInternal(profileId, intent.getBooleanExtra(EXTRA_PAUSED, false))
             }
@@ -519,6 +526,13 @@ class ScannerService : MediaLibraryService() {
             }
         }
     }
+    private fun setOutputVolumeInternal(percent: Int) {
+        val normalized = PlaybackVolumePolicy.clamp(percent)
+        volumeStore.save(normalized)
+        _outputVolumePercent.value = normalized
+        player.volume = PlaybackVolumePolicy.gain(normalized)
+    }
+
     private fun setProfilePausedInternal(profileId: String, paused: Boolean) {
         if (paused) {
             pausedProfiles += profileId
@@ -739,6 +753,8 @@ class ScannerService : MediaLibraryService() {
         .build()
 
     companion object {
+        private val _outputVolumePercent = MutableStateFlow(PlaybackVolumePolicy.DEFAULT_PERCENT)
+        val outputVolumePercent: StateFlow<Int> = _outputVolumePercent.asStateFlow()
         private val _queuedCallCount = MutableStateFlow(0)
         val queuedCallCount: StateFlow<Int> = _queuedCallCount.asStateFlow()
         private val _currentlyPlayingCall = MutableStateFlow<RadioCall?>(null)
@@ -761,6 +777,8 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_DISCONNECT_ALL = "dev.scanrelay.DISCONNECT_ALL"
         const val ACTION_ENQUEUE = "dev.scanrelay.ENQUEUE"
         const val ACTION_SET_PROFILE_PAUSED = "dev.scanrelay.SET_PROFILE_PAUSED"
+        const val ACTION_SET_OUTPUT_VOLUME = "dev.scanrelay.SET_OUTPUT_VOLUME"
+        const val EXTRA_VOLUME_PERCENT = "volume_percent"
         const val ACTION_FILTER_PROFILE_MEDIA = "dev.scanrelay.FILTER_PROFILE_MEDIA"
         const val ACTION_SKIP = "dev.scanrelay.SKIP"
         const val ACTION_CLEAR_QUEUE = "dev.scanrelay.CLEAR_QUEUE"
@@ -834,6 +852,14 @@ class ScannerService : MediaLibraryService() {
         fun skip(context: Context) {
             val intent = Intent(context, ScannerService::class.java).setAction(ACTION_SKIP)
             runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
+
+        fun setOutputVolume(context: Context, percent: Int) {
+            val intent = Intent(context, ScannerService::class.java)
+                .setAction(ACTION_SET_OUTPUT_VOLUME)
+                .putExtra(EXTRA_VOLUME_PERCENT, PlaybackVolumePolicy.clamp(percent))
+            runCatching { context.startService(intent) }
+                .onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
         fun clearQueue(context: Context) {
