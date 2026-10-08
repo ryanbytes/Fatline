@@ -38,6 +38,7 @@ import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.net.NetworkHandoffPolicy
 import dev.scanrelay.app.net.NetworkHandoffTransition
 import dev.scanrelay.app.net.ScannerRepository
+import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
@@ -59,6 +60,9 @@ class ScannerService : MediaLibraryService() {
     private lateinit var weatherMonitor: NwsSevereWeatherMonitor
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var pauseStore: ScannerPauseStore
+    private lateinit var playbackQueueStore: PlaybackQueueStore
+    private var restoringQueue = true
+    private var releasingPlayer = false
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
@@ -100,6 +104,7 @@ class ScannerService : MediaLibraryService() {
         super.onCreate()
         ScannerRepository.initialize(this)
         pauseStore = ScannerPauseStore(this)
+        playbackQueueStore = PlaybackQueueStore(this)
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
@@ -116,6 +121,14 @@ class ScannerService : MediaLibraryService() {
                 false
             )
             addListener(object : Player.Listener {
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    persistPlaybackQueue()
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    persistPlaybackQueue()
+                }
+
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     syncCurrentlyPlayingCall()
                     updatePlaybackNotification()
@@ -133,6 +146,7 @@ class ScannerService : MediaLibraryService() {
             })
         }
         session = MediaLibrarySession.Builder(this, player, LibraryCallback()).build()
+        restoreSavedPlaybackQueue()
         serviceScope.launch {
             ScannerRepository.state.collect(::refreshFavoriteLibraryChildren)
         }
@@ -179,6 +193,8 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        persistPlaybackQueue()
+        releasingPlayer = true
         serviceScope.cancel()
         weatherMonitor.stop()
         stopNetworkTracking()
@@ -419,6 +435,7 @@ class ScannerService : MediaLibraryService() {
                     QueuedCall(call, liveFeed = PlaybackQueuePolicy.mediaKind(mediaId) == "live")
                 }
             }
+        persistPlaybackQueue()
     }
 
     private fun trimQueueForIncomingCall(liveFeed: Boolean) {
