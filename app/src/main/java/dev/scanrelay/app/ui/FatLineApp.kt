@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -290,7 +291,7 @@ private fun ScannerScreen(
                 }
             }
         } else {
-            item { ScannerStatusCard(server, queuedCallCount, queuedCalls, viewModel) }
+            item { ScannerStatusCard(server, queuedCallCount, queuedCalls, playingCall, viewModel) }
 
             playingCall?.let { call ->
                 item(key = "playing-" + server.profile.id + "-" + call.id) {
@@ -354,6 +355,7 @@ private fun ScannerStatusCard(
     server: ServerScannerState,
     queuedCallCount: Int,
     queuedCalls: List<QueuedCall>,
+    currentlyPlayingCall: RadioCall?,
     viewModel: ScannerViewModel
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
@@ -389,6 +391,8 @@ private fun ScannerStatusCard(
                     if (server.serverVersion.isNullOrBlank()) "" else " · Server " + server.serverVersion,
                 style = MaterialTheme.typography.bodySmall
             )
+
+            ScannerHudPanel(server, currentlyPlayingCall)
 
             Row(
                 Modifier.fillMaxWidth(),
@@ -476,6 +480,87 @@ private fun ScannerStatusCard(
                 onValueChangeFinished = { viewModel.setOutputVolume(pendingVolume) },
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+@Composable
+private fun ScannerHudPanel(server: ServerScannerState, currentlyPlayingCall: RadioCall?) {
+    val call = currentlyPlayingCall?.takeIf { it.profileId == server.profile.id }
+    val talkgroup = call?.let { current ->
+        server.systems.firstOrNull { it.systemRef == current.systemRef }
+            ?.talkgroups?.firstOrNull { it.talkgroupRef == current.talkgroupRef }
+    }
+    val tag = talkgroup?.tag?.takeIf(String::isNotBlank)
+    val tagBacklight = tag?.let(server.tagColors::get)
+        ?.let { raw -> runCatching { Color(android.graphics.Color.parseColor(raw)) }.getOrNull() }
+        ?: MaterialTheme.colorScheme.primary
+    val flags = ScannerHudPolicy.flags(
+        connection = server.status,
+        paused = server.paused,
+        isPlaying = call != null,
+        holdSystem = server.holdSystemRef != null,
+        holdTalkgroup = server.hold != null
+    )
+    val annunciators = listOf(
+        "LIVE" to flags.live,
+        "SCAN" to flags.scan,
+        "RX" to flags.rx,
+        "HOLD SYS" to flags.holdSystem,
+        "HOLD TG" to flags.holdTalkgroup,
+        "PAUSE" to flags.pause
+    )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = tagBacklight.copy(alpha = 0.14f),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                items(annunciators) { (label, active) ->
+                    Surface(
+                        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            label,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+                            color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+            Text(flags.headline, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            if (call != null) {
+                Text(
+                    call.talkgroupLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "SYS ${call.systemLabel}" +
+                        (tag?.let { " · TAG $it" } ?: "") +
+                        " · TGID ${call.talkgroupRef}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                call.sourceDisplay?.takeIf(String::isNotBlank)?.let { source ->
+                    Text(
+                        "UNIT $source",
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
 }

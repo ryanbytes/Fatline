@@ -48,6 +48,7 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - Media3 1.11.0 ExoPlayer foreground-service background playback and `MediaLibraryService` Android Auto surface
 - Audio-focus-free scanner mixing: FatLine does not request focus, so music and podcasts can normally continue at their own volume while scanner calls play (Android telephony, exclusive audio paths, and third-party players may still impose interruptions)
 - Saved 0–100% FatLine output volume slider using ExoPlayer gain, separate from Android's music/media output volume
+- Compact scanner HUD with actual live, scan, RX/playback, hold, pause indicators and optional tag-color backlight; no fabricated signal readings
 - Pausing a scanner suppresses only live traffic, preserving user-requested replay audio
 - Android Auto browse tree: profiles → favorited talkgroups; server items are browsable/playable, selecting a favorite sets a talkgroup hold, and subscribed browsers are refreshed when favorite-channel metadata changes
 - Foreground-service restore cleanup for deleted/stale profiles and bounded playback queue handling

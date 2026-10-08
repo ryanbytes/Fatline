@@ -43,6 +43,8 @@ required = [
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueueStoreTest.kt',
     'app/src/main/java/dev/scanrelay/app/playback/PlaybackVolumeStore.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackVolumeStoreTest.kt',
+    'app/src/main/java/dev/scanrelay/app/ui/ScannerHudPolicy.kt',
+    'app/src/test/java/dev/scanrelay/app/ui/ScannerHudPolicyTest.kt',
     'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt',
     'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt',
     'app/src/test/java/dev/scanrelay/app/ui/ServerDateTimeTest.kt',
@@ -190,6 +192,16 @@ require('queuedCallCount' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' 
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun NowPlayingCard(', 1)[0]
 require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
+
+hud_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/ScannerHudPolicy.kt').read_text()
+hud_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/ScannerHudPolicyTest.kt').read_text()
+require('ScannerHudPanel(server, currentlyPlayingCall)' in scanner_card, 'scanner HUD must follow live player state on the status card')
+require('ScannerHudPolicy.flags(' in ui and '"LIVE" to flags.live' in ui and '"SCAN" to flags.scan' in ui and '"RX" to flags.rx' in ui, 'scanner HUD annunciators must derive from real state')
+require('"HOLD SYS" to flags.holdSystem' in ui and '"HOLD TG" to flags.holdTalkgroup' in ui and '"PAUSE" to flags.pause' in ui, 'scanner HUD hold/pause indicators missing')
+require('isPlaying = call != null' in ui and 'scan = live && !isPlaying' in hud_policy and 'rx = isPlaying' in hud_policy, 'HUD must not fake receiving while idle')
+require('server.tagColors::get' in ui and 'tagBacklight.copy(alpha = 0.14f)' in ui, 'HUD tag-color backlight missing')
+require('connectedIdleShowsScanningButNotReceiverActivity' in hud_tests and 'disconnectedBufferedPlaybackIsStillRecognizedAsAudio' in hud_tests, 'HUD truthful state regression tests missing')
+
 require('Playback queue' not in scanner_screen, 'separate playback queue card must be removed')
 require('queuedCalls' in scanner_card and 'Queue · $queuedCallCount waiting' in scanner_card and 'entry.call.talkgroupLabel' in scanner_card, 'queue count and cross-server preview must live in scanner status card')
 require('clearPlaybackQueue' in scanner_card and 'ACTION_CLEAR_QUEUE' in service and 'fun clearQueue(context: Context)' in service and 'clearPlaybackQueue()' in viewmodel, 'expanded queue must expose existing clear action')
