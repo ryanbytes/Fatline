@@ -148,7 +148,7 @@ require('networkUnavailable()' in repo and 'networkChanged(' in repo, 'network-a
 require('NetworkHandoffPolicy.transition' in service and 'NetworkHandoffPolicy.isCurrentLoss' in service, 'network callback ordering must use the tested handoff policy')
 pause_store = (ROOT / 'app/src/main/java/dev/scanrelay/app/data/ScannerPauseStore.kt').read_text()
 pause_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/data/ScannerPauseStoreTest.kt').read_text()
-require('ScannerPauseStore(context.applicationContext)' in repo and 'state.copy(paused = pauseStore?.isPaused(profile.id) == true)' in repo, 'reconnected sessions must restore persisted pause choice')
+require('ScannerPauseStore(context.applicationContext)' in repo and 'paused = pauseStore?.isPaused(profile.id) == true' in repo and 'savedOverrides.hold' in repo, 'reconnected sessions must restore persisted pause choice')
 require('pauseStore?.setPaused(profileId, paused)' in repo and 'paused = paused' in repo, 'pause/resume changes must be persisted')
 require('pausedProfiles.addAll(validIds.filter(pauseStore::isPaused))' in service, 'foreground restart must restore paused scanner list')
 require('pauseStore.isPaused(profileId)' in service and 'ScannerPausePolicy.suppressIncomingAudio(' in service, 'service must reject queued live audio from persisted paused profiles')
