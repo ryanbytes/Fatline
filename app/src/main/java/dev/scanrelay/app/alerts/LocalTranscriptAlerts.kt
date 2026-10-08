@@ -10,6 +10,14 @@ import java.util.Locale
 /** Rules and transcript matching stay on the phone. */
 internal object LocalTranscriptAlertPolicy {
     const val MAX_TERMS = 50
+    const val FAST_POLL_MS = 30_000L
+    const val SAVER_POLL_MS = 300_000L
+
+    // WebSocket CALL transcripts are always matched as they arrive. Only the
+    // fallback HTTP scan for delayed transcription uses the selected cadence.
+    fun pollIntervalMs(batterySaver: Boolean): Long =
+        if (batterySaver) SAVER_POLL_MS else FAST_POLL_MS
+
     private const val MAX_LENGTH = 100
     private val separator = Regex("[^\\p{L}\\p{N}]+")
 
@@ -39,6 +47,7 @@ internal class LocalTranscriptAlertStore(context: Context) {
     fun rawRules(profileId: String): String = prefs.getString("rules_$profileId", "").orEmpty()
     fun rules(profileId: String): List<String> = LocalTranscriptAlertPolicy.terms(rawRules(profileId))
     fun enabled(profileId: String): Boolean = prefs.getBoolean("enabled_$profileId", false)
+    fun batterySaver(profileId: String): Boolean = prefs.getBoolean("battery_saver_$profileId", true)
     fun active(profileId: String): Boolean = enabled(profileId) && rules(profileId).isNotEmpty()
     fun enabledAt(profileId: String): Long = prefs.getLong("since_$profileId", 0L)
 
@@ -51,12 +60,13 @@ internal class LocalTranscriptAlertStore(context: Context) {
     }
 
     @Synchronized
-    fun configure(profileId: String, raw: String, enabled: Boolean) {
+    fun configure(profileId: String, raw: String, enabled: Boolean, batterySaver: Boolean) {
         val normalized = LocalTranscriptAlertPolicy.terms(raw).joinToString("\n")
         val previous = rawRules(profileId)
         val restartBaseline = normalized != previous || (enabled && !this.enabled(profileId))
         prefs.edit().putString("rules_$profileId", normalized)
             .putBoolean("enabled_$profileId", enabled)
+            .putBoolean("battery_saver_$profileId", batterySaver)
             .apply()
         if (restartBaseline) {
             prefs.edit().putLong("since_$profileId", System.currentTimeMillis()).apply()
@@ -145,6 +155,7 @@ internal class LocalTranscriptAlertStore(context: Context) {
 
     fun clearProfile(profileId: String) {
         prefs.edit().remove("rules_$profileId").remove("enabled_$profileId")
+            .remove("battery_saver_$profileId")
             .remove("seen_$profileId").remove("bootstrapped_$profileId")
             .remove("alerts_$profileId").remove("since_$profileId").apply()
     }
