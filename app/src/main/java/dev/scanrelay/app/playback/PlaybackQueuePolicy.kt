@@ -46,8 +46,8 @@ internal object PlaybackQueuePolicy {
 
     fun isLiveCallForProfile(mediaId: String, profileId: String): Boolean {
         val parts = mediaId.split(':', limit = 4)
-        return parts.size >= 3 && parts[0] == "call" &&
-            parts[1] == profileId && parts[2] == "live"
+        return parts.size == 4 && parts[0] == "call" &&
+            parts[1] == profileId && parts[2] == "live" && parts[3].isNotBlank()
     }
 
     internal fun mediaKind(mediaId: String): String? {
