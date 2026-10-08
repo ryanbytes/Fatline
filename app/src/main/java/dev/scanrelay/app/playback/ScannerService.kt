@@ -30,6 +30,8 @@ import com.google.common.util.concurrent.ListenableFuture
 import dev.scanrelay.app.MainActivity
 import dev.scanrelay.app.alerts.NwsSevereWeatherMonitor
 import dev.scanrelay.app.data.ProfileStore
+import dev.scanrelay.app.data.ScannerPausePolicy
+import dev.scanrelay.app.data.ScannerPauseStore
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerState
@@ -56,6 +58,7 @@ class ScannerService : MediaLibraryService() {
     private lateinit var session: MediaLibrarySession
     private lateinit var weatherMonitor: NwsSevereWeatherMonitor
     private lateinit var connectivityManager: ConnectivityManager
+    private lateinit var pauseStore: ScannerPauseStore
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
@@ -96,6 +99,7 @@ class ScannerService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
         ScannerRepository.initialize(this)
+        pauseStore = ScannerPauseStore(this)
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
@@ -227,6 +231,8 @@ class ScannerService : MediaLibraryService() {
 
         val active = activeProfileIds().apply { add(profileId) }
         persistActiveProfiles(active)
+        if (pauseStore.isPaused(profileId)) pausedProfiles += profileId
+        else pausedProfiles -= profileId
         ScannerRepository.connect(profile)
         updateMonitoringNotification(active.size)
     }
@@ -258,6 +264,8 @@ class ScannerService : MediaLibraryService() {
         val profiles = ProfileStore(this).load().associateBy { it.id }
         val validIds = savedIds.filterTo(mutableSetOf()) { profiles.containsKey(it) }
         if (validIds != savedIds) persistActiveProfiles(validIds)
+        pausedProfiles.clear()
+        pausedProfiles.addAll(validIds.filter(pauseStore::isPaused))
 
         if (validIds.isEmpty()) {
             stopAudioInternal()
@@ -323,7 +331,10 @@ class ScannerService : MediaLibraryService() {
         val token = intent.getStringExtra(EXTRA_CALL_TOKEN).orEmpty()
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
         val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
-        if (liveFeed && profileId in pausedProfiles) {
+        if (ScannerPausePolicy.suppressIncomingAudio(
+                liveFeed = liveFeed,
+                paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)
+            )) {
             pendingCalls.remove(token)
             return
         }
