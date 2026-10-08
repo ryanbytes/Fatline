@@ -263,7 +263,7 @@ require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' i
 local_monitor = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/LocalTranscriptAlerts.kt').read_text()
 local_monitor_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/alerts/LocalTranscriptAlertPolicyTest.kt').read_text()
 require('fun configureLocalTranscriptAlerts(' in repo and 'fun configureLocalTranscriptAlerts(' in viewmodel and 'Local transcript alerts' in ui, 'local transcript rules must be editable in app')
-require('fun startTranscriptMonitor(' in repo and 'delay(30_000L)' in repo and 'pollRecentTranscripts(session, store)' in repo, 'transcript monitor must run in the foreground scanner service independently of audio pause')
+require('fun startTranscriptMonitor(' in repo and 'delay(LocalTranscriptAlertPolicy.pollIntervalMs(store.batterySaver(profileId)))' in repo and 'pollRecentTranscripts(session, store)' in repo, 'transcript monitor must run in the foreground scanner service independently of audio pause')
 require('api/transcripts?limit=100&offset=0&pin=' in repo and 'executeJsonArray(request)' in repo, 'monitor must poll server transcript API, not a hosted relay')
 require('store.baseline(' in repo and 'store.isNewSinceEnable(' in repo and 'store.accept(profileId, callId)' in repo, 'monitor must skip historical calls and deduplicate live/polled calls')
 require('processLocalTranscript(session, id, call.transcript' in repo and 'row.reviewedTranscript' in repo, 'monitor must process both live and delayed transcript text')
@@ -273,6 +273,10 @@ require('LocalTranscriptAlertPolicy.matches(' in repo and 'fun matches(transcrip
 require('phrasesMatchRegardlessOfCaseAndSeparator' in local_monitor_tests and 'wordBoundariesAvoidAccidentalMatches' in local_monitor_tests, 'phrase matching regression tests missing')
 require('LocalTranscriptAlertStore(getApplication()).clearProfile(profileId)' in viewmodel, 'deleting scanner must erase its local rules and alerts')
 require('localTranscriptMonitorStatus' in ui and 'Transcript API unavailable' in repo, 'monitor status and API error visibility missing')
+require('fun batterySaver(profileId: String)' in local_monitor and 'battery_saver_$profileId' in local_monitor, 'transcript battery saver preference missing')
+require('fun pollIntervalMs(batterySaver: Boolean)' in local_monitor and 'SAVER_POLL_MS = 300_000L' in local_monitor and 'FAST_POLL_MS = 30_000L' in local_monitor, 'transcript saver must have 5-minute cadence with 30-second fallback')
+require('fun localTranscriptBatterySaver(' in viewmodel and 'localTranscriptBatterySaver' in ui and 'Battery saver (5-minute checks instead of 30 seconds)' in ui, 'user-selectable saver UI missing')
+require('batterySaverReducesPeriodicNetworkChecksTenfold' in local_monitor_tests, 'transcript polling efficiency regression missing')
 
 # A normal app relaunch must revive previously active sessions without restarting
 # still-running scanner sockets, reviving disconnected profiles or using boot receivers.
