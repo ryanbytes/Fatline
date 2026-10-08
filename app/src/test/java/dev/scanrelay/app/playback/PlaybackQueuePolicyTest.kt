@@ -1,10 +1,49 @@
 package dev.scanrelay.app.playback
 
+import dev.scanrelay.app.model.CallKey
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackQueuePolicyTest {
     private fun id(kind: String, n: Int) = "call:p1:$kind:$n:1:1:$n"
+
+    @Test
+    fun reconnectCannotQueueDuplicateLiveCallOrEvictOtherWaitingCalls() {
+        val existing = listOf(id("live", 10), id("live", 11), id("replay", 10))
+        assertFalse(
+            PlaybackQueuePolicy.shouldEnqueueLiveCall(
+                "p1", 10L, emptySet(), existing
+            )
+        )
+        assertTrue(
+            PlaybackQueuePolicy.shouldEnqueueLiveCall(
+                "p1", 12L, emptySet(), existing
+            )
+        )
+    }
+
+    @Test
+    fun recentlyPlayedLiveCallsAreNotReplayedWhenServerResendsBacklog() {
+        val recent = setOf(CallKey("p1", 45L))
+        assertFalse(PlaybackQueuePolicy.shouldEnqueueLiveCall("p1", 45L, recent, emptyList()))
+        assertTrue(PlaybackQueuePolicy.shouldEnqueueLiveCall("p2", 45L, recent, emptyList()))
+        assertTrue(PlaybackQueuePolicy.shouldEnqueueLiveCall("p1", 46L, recent, emptyList()))
+    }
+
+    @Test
+    fun replayEntriesAndMalformedIdsAreNotMistakenForLiveDuplicates() {
+        assertEquals(null, PlaybackQueuePolicy.liveCallKey("call:p1:replay:1:2:3:token"))
+        assertEquals(null, PlaybackQueuePolicy.liveCallKey("call:p1:live:not-a-number:2:3:token"))
+        assertEquals(null, PlaybackQueuePolicy.liveCallKey("call:p1:live:12"))
+        assertEquals(CallKey("p1", 12L), PlaybackQueuePolicy.liveCallKey("call:p1:live:12:2:3:token"))
+        assertTrue(
+            PlaybackQueuePolicy.shouldEnqueueLiveCall(
+                "p1", 12L, emptySet(), listOf("call:p1:replay:12:2:3:token")
+            )
+        )
+    }
 
     @Test
     fun pausingScannerFiltersOnlyItsLiveMediaAndPreservesManualReplay() {
