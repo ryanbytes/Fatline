@@ -1617,7 +1617,7 @@ private fun HistoryScreen(
                                             val refs = key.split(":", limit = 2)
                                             if (refs.size == 2) {
                                                 archiveSystemRef = refs[0].toLongOrNull()
-                                                archiveTalkgroupRefs = refs[1].toLongOrNull()?.let(::setOf) ?: emptySet()
+                                                archiveTalkgroupRefs = refs[1].toLongOrNull()?.let { setOf(it) } ?: emptySet()
                                             }
                                         }
                                     )
