@@ -7,6 +7,28 @@ class PlaybackQueuePolicyTest {
     private fun id(kind: String, n: Int) = "call:p1:$kind:$n:1:1:$n"
 
     @Test
+    fun pausingScannerFiltersOnlyItsLiveMediaAndPreservesManualReplay() {
+        val media = listOf(
+            id("live", 1),
+            id("replay", 2),
+            "call:p2:live:3:1:1:3",
+            "call:p2:replay:4:1:1:4"
+        )
+        val retained = media.filterNot { PlaybackQueuePolicy.isLiveCallForProfile(it, "p1") }
+        assertEquals(
+            listOf(id("replay", 2), "call:p2:live:3:1:1:3", "call:p2:replay:4:1:1:4"),
+            retained
+        )
+    }
+
+    @Test
+    fun malformedMediaIdentifiersAreNeverMatchedAsLiveCalls() {
+        assertEquals(false, PlaybackQueuePolicy.isLiveCallForProfile("live:1", "p1"))
+        assertEquals(false, PlaybackQueuePolicy.isLiveCallForProfile("call:p1:replay:3", "p1"))
+        assertEquals(false, PlaybackQueuePolicy.isLiveCallForProfile("call:p2:live:3", "p1"))
+    }
+
+    @Test
     fun queuedCountExcludesCurrentItem() {
         assertEquals(2, PlaybackQueuePolicy.queuedCount(mediaCount = 5, currentIndex = 2))
     }
