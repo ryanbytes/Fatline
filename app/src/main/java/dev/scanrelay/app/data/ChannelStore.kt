@@ -21,6 +21,29 @@ internal fun reconcileChannelSelection(
     return retained + (currentScope - knownScope)
 }
 
+/** User-selected monitoring filters are independent of base channel enablement. */
+internal data class MonitoringOverrides(
+    val hold: ChannelKey? = null,
+    val holdSystemRef: Long? = null,
+    val avoided: Set<ChannelKey> = emptySet()
+)
+
+/** On server scope changes, discard only holds/avoids whose refs disappeared. */
+internal fun reconcileMonitoringOverrides(
+    saved: MonitoringOverrides,
+    systems: List<SystemConfig>
+): MonitoringOverrides {
+    val systemRefs = systems.mapTo(mutableSetOf()) { it.systemRef }
+    val channelRefs = systems.flatMapTo(mutableSetOf()) { system ->
+        system.talkgroups.map { it.key }
+    }
+    return saved.copy(
+        hold = saved.hold?.takeIf { it in channelRefs },
+        holdSystemRef = saved.holdSystemRef?.takeIf { it in systemRefs },
+        avoided = saved.avoided.intersect(channelRefs)
+    )
+}
+
 class ChannelStore(context: Context) {
     private val prefs = context.getSharedPreferences("fatline_channels", Context.MODE_PRIVATE)
 
@@ -29,6 +52,27 @@ class ChannelStore(context: Context) {
     private fun knownKey(profileId: String) = "known_$profileId"
     private fun favoritesKey(profileId: String) = "favorites_$profileId"
     private fun hiddenSystemsKey(profileId: String) = "hidden_systems_$profileId"
+    private fun holdChannelKey(profileId: String) = "hold_channel_$profileId"
+    private fun holdSystemKey(profileId: String) = "hold_system_$profileId"
+    private fun avoidedChannelsKey(profileId: String) = "avoided_channels_$profileId"
+
+    internal fun monitoringOverrides(profileId: String): MonitoringOverrides =
+        MonitoringOverrides(
+            hold = prefs.getString(holdChannelKey(profileId), null)?.let(ChannelKey::parse),
+            holdSystemRef = prefs.getString(holdSystemKey(profileId), null)?.toLongOrNull(),
+            avoided = readKeys(avoidedChannelsKey(profileId))
+        )
+
+    internal fun setMonitoringOverrides(profileId: String, overrides: MonitoringOverrides) {
+        prefs.edit()
+            .putString(holdChannelKey(profileId), overrides.hold?.toString())
+            .putString(holdSystemKey(profileId), overrides.holdSystemRef?.toString())
+            .putStringSet(
+                avoidedChannelsKey(profileId),
+                overrides.avoided.mapTo(mutableSetOf()) { it.toString() }
+            )
+            .apply()
+    }
 
     fun apply(
         profileId: String,
@@ -124,6 +168,9 @@ class ChannelStore(context: Context) {
             .remove(knownKey(profileId))
             .remove(favoritesKey(profileId))
             .remove(hiddenSystemsKey(profileId))
+            .remove(holdChannelKey(profileId))
+            .remove(holdSystemKey(profileId))
+            .remove(avoidedChannelsKey(profileId))
             .apply()
     }
 

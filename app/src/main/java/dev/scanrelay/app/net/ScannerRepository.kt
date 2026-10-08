@@ -10,6 +10,8 @@ import android.provider.MediaStore
 import android.widget.Toast
 import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.data.ChannelStore
+import dev.scanrelay.app.data.MonitoringOverrides
+import dev.scanrelay.app.data.reconcileMonitoringOverrides
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.data.ScannerPauseStore
 import dev.scanrelay.app.model.AlertKeywordList
@@ -128,8 +130,14 @@ object ScannerRepository {
     fun connect(profile: ServerProfile) {
         require(profile.baseUrl.isNotBlank()) { "Server URL is required" }
         sessions.remove(profile.id)?.let(::stopSession)
+        val savedOverrides = channelStore?.monitoringOverrides(profile.id) ?: MonitoringOverrides()
         val session = Session(profile).apply {
-            state = state.copy(paused = pauseStore?.isPaused(profile.id) == true)
+            state = state.copy(
+                paused = pauseStore?.isPaused(profile.id) == true,
+                hold = savedOverrides.hold,
+                holdSystemRef = savedOverrides.holdSystemRef,
+                avoided = savedOverrides.avoided
+            )
         }
         sessions[profile.id] = session
         if (ScannerEndpointPolicy.isBlockedUrl(profile.baseUrl)) {
@@ -1025,6 +1033,17 @@ object ScannerRepository {
         scheduleFavoriteSave(session)
     }
 
+    private fun persistMonitoringOverridesLocked(session: Session) {
+        channelStore?.setMonitoringOverrides(
+            session.profile.id,
+            MonitoringOverrides(
+                hold = session.state.hold,
+                holdSystemRef = session.state.holdSystemRef,
+                avoided = session.state.avoided
+            )
+        )
+    }
+
     fun setHold(profileId: String, key: ChannelKey?) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
@@ -1032,6 +1051,7 @@ object ScannerRepository {
                 hold = key,
                 holdSystemRef = if (key != null) null else session.state.holdSystemRef
             )
+            persistMonitoringOverridesLocked(session)
             sendEffectiveLivefeedLocked(session)
         }
         publish()
@@ -1045,6 +1065,7 @@ object ScannerRepository {
                 holdSystemRef = systemRef,
                 hold = if (systemRef != null) null else session.state.hold
             )
+            persistMonitoringOverridesLocked(session)
             sendEffectiveLivefeedLocked(session)
         }
         publish()
@@ -1055,6 +1076,7 @@ object ScannerRepository {
         val session = sessions[profileId] ?: return
         synchronized(session) {
             session.state = session.state.copy(hold = null, holdSystemRef = null)
+            persistMonitoringOverridesLocked(session)
             sendEffectiveLivefeedLocked(session)
         }
         publish()
@@ -1067,6 +1089,7 @@ object ScannerRepository {
             val set = session.state.avoided.toMutableSet()
             if (avoided) set += key else set -= key
             session.state = session.state.copy(avoided = set)
+            persistMonitoringOverridesLocked(session)
             sendEffectiveLivefeedLocked(session)
         }
         publish()
@@ -1077,6 +1100,7 @@ object ScannerRepository {
         val session = sessions[profileId] ?: return
         synchronized(session) {
             session.state = session.state.copy(avoided = emptySet())
+            persistMonitoringOverridesLocked(session)
             sendEffectiveLivefeedLocked(session)
         }
         publish()
@@ -2684,6 +2708,15 @@ object ScannerRepository {
         var needsKeyExchange = false
 
         synchronized(session) {
+            val currentOverrides = MonitoringOverrides(
+                hold = session.state.hold,
+                holdSystemRef = session.state.holdSystemRef,
+                avoided = session.state.avoided
+            )
+            val scopedOverrides = reconcileMonitoringOverrides(currentOverrides, systems)
+            if (scopedOverrides != currentOverrides) {
+                channelStore?.setMonitoringOverrides(session.profile.id, scopedOverrides)
+            }
             val detailsChanged = session.relayUrl != relayUrl || session.clientToken != token
             if (!encrypted || detailsChanged) {
                 session.keyJob?.cancel()
@@ -2708,6 +2741,9 @@ object ScannerRepository {
                     else -> "Connected"
                 },
                 systems = systems,
+                hold = scopedOverrides.hold,
+                holdSystemRef = scopedOverrides.holdSystemRef,
+                avoided = scopedOverrides.avoided,
                 hiddenSystemRefs = hiddenSystemRefs,
                 favoriteSystemRefs = if (applyServerFavorites) {
                     serverFavorites!!.systemRefs
