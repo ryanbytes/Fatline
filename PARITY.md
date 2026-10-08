@@ -1,8 +1,7 @@
 # FatLine Android client parity tracker
 
-This is a **feature and behavior parity** checklist, not a claim of visual or protocol equivalence.
-The baseline is the publicly advertised ThinLine Android app plus the October 6, 2026
-ThinLine v26.10.01 HUD release. Verify every claimed behavior on an Android device
+This is a **functional client parity** checklist, not a mandate to simulate physical radio scanner hardware.
+The baseline is the ThinLine Android app's **useful network, playback, channel, history, alert and account features**. A handheld-style scanner facade is optional and not a parity gate. Verify each relevant behavior on an Android device
 against a third-party/self-hosted compatible scanner; a passing JVM/build CI job is
 **not** an end-to-end test.
 
@@ -31,19 +30,18 @@ account information, or encryption keys to ThinLine-hosted services):
 | Android Auto MediaLibrary browse/play | Implemented | Test with an Android Auto host |
 | Custom per-scanner sounds, connection-loss and local severe-weather alerts | Implemented | Notification permission and real-device audio behavior |
 
-## Visual and functional gaps (open)
+## Functional and usability gaps (open)
 
 | Area | Status | Work |
 | --- | --- | --- |
-| ThinLine v26.10.01 mobile scanner HUD | **Partial** | State-derived annunciators, talkgroup/system/TGID/unit text and optional tag-color backlight implemented; compare geometry/behavior on-device and refine glass presentation |
-| Signal meter / scanning sweep | **Not matched** | Implement only if there is a real signal/scanning state; never synthesize signal data or fake active transmissions |
-| Scanner keypad | **Not matched** | Identify actual public-client commands/operations, implement real actions, and test them; no decorative or nonfunctional controls |
+| Compact, truthful playback and connection status | **Partially implemented** | Verify legible states and metadata on-device; simplify or remove radio-style HUD elements if they obstruct actual client use |
 | Automatic server-assigned feed sync | **Not implemented** | Only explore privacy-preserving sync directly with the user's own scanner server; never call ThinLine-hosted account/telemetry endpoints |
-| Full native app visual parity | **Unverified** | Compare on-device layouts, hierarchy, font sizes, status flags, icons and accessibility to current mobile screenshots |
+| Mobile app usability | **Unverified** | Check screen density, hierarchy, legibility, navigation and accessibility on actual phone, without copying a radio-scanner faceplate |
 | Runtime interoperability | **Unverified** | Test phone process death, encrypted/audio relay, rapid reconnects, Android Auto, queue limits, background mixing, and resume behavior |
 
 ## Deliberately excluded by user request
 
+- **Physical scanner keypad, simulated signal meter and scanning sweep**: not required; this is a streaming client, not a hardware scanner emulator.
 - **Push alerts** and native remote-push registration: not required for this FatLine parity target.
 - ThinLine subscription/advertising flows, duplicate ads, or app-side analytics/tracking: not added.
 - ThinLine-hosted account or relay calls: blocked by existing privacy policy.
