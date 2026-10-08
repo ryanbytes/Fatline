@@ -97,7 +97,7 @@ The CI debug signing key is intentionally repository-visible and is only for per
 - Cleartext HTTP remains allowed for self-hosted LAN scanner deployments and the UI warns when it is used.
 - Relay audio master keys are held in memory only, cleared when scanner sessions are removed, and refreshed when encrypted audio indicates a stale key.
 - No ad or analytics SDK is included.
-- Direct requests to `thinlineradio.com` and its subdomains are blocked for scanner, account, and relay traffic; HTTP/WebSocket redirects are disabled to prevent credential forwarding
+- Direct requests to vendor-hosted `thinlineradio.com` or `thinlineds.com` (including subdomains) are blocked for scanner, account, and relay traffic; HTTP/WebSocket redirects are disabled to prevent credential forwarding
 - Encrypted audio that depends on ThinLine's hosted relay is unavailable; compatible relays under user-controlled domains can still be used
 
 ## Verification status

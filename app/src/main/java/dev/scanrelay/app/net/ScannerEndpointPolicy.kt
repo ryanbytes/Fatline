@@ -1,11 +1,15 @@
 package dev.scanrelay.app.net
 
 internal object ScannerEndpointPolicy {
-    private const val VENDOR_DOMAIN = "thinlineradio.com"
+    // Vendor-owned endpoints, including the hosted listener directory and relay services.
+    // Self-hosted scanner operators using other domains remain allowed.
+    private val VENDOR_DOMAINS = setOf("thinlineradio.com", "thinlineds.com")
 
     fun isBlockedHost(host: String): Boolean {
         val normalized = host.trim().trimEnd('.').lowercase()
-        return normalized == VENDOR_DOMAIN || normalized.endsWith(".$VENDOR_DOMAIN")
+        return VENDOR_DOMAINS.any { domain ->
+            normalized == domain || normalized.endsWith(".$domain")
+        }
     }
 
     fun isBlockedUrl(url: String): Boolean {
