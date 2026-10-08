@@ -43,7 +43,8 @@ account information, or encryption keys to ThinLine-hosted services):
 ## Deliberately excluded by user request
 
 - **Physical scanner keypad, simulated signal meter and scanning sweep**: not required; this is a streaming client, not a hardware scanner emulator.
-- **Push alerts** and native remote-push registration: not required for this FatLine parity target.
+- **Push alerts** and native remote-push registration: not required for this FatLine parity target. Local notifications from received or polled transcript text are allowed and replace server-alert notifications when explicitly enabled.
+- Server-URL validation during setup and a dedicated AI-summary UI are not required.
 - ThinLine subscription/advertising flows, duplicate ads, or app-side analytics/tracking: not added.
 - ThinLine-hosted account or relay calls: blocked by existing privacy policy.
 
