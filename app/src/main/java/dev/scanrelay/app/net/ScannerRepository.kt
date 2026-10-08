@@ -1320,8 +1320,10 @@ object ScannerRepository {
         publish()
         appContext?.let { context ->
             val notificationId = ("transcript:$profileId:$callId").hashCode() and Int.MAX_VALUE
-            AlertNotifier.post(context, profileId, session.profile.name,
-                "${session.profile.name}: ${alert.title}", alert.body, notificationId)
+            runCatching {
+                AlertNotifier.post(context, profileId, session.profile.name,
+                    "${session.profile.name}: ${alert.title}", alert.body, notificationId)
+            }
         }
     }
 
