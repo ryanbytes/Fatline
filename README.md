@@ -4,6 +4,8 @@ Independent Android client for ThinLine Radio and compatible Rdio-style scanner 
 
 FatLine is a clean implementation of the public server/client protocol. It does not contain ThinLine mobile-app code, artwork, package names, or branding.
 
+See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outstanding mobile HUD/keypad and device-test work, and the user's explicit push-alert exclusion.
+
 ## Current feature set
 
 - Android 8.0+ (`minSdk 26`), compile/target SDK 36
