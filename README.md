@@ -36,6 +36,8 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - Server archive/history through `LCL`, paged results, `CAL` replay, and continuous archive playback from any loaded call toward live
 - Authenticated archived-call audio downloads to `Downloads/FatLine` on modern Android
 - Local scanner-alert notifications and transcript display when supplied by the server
+- Opt-in per-scanner background transcript monitor: checks the scanner's authenticated transcript API every 30 seconds while the foreground scanner service is active, including when playback is paused; matches whole words or phrases locally and sends device notifications without server-originated alerts, relay telemetry, or push registrations
+- Local transcript alerts keep a 500-call deduplication window and 100 saved alerts per scanner; the first fetch establishes a baseline so older transcripts do not generate a flood of notifications
 - Interactive NWS radar centered on the saved ZIP location, plus Severe and extreme NWS warning notifications, with a separate per-server sound preference, while the scanner foreground service is active
 - Per-scanner Android notification sounds, including system-default, installed custom sounds, and silent alerts
 - Independent per-scanner disconnect notification sounds with the same default/custom/silent choices
