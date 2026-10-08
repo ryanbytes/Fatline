@@ -54,7 +54,7 @@ internal class LocalTranscriptAlertStore(context: Context) {
     fun configure(profileId: String, raw: String, enabled: Boolean) {
         val normalized = LocalTranscriptAlertPolicy.terms(raw).joinToString("\n")
         val previous = rawRules(profileId)
-        val restartBaseline = normalized != previous || (enabled && !enabled(profileId))
+        val restartBaseline = normalized != previous || (enabled && !this.enabled(profileId))
         prefs.edit().putString("rules_$profileId", normalized)
             .putBoolean("enabled_$profileId", enabled)
             .apply()
