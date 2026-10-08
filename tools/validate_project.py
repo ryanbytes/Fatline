@@ -274,9 +274,9 @@ require('phrasesMatchRegardlessOfCaseAndSeparator' in local_monitor_tests and 'w
 require('LocalTranscriptAlertStore(getApplication()).clearProfile(profileId)' in viewmodel, 'deleting scanner must erase its local rules and alerts')
 require('localTranscriptMonitorStatus' in ui and 'Transcript API unavailable' in repo, 'monitor status and API error visibility missing')
 require('fun batterySaver(profileId: String)' in local_monitor and 'battery_saver_$profileId' in local_monitor, 'transcript battery saver preference missing')
-require('fun pollIntervalMs(batterySaver: Boolean)' in local_monitor and 'SAVER_POLL_MS = 300_000L' in local_monitor and 'FAST_POLL_MS = 30_000L' in local_monitor, 'transcript saver must have 5-minute cadence with 30-second fallback')
-require('fun localTranscriptBatterySaver(' in viewmodel and 'localTranscriptBatterySaver' in ui and 'Battery saver (5-minute checks instead of 30 seconds)' in ui, 'user-selectable saver UI missing')
-require('batterySaverReducesPeriodicNetworkChecksTenfold' in local_monitor_tests, 'transcript polling efficiency regression missing')
+require('fun pollIntervalMs(batterySaver: Boolean)' in local_monitor and 'SAVER_POLL_MS = 60_000L' in local_monitor and 'FAST_POLL_MS = 30_000L' in local_monitor, 'transcript saver must have 1-minute cadence with 30-second fallback')
+require('fun localTranscriptBatterySaver(' in viewmodel and 'localTranscriptBatterySaver' in ui and 'Battery saver (1-minute checks instead of 30 seconds)' in ui, 'user-selectable saver UI missing')
+require('batterySaverHalvesPeriodicNetworkChecks' in local_monitor_tests, 'transcript polling efficiency regression missing')
 
 # A normal app relaunch must revive previously active sessions without restarting
 # still-running scanner sockets, reviving disconnected profiles or using boot receivers.
