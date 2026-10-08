@@ -784,69 +784,77 @@ private fun ChannelsScreen(
                 val fullSystem = server.systems.firstOrNull { it.systemRef == system.systemRef } ?: system
                 val systemFavorite = system.systemRef in server.favoriteSystemRefs
                 item(key = "system-" + server.profile.id + "-" + systemIndex + "-" + system.systemRef) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            system.label,
-                            modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            system.talkgroups.count { it.enabled }.toString() + "/" + system.talkgroups.size + " enabled",
-                            modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            item {
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.setSystemFavorite(
-                                            server.profile.id,
-                                            system.systemRef,
-                                            !systemFavorite
-                                        )
-                                    },
-                                    enabled = fullSystem.talkgroups.isNotEmpty()
-                                ) { Text(if (systemFavorite) "★" else "☆") }
-                            }
-                            item {
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.setSystemHold(
-                                            server.profile.id,
-                                            if (server.holdSystemRef == system.systemRef) null else system.systemRef
-                                        )
-                                    }
-                                ) { Text(if (server.holdSystemRef == system.systemRef) "Held" else "Hold") }
-                            }
-                            item {
-                                OutlinedButton(
-                                    onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, true) }
-                                ) { Text("All") }
-                            }
-                            item {
-                                OutlinedButton(
-                                    onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, false) }
-                                ) { Text("None") }
-                            }
-                            item {
-                                OutlinedButton(
-                                    onClick = {
-                                        viewModel.setSystemHidden(
-                                            server.profile.id,
-                                            system.systemRef,
-                                            true
-                                        )
-                                    }
-                                ) { Text("Hide") }
+                            Text(
+                                "SYSTEM",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                system.label,
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                system.talkgroups.count { it.enabled }.toString() + "/" + system.talkgroups.size + " enabled",
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.setSystemFavorite(
+                                                server.profile.id,
+                                                system.systemRef,
+                                                !systemFavorite
+                                            )
+                                        },
+                                        enabled = fullSystem.talkgroups.isNotEmpty()
+                                    ) { Text(if (systemFavorite) "★" else "☆") }
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.setSystemHold(
+                                                server.profile.id,
+                                                if (server.holdSystemRef == system.systemRef) null else system.systemRef
+                                            )
+                                        }
+                                    ) { Text(if (server.holdSystemRef == system.systemRef) "Held" else "Hold") }
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, true) }
+                                    ) { Text("All") }
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = { viewModel.setSystemTalkgroups(server.profile.id, system.systemRef, false) }
+                                    ) { Text("None") }
+                                }
+                                item {
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.setSystemHidden(
+                                                server.profile.id,
+                                                system.systemRef,
+                                                true
+                                            )
+                                        }
+                                    ) { Text("Hide") }
+                                }
                             }
                         }
                     }
@@ -925,72 +933,80 @@ private fun ChannelsScreen(
                                 talkgroupIndex + "-" + tg.systemRef + "-" + tg.talkgroupRef
                         }
                     ) { _, tg ->
-                        Column(
-                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(
-                                    checked = tg.enabled,
-                                    onCheckedChange = { enabled ->
-                                        viewModel.setTalkgroup(server.profile.id, tg.systemRef, tg.talkgroupRef, enabled)
-                                    }
-                                )
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        tg.displayName,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        "TG " + tg.talkgroupRef +
-                                            if (tg.tag.isBlank()) "" else " · " + tg.tag,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        Card(Modifier.fillMaxWidth().padding(start = 32.dp, end = 16.dp, top = 3.dp, bottom = 3.dp)) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                item {
-                                    OutlinedButton(
-                                        onClick = {
-                                            viewModel.setFavorite(
-                                                server.profile.id,
-                                                tg.systemRef,
-                                                tg.talkgroupRef,
-                                                !tg.favorite
-                                            )
+                                Text(
+                                    "CHANNEL",
+                                    modifier = Modifier.padding(start = 12.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = tg.enabled,
+                                        onCheckedChange = { enabled ->
+                                            viewModel.setTalkgroup(server.profile.id, tg.systemRef, tg.talkgroupRef, enabled)
                                         }
-                                    ) { Text(if (tg.favorite) "★" else "☆") }
+                                    )
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            tg.displayName,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            "TG " + tg.talkgroupRef +
+                                                if (tg.tag.isBlank()) "" else " · " + tg.tag,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
-                                editingScanList?.let { list ->
+                                LazyRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     item {
-                                        val inList = tg.key in list.channels
                                         OutlinedButton(
                                             onClick = {
-                                                viewModel.setScanListChannel(
+                                                viewModel.setFavorite(
                                                     server.profile.id,
-                                                    list.id,
-                                                    tg.key,
-                                                    !inList
+                                                    tg.systemRef,
+                                                    tg.talkgroupRef,
+                                                    !tg.favorite
                                                 )
                                             }
-                                        ) { Text(if (inList) "✓ List" else "+ List") }
+                                        ) { Text(if (tg.favorite) "★" else "☆") }
                                     }
-                                }
-                                item {
-                                    OutlinedButton(onClick = {
-                                        if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
-                                        else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
-                                    }) { Text(if (server.hold == tg.key) "Held" else "Hold") }
+                                    editingScanList?.let { list ->
+                                        item {
+                                            val inList = tg.key in list.channels
+                                            OutlinedButton(
+                                                onClick = {
+                                                    viewModel.setScanListChannel(
+                                                        server.profile.id,
+                                                        list.id,
+                                                        tg.key,
+                                                        !inList
+                                                    )
+                                                }
+                                            ) { Text(if (inList) "✓ List" else "+ List") }
+                                        }
+                                    }
+                                    item {
+                                        OutlinedButton(onClick = {
+                                            if (server.hold == tg.key) viewModel.clearHold(server.profile.id)
+                                            else viewModel.setHold(server.profile.id, tg.systemRef, tg.talkgroupRef)
+                                        }) { Text(if (server.hold == tg.key) "Held" else "Hold") }
+                                    }
                                 }
                             }
                         }
-                        HorizontalDivider(Modifier.padding(start = 64.dp))
                     }
                 }
             }
