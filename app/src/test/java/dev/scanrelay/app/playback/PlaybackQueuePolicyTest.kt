@@ -27,6 +27,22 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun immediateReplayInsertsBeforeCurrentWithoutDiscardingQueue() {
+        val media = listOf(id("live", 1), id("live", 2), id("replay", 3))
+        val position = PlaybackQueuePolicy.immediateInsertIndex(media.size, 1)
+        val updated = media.toMutableList().apply { add(position, id("replay", 4)) }
+        assertEquals(listOf(id("live", 1), id("replay", 4), id("live", 2), id("replay", 3)), updated)
+        assertEquals(1, position)
+    }
+
+    @Test
+    fun immediateReplayIsFirstWhenQueueHasNoSelectedItem() {
+        assertEquals(0, PlaybackQueuePolicy.immediateInsertIndex(3, -1))
+        assertEquals(0, PlaybackQueuePolicy.immediateInsertIndex(0, -1))
+        assertEquals(0, PlaybackQueuePolicy.immediateInsertIndex(3, 12))
+    }
+
+    @Test
     fun queuedPreviewListsCallsAfterCurrentPlayback() {
         val media = listOf(id("live", 1), id("replay", 2), id("live", 3))
         assertEquals(listOf(id("replay", 2), id("live", 3)), PlaybackQueuePolicy.queuedMediaIds(media, 0))
