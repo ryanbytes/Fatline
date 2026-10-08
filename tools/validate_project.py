@@ -347,6 +347,9 @@ require('talkgroup.key !in state.avoided' in repo, 'avoided channels must be exc
 require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
 require('Search loaded history' in ui and 'historyQuery' in ui, 'loaded-history search control missing')
 require('historySystemRef' in models and 'historyTalkgroupRef' in models, 'active archive server-filter state missing')
+require('historyTalkgroupRefs' in models and '"talkgroups", JSONArray(selectedTalkgroups)' in protocol and
+        'talkgroupRefs = activeTalkgroupRefs' in repo and 'archiveTalkgroupRefs.toList()' in ui,
+        'archive multi-talkgroup selection must survive protocol, pagination and UI')
 require('activeSystemRef = session.state.historySystemRef' in repo and 'activeTalkgroupRef = session.state.historyTalkgroupRef' in repo, 'archive pagination must reuse the active server filter')
 require('matchesHistoryFilter(session.state, call)' in repo, 'live calls must respect the active archive filter')
 require('liveCallsRespectActiveHistoryFilter' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive-filter live-call regression test missing')

@@ -218,6 +218,30 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun multiTalkgroupHistoryFilterKeepsOnlySelectedCallsInSystem() {
+        val state = ServerScannerState(
+            profile = profile,
+            systems = systems,
+            historySystemRef = 1,
+            historyTalkgroupRefs = listOf(11, 12)
+        )
+        fun call(system: Long, talkgroup: Long) = RadioCall(
+            profileId = profile.id,
+            serverName = profile.name,
+            id = system * 100 + talkgroup,
+            systemRef = system,
+            talkgroupRef = talkgroup,
+            systemLabel = "System",
+            talkgroupLabel = "TG",
+            dateTime = ""
+        )
+        assertTrue(ScannerRepository.matchesHistoryFilter(state, call(1, 11)))
+        assertTrue(ScannerRepository.matchesHistoryFilter(state, call(1, 12)))
+        assertFalse(ScannerRepository.matchesHistoryFilter(state, call(1, 13)))
+        assertFalse(ScannerRepository.matchesHistoryFilter(state, call(2, 11)))
+    }
+
+    @Test
     fun liveCallsRespectAdvancedArchiveFilters() {
         val groupedSystems = listOf(
             SystemConfig(

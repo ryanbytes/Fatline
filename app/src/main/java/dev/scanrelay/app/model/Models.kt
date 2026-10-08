@@ -256,6 +256,7 @@ data class ServerScannerState(
     val historyHasMore: Boolean = false,
     val historySystemRef: Long? = null,
     val historyTalkgroupRef: Long? = null,
+    val historyTalkgroupRefs: List<Long> = emptyList(),
     val historyDate: String? = null,
     val historyGroup: String? = null,
     val historyTag: String? = null,

@@ -1297,9 +1297,12 @@ private fun HistoryScreen(
     var archiveSystemRef by remember(selectedProfileId, server?.historySystemRef) {
         mutableStateOf(server?.historySystemRef)
     }
-    var archiveTalkgroupRef by remember(selectedProfileId, server?.historyTalkgroupRef) {
-        mutableStateOf(server?.historyTalkgroupRef)
+    var archiveTalkgroupRefs by remember(selectedProfileId, server?.historyTalkgroupRef, server?.historyTalkgroupRefs) {
+        mutableStateOf(
+            (server?.historyTalkgroupRefs.orEmpty() + listOfNotNull(server?.historyTalkgroupRef)).toSet()
+        )
     }
+    var archiveTalkgroupMenuExpanded by remember(selectedProfileId) { mutableStateOf(false) }
     var archiveGroup by remember(selectedProfileId, server?.historyGroup) {
         mutableStateOf(server?.historyGroup)
     }
@@ -1391,6 +1394,7 @@ private fun HistoryScreen(
                 val talkgroup = system?.talkgroups?.firstOrNull { it.talkgroupRef == tgRef }
                 add(talkgroup?.displayName ?: "TG $tgRef")
             }
+            if (current.historyTalkgroupRefs.size > 1) add("${current.historyTalkgroupRefs.size} talkgroups")
             current.historyDate?.let { add("from $it") }
             if (current.historySort > 0) add("oldest first")
         }
@@ -1422,7 +1426,7 @@ private fun HistoryScreen(
                         Button(
                             onClick = {
                                 archiveSystemRef = null
-                                archiveTalkgroupRef = null
+                                archiveTalkgroupRefs = emptySet()
                                 archiveGroup = null
                                 archiveTag = null
                                 archiveDate = ""
@@ -1438,7 +1442,7 @@ private fun HistoryScreen(
                             OutlinedButton(
                                 onClick = {
                                     archiveSystemRef = call.systemRef
-                                    archiveTalkgroupRef = call.talkgroupRef
+                                    archiveTalkgroupRefs = setOf(call.talkgroupRef)
                                     archiveGroup = null
                                     archiveTag = null
                                     archiveDate = ""
@@ -1458,7 +1462,7 @@ private fun HistoryScreen(
                             OutlinedButton(
                                 onClick = {
                                     archiveSystemRef = call.systemRef
-                                    archiveTalkgroupRef = null
+                                    archiveTalkgroupRefs = emptySet()
                                     archiveGroup = null
                                     archiveTag = null
                                     archiveDate = ""
@@ -1518,7 +1522,7 @@ private fun HistoryScreen(
                                     onSelect = { key ->
                                         archiveGroup = key.takeIf { it.isNotBlank() }
                                         archiveSystemRef = null
-                                        archiveTalkgroupRef = null
+                                        archiveTalkgroupRefs = emptySet()
                                     }
                                 )
                             }
@@ -1531,7 +1535,7 @@ private fun HistoryScreen(
                                     onSelect = { key ->
                                         archiveTag = key.takeIf { it.isNotBlank() }
                                         archiveSystemRef = null
-                                        archiveTalkgroupRef = null
+                                        archiveTalkgroupRefs = emptySet()
                                     }
                                 )
                             }
@@ -1545,26 +1549,56 @@ private fun HistoryScreen(
                                         },
                                     onSelect = { key ->
                                         archiveSystemRef = key.toLongOrNull()
-                                        archiveTalkgroupRef = null
+                                        archiveTalkgroupRefs = emptySet()
                                     }
                                 )
                             }
                             item {
-                                ArchiveMenuButton(
-                                    title = "Talkgroup",
-                                    selectedKey = archiveTalkgroupRef?.toString().orEmpty(),
-                                    choices = listOf(ArchiveMenuChoice("", "All talkgroups")) +
-                                        filteredTalkgroups.map {
-                                            ArchiveMenuChoice(
-                                                it.talkgroupRef.toString(),
-                                                it.displayName
-                                            )
-                                        },
-                                    enabled = archiveSystemRef != null,
-                                    onSelect = { key ->
-                                        archiveTalkgroupRef = key.toLongOrNull()
+                                Column {
+                                    OutlinedButton(
+                                        onClick = { archiveTalkgroupMenuExpanded = true },
+                                        enabled = archiveSystemRef != null
+                                    ) {
+                                        Text(
+                                            if (archiveTalkgroupRefs.isEmpty()) "All talkgroups"
+                                            else "${archiveTalkgroupRefs.size} talkgroups"
+                                        )
                                     }
-                                )
+                                    DropdownMenu(
+                                        expanded = archiveTalkgroupMenuExpanded,
+                                        onDismissRequest = { archiveTalkgroupMenuExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("All talkgroups") },
+                                            onClick = { archiveTalkgroupRefs = emptySet() }
+                                        )
+                                        filteredTalkgroups.forEach { talkgroup ->
+                                            val ref = talkgroup.talkgroupRef
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Checkbox(
+                                                            checked = ref in archiveTalkgroupRefs,
+                                                            onCheckedChange = null
+                                                        )
+                                                        Text(talkgroup.displayName)
+                                                    }
+                                                },
+                                                onClick = {
+                                                    archiveTalkgroupRefs = if (ref in archiveTalkgroupRefs) {
+                                                        archiveTalkgroupRefs - ref
+                                                    } else {
+                                                        archiveTalkgroupRefs + ref
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        DropdownMenuItem(
+                                            text = { Text("Done") },
+                                            onClick = { archiveTalkgroupMenuExpanded = false }
+                                        )
+                                    }
+                                }
                             }
                             if (favoriteArchiveChannels.isNotEmpty()) {
                                 item {
@@ -1583,7 +1617,7 @@ private fun HistoryScreen(
                                             val refs = key.split(":", limit = 2)
                                             if (refs.size == 2) {
                                                 archiveSystemRef = refs[0].toLongOrNull()
-                                                archiveTalkgroupRef = refs[1].toLongOrNull()
+                                                archiveTalkgroupRefs = refs[1].toLongOrNull()?.let { setOf(it) } ?: emptySet()
                                             }
                                         }
                                     )
@@ -1630,7 +1664,8 @@ private fun HistoryScreen(
                                     viewModel.requestHistoryFiltered(
                                         profileId = server.profile.id,
                                         systemRef = archiveSystemRef,
-                                        talkgroupRef = archiveTalkgroupRef,
+                                        talkgroupRef = archiveTalkgroupRefs.singleOrNull(),
+                                        talkgroupRefs = archiveTalkgroupRefs.toList(),
                                         date = archiveDateIso,
                                         group = archiveGroup,
                                         tag = archiveTag,
@@ -1643,7 +1678,7 @@ private fun HistoryScreen(
                             OutlinedButton(
                                 onClick = {
                                     archiveSystemRef = null
-                                    archiveTalkgroupRef = null
+                                    archiveTalkgroupRefs = emptySet()
                                     archiveGroup = null
                                     archiveTag = null
                                     archiveDate = ""

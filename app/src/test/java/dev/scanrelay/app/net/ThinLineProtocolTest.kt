@@ -63,6 +63,25 @@ class ThinLineProtocolTest {
         assertFalse(payload.has("talkgroups"))
     }
 
+    @Test fun multipleArchiveTalkgroupsUseUpstreamPluralField() {
+        val payload = ThinLineProtocol.parseEnvelope(
+            ThinLineProtocol.listCalls(systemRef = 1, talkgroupRefs = listOf(102, 101, 102, -1))
+        ).payload as JSONObject
+        assertFalse(payload.has("talkgroup"))
+        val refs = payload.getJSONArray("talkgroups")
+        assertEquals(2, refs.length())
+        assertEquals(102L, refs.getLong(0))
+        assertEquals(101L, refs.getLong(1))
+    }
+
+    @Test fun oneSelectedArchiveTalkgroupKeepsLegacySingularField() {
+        val payload = ThinLineProtocol.parseEnvelope(
+            ThinLineProtocol.listCalls(systemRef = 1, talkgroupRefs = listOf(101, 101))
+        ).payload as JSONObject
+        assertEquals(101L, payload.getLong("talkgroup"))
+        assertFalse(payload.has("talkgroups"))
+    }
+
     @Test fun callIdMatchesThinLineStringWireType() {
         assertEquals("[\"CAL\",\"42\"]", ThinLineProtocol.call(42))
     }

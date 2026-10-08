@@ -80,14 +80,21 @@ object ThinLineProtocol {
         talkgroupRef: Long? = null,
         date: String? = null,
         group: String? = null,
-        tag: String? = null
+        tag: String? = null,
+        talkgroupRefs: List<Long> = emptyList()
     ): String {
         val payload = JSONObject()
             .put("limit", limit.coerceIn(1, 500))
             .put("offset", offset.coerceAtLeast(0))
             .put("sort", if (sort < 0) -1 else 1)
         if (systemRef != null && systemRef > 0) payload.put("system", systemRef)
-        if (talkgroupRef != null && talkgroupRef > 0) payload.put("talkgroup", talkgroupRef)
+        val selectedTalkgroups = (talkgroupRefs + listOfNotNull(talkgroupRef)).filter { it > 0 }.distinct()
+        when (selectedTalkgroups.size) {
+            1 -> payload.put("talkgroup", selectedTalkgroups.single())
+            else -> if (selectedTalkgroups.isNotEmpty()) {
+                payload.put("talkgroups", JSONArray(selectedTalkgroups))
+            }
+        }
         date?.trim()?.takeIf { it.isNotBlank() }?.let { payload.put("date", it) }
         group?.trim()?.takeIf { it.isNotBlank() }?.let { payload.put("group", it) }
         tag?.trim()?.takeIf { it.isNotBlank() }?.let { payload.put("tag", it) }
