@@ -168,13 +168,15 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                 )
                             }
                             Box(Modifier.weight(1f)) {
-                                NavigationBarItem(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    selected = tab in moreNavigationTabs,
-                                    onClick = { moreMenuExpanded = true },
-                                    icon = { Text("⋯") },
-                                    label = { Text("More", maxLines = 1, softWrap = false) }
-                                )
+                                Row(Modifier.fillMaxWidth()) {
+                                    NavigationBarItem(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        selected = tab in moreNavigationTabs,
+                                        onClick = { moreMenuExpanded = true },
+                                        icon = { Text("⋯") },
+                                        label = { Text("More", maxLines = 1, softWrap = false) }
+                                    )
+                                }
                                 DropdownMenu(
                                     expanded = moreMenuExpanded,
                                     onDismissRequest = { moreMenuExpanded = false }
