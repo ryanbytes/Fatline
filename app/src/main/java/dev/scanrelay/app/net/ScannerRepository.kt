@@ -29,6 +29,7 @@ import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.SystemHealthAlert
 import dev.scanrelay.app.model.TranscriptRecord
+import dev.scanrelay.app.playback.PlaybackQueueStore
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -3213,13 +3214,18 @@ object ScannerRepository {
         val dir = File(context.cacheDir, "fatline_audio/$safeProfile").apply { mkdirs() }
         val file = File(dir, "$callId-${System.nanoTime()}.$extension")
         file.writeBytes(bytes)
-        pruneCache(dir)
+        pruneCache(dir, context)
         return file.absolutePath
     }
 
-    private fun pruneCache(dir: File) {
+    private fun pruneCache(dir: File, context: Context) {
         val files = dir.listFiles()?.sortedByDescending { it.lastModified() }.orEmpty()
-        files.drop(150).forEach { it.delete() }
+        val protectedPaths = PlaybackQueueStore(context).protectedAudioPaths()
+        // Queued and currently playing files are never candidates for eviction.
+        // Keep the newest 150 *unprotected* files to bound unrelated cache growth.
+        files.filterNot { it.absolutePath in protectedPaths }
+            .drop(150)
+            .forEach { it.delete() }
     }
 
     private fun labels(systems: List<SystemConfig>, systemRef: Long, talkgroupRef: Long): Pair<String, String> {
