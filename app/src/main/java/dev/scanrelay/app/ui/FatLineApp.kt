@@ -66,6 +66,7 @@ import dev.scanrelay.app.model.ScannerAlert
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
+import dev.scanrelay.app.playback.QueuedCall
 import dev.scanrelay.app.playback.ScannerService
 import java.net.URLEncoder
 import java.time.Instant
@@ -93,6 +94,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     val profiles by viewModel.profiles.collectAsStateWithLifecycle()
     val scanner by viewModel.scannerState.collectAsStateWithLifecycle()
     val queuedCallCount by ScannerService.queuedCallCount.collectAsStateWithLifecycle()
+    val queuedCalls by ScannerService.queuedCalls.collectAsStateWithLifecycle()
     val currentlyPlayingCall by ScannerService.currentlyPlayingCall.collectAsStateWithLifecycle()
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(AppTab.Scanner) }
@@ -172,6 +174,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                             selectedProfileId = selectedProfileId,
                             onSelectProfile = { selectedProfileId = it },
                             queuedCallCount = queuedCallCount,
+                            queuedCalls = queuedCalls,
                             currentlyPlayingCall = currentlyPlayingCall,
                             viewModel = viewModel,
                             modifier = Modifier.fillMaxSize().padding(padding)
@@ -234,6 +237,7 @@ private fun ScannerScreen(
     selectedProfileId: String?,
     onSelectProfile: (String) -> Unit,
     queuedCallCount: Int,
+    queuedCalls: List<QueuedCall>,
     currentlyPlayingCall: RadioCall?,
     viewModel: ScannerViewModel,
     modifier: Modifier
@@ -241,6 +245,7 @@ private fun ScannerScreen(
     val profile = profiles.firstOrNull { it.id == selectedProfileId }
     val server = selectedProfileId?.let { scanner.servers[it] }
     val playingCall = currentlyPlayingCall?.takeIf { it.profileId == server?.profile?.id }
+    var queueExpanded by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = modifier,
@@ -265,17 +270,54 @@ private fun ScannerScreen(
 
         item {
             Card(Modifier.padding(horizontal = 16.dp)) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("Playback queue", fontWeight = FontWeight.SemiBold)
-                    Text(
-                        if (queuedCallCount == 1) "1 call queued" else "$queuedCallCount calls queued",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Playback queue", fontWeight = FontWeight.SemiBold)
+                            Text(
+                                if (queuedCallCount == 1) "1 call queued" else "$queuedCallCount calls queued",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        if (queuedCalls.isNotEmpty()) {
+                            OutlinedButton(onClick = { queueExpanded = !queueExpanded }) {
+                                Text(if (queueExpanded) "Hide queue" else "Show queue")
+                            }
+                        }
+                    }
+                    if (queueExpanded && queuedCalls.isNotEmpty()) {
+                        HorizontalDivider()
+                        queuedCalls.take(5).forEachIndexed { index, entry ->
+                            Column {
+                                Text(
+                                    "${index + 1}. ${entry.call.talkgroupLabel}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    "${if (entry.liveFeed) "Live" else "Replay"} · ${entry.call.serverName} · ${entry.call.systemLabel}",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        if (queuedCalls.size > 5) {
+                            Text(
+                                "+ ${queuedCalls.size - 5} more calls",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                 }
             }
         }
