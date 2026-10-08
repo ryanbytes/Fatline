@@ -726,6 +726,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun downloadCall(profileId: String, callId: Long) = ScannerRepository.downloadCall(profileId, callId)
     fun skip() = ScannerRepository.skip()
     fun clearPlaybackQueue() = ScannerService.clearQueue(getApplication())
+    fun setOutputVolume(percent: Int) = ScannerService.setOutputVolume(getApplication(), percent)
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }

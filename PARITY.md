@@ -18,6 +18,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | --- | --- | --- |
 | Concurrent scanner connections, open/PIN access | Implemented | Exercise two real third-party scanners over network handoffs |
 | Live audio, background media service, audio mixing | Implemented | Screen-off playback alongside music without ducking |
+| Independent saved scanner output volume | Implemented | Confirm slider gain without altering other apps' media output |
 | Channel/system enablement, local favorites, system/tag/channel tree | Implemented | Mobile screen and subscription state vs. actual server |
 | Scan lists and server-backed list membership/reordering | Implemented | Synchronization and conflict/reconnect tests |
 | Hold system/talkgroup, avoid/unavoid, Pause, Skip | Implemented | Verify selection/resume behavior on a real server |
