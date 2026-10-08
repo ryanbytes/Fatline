@@ -40,15 +40,28 @@ internal class LocalTranscriptAlertStore(context: Context) {
     fun rules(profileId: String): List<String> = LocalTranscriptAlertPolicy.terms(rawRules(profileId))
     fun enabled(profileId: String): Boolean = prefs.getBoolean("enabled_$profileId", false)
     fun active(profileId: String): Boolean = enabled(profileId) && rules(profileId).isNotEmpty()
+    fun enabledAt(profileId: String): Long = prefs.getLong("since_$profileId", 0L)
+
+    /** An initial poll ignores history older than when monitoring was switched on. */
+    fun isNewSinceEnable(profileId: String, timestamp: Long?): Boolean {
+        val enabledAt = enabledAt(profileId)
+        if (timestamp == null || enabledAt <= 0) return false
+        val timestampMs = if (timestamp < 100_000_000_000L) timestamp * 1000L else timestamp
+        return timestampMs >= enabledAt - 15_000L
+    }
 
     @Synchronized
     fun configure(profileId: String, raw: String, enabled: Boolean) {
         val normalized = LocalTranscriptAlertPolicy.terms(raw).joinToString("\n")
         val previous = rawRules(profileId)
+        val restartBaseline = normalized != previous || (enabled && !enabled(profileId))
         prefs.edit().putString("rules_$profileId", normalized)
             .putBoolean("enabled_$profileId", enabled)
             .apply()
-        if (normalized != previous) {
+        if (restartBaseline) {
+            prefs.edit().putLong("since_$profileId", System.currentTimeMillis()).apply()
+        }
+        if (restartBaseline) {
             prefs.edit().remove("seen_$profileId").remove("bootstrapped_$profileId").apply()
         }
     }
@@ -133,7 +146,7 @@ internal class LocalTranscriptAlertStore(context: Context) {
     fun clearProfile(profileId: String) {
         prefs.edit().remove("rules_$profileId").remove("enabled_$profileId")
             .remove("seen_$profileId").remove("bootstrapped_$profileId")
-            .remove("alerts_$profileId").apply()
+            .remove("alerts_$profileId").remove("since_$profileId").apply()
     }
 }
 
