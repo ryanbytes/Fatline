@@ -32,6 +32,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -356,6 +357,9 @@ private fun ScannerStatusCard(
     viewModel: ScannerViewModel
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
+    val outputVolumePercent by ScannerService.outputVolumePercent.collectAsStateWithLifecycle()
+    var pendingVolume by remember { mutableStateOf(outputVolumePercent) }
+    LaunchedEffect(outputVolumePercent) { pendingVolume = outputVolumePercent }
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -464,6 +468,14 @@ private fun ScannerStatusCard(
                     ) { Text("Clear hold") }
                 }
             }
+
+            Text("Scanner output · $pendingVolume%", style = MaterialTheme.typography.bodySmall)
+            Slider(
+                value = pendingVolume / 100f,
+                onValueChange = { pendingVolume = (it * 100).toInt().coerceIn(0, 100) },
+                onValueChangeFinished = { viewModel.setOutputVolume(pendingVolume) },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
