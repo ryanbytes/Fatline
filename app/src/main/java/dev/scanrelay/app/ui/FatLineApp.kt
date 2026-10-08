@@ -6,6 +6,7 @@ import android.media.RingtoneManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -388,11 +390,10 @@ private fun ScannerScreen(
                 }
             } else {
                 items(recent, key = { call -> "recent-" + call.profileId + "-" + call.id }) { call ->
-                    CallRow(
-                        call,
+                    RecentLiveCallRow(
+                        call = call,
                         time12hFormat = server.time12hFormat,
-                        onReplay = { viewModel.replay(call.profileId, call.id) },
-                        onDownload = { viewModel.downloadCall(call.profileId, call.id) }
+                        onPlay = { viewModel.replay(call.profileId, call.id) }
                     )
                 }
             }
@@ -3348,6 +3349,47 @@ private fun InfoRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodySmall)
         Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     }
+}
+
+@Composable
+private fun RecentLiveCallRow(
+    call: RadioCall,
+    time12hFormat: Boolean,
+    onPlay: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(
+                onClickLabel = "Play ${call.talkgroupLabel}",
+                role = Role.Button,
+                onClick = onPlay
+            )
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                call.talkgroupLabel,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                call.systemLabel + " · TG " + call.talkgroupRef,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (call.dateTime.isNotBlank()) {
+            Text(
+                formatServerDateTime(call.dateTime, time12hFormat, includeDate = false),
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+    HorizontalDivider(Modifier.padding(horizontal = 16.dp))
 }
 
 @Composable
