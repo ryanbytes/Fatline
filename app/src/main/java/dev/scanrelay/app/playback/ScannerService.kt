@@ -103,13 +103,17 @@ class ScannerService : MediaLibraryService() {
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
-        player = ExoPlayer.Builder(this).build().apply {
+        player = ExoPlayer.Builder(this)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
+            .build().apply {
             setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
                     .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
                     .build(),
-                true
+                // Do not request audio focus: mix scanner traffic with music, navigation,
+                // podcasts, and other apps without pausing or ducking their volume.
+                false
             )
             addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -390,9 +394,9 @@ class ScannerService : MediaLibraryService() {
     private fun setProfilePausedInternal(profileId: String, paused: Boolean) {
         if (paused) {
             pausedProfiles += profileId
-            // A paused scanner should become silent immediately. Remove its current
-            // and queued calls while leaving audio from other connected scanners alone.
-            removeProfileMedia(profileId)
+            // Pause suppresses live scanning, not recordings the user explicitly
+            // chose to play. Preserve replays and traffic from other scanners.
+            removeLiveProfileMedia(profileId)
         } else {
             pausedProfiles -= profileId
         }
@@ -451,6 +455,14 @@ class ScannerService : MediaLibraryService() {
         player.clearMediaItems()
         callByMediaId.clear()
         _currentlyPlayingCall.value = null
+    }
+
+    private fun removeLiveProfileMedia(profileId: String) {
+        for (index in player.mediaItemCount - 1 downTo 0) {
+            if (PlaybackQueuePolicy.isLiveCallForProfile(player.getMediaItemAt(index).mediaId, profileId)) {
+                player.removeMediaItem(index)
+            }
+        }
     }
 
     private fun removeProfileMedia(profileId: String) {
