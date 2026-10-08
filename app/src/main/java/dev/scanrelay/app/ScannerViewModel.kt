@@ -679,8 +679,11 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun localTranscriptAlertsEnabled(profileId: String): Boolean =
         LocalTranscriptAlertStore(getApplication()).enabled(profileId)
 
-    fun configureLocalTranscriptAlerts(profileId: String, rules: String, enabled: Boolean) =
-        ScannerRepository.configureLocalTranscriptAlerts(profileId, rules, enabled)
+    fun localTranscriptBatterySaver(profileId: String): Boolean =
+        LocalTranscriptAlertStore(getApplication()).batterySaver(profileId)
+
+    fun configureLocalTranscriptAlerts(profileId: String, rules: String, enabled: Boolean, batterySaver: Boolean) =
+        ScannerRepository.configureLocalTranscriptAlerts(profileId, rules, enabled, batterySaver)
 
     fun refreshAlerts(profileId: String) = ScannerRepository.refreshAlerts(profileId)
     fun refreshTranscripts(
