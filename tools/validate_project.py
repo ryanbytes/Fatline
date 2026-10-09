@@ -342,6 +342,14 @@ require('if (!isPlaying) return PlaybackNotificationText("FatLine", "Waiting for
 require('updatePlaybackNotification()' in service and 'PlaybackNotificationPolicy.display(' in service, 'player notification must use current playback state')
 require('override fun onIsPlayingChanged(isPlaying: Boolean)' in service and 'updatePlaybackNotification()' in service.split('override fun onIsPlayingChanged(isPlaying: Boolean)', 1)[1].split('}', 1)[0], 'playback state changes must refresh notification')
 require('stoppedOrPausedPlaybackDoesNotShowStaleCallMetadata' in notification_tests, 'stale playback notification regression test missing')
+require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)' in service
+        and 'private var foregroundStarted = false' in service
+        and 'if (!foregroundStarted) {' in service
+        and 'foregroundStarted = false' in service
+        and 'lastPostedNotification = null' in service
+        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))' in service
+        and 'identicalNotificationTextAndQueueCountDoNotRepublish' in notification_tests,
+        'notification posting must skip duplicates without omitting queue/status changes')
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
@@ -398,6 +406,25 @@ require('fun batterySaver(profileId: String)' in local_monitor and 'battery_save
 require('fun pollIntervalMs(batterySaver: Boolean)' in local_monitor and 'SAVER_POLL_MS = 60_000L' in local_monitor and 'FAST_POLL_MS = 30_000L' in local_monitor, 'transcript saver must have 1-minute cadence with 30-second fallback')
 require('fun localTranscriptBatterySaver(' in viewmodel and 'localTranscriptBatterySaver' in ui and 'Battery saver (1-minute checks instead of 30 seconds)' in ui, 'user-selectable saver UI missing')
 require('batterySaverHalvesPeriodicNetworkChecks' in local_monitor_tests, 'transcript polling efficiency regression missing')
+require('remember(selectedProfileId, server?.systems, server?.hiddenSystemRefs, normalizedQuery, favoritesOnly)' in ui
+        and 'remember(selectedProfileId, server?.systems)' in ui
+        and 'remember(selectedProfileId, server?.history, normalizedHistoryQuery)' in ui,
+        'channel favorites and History filters should only recompute on relevant changes')
+aggregation_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()
+require('ScannerStateAggregationPolicy.reuseHistory(' in repo
+        and 'ScannerStateAggregationPolicy.reuseAlerts(' in repo
+        and 'previous.history' in repo and 'previous.alerts' in repo
+        and 'unchangedHistoryAndAlertsAreReusedAcrossStatusAndTranscriptUpdates' in aggregation_tests
+        and 'changedArchiveOrAlertsInvalidateOnlyTheirOwnAggregatedCache' in aggregation_tests,
+        'archive and alert aggregation must avoid unnecessary re-sorts while invalidating changed lists')
+weather = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/NwsSevereWeather.kt').read_text()
+weather_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/alerts/NwsSevereWeatherTest.kt').read_text()
+require('class NwsAlertPollCache' in weather
+        and 'val cycleCache = NwsAlertPollCache()' in weather
+        and 'cycleCache.getOrFetch(zip)' in weather
+        and 'duplicateWeatherZipsShareAFeedOncePerCycle' in weather_tests
+        and 'failedWeatherFetchesCanRetryAndEmptySuccessIsCached' in weather_tests,
+        'same-ZIP weather fetches must coalesce only per poll and not cache errors')
 
 # A normal app relaunch must revive previously active sessions without restarting
 # still-running scanner sockets, reviving disconnected profiles or using boot receivers.

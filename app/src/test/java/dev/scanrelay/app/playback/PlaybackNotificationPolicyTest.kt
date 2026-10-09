@@ -21,6 +21,19 @@ class PlaybackNotificationPolicyTest {
     }
 
     @Test
+    fun identicalNotificationTextAndQueueCountDoNotRepublish() {
+        val current = PlaybackNotificationText("Dispatch", "County · 2 queued")
+        assertEquals(true, PlaybackNotificationPolicy.needsUpdate(null, current))
+        assertEquals(false, PlaybackNotificationPolicy.needsUpdate(current, current.copy()))
+        assertEquals(true, PlaybackNotificationPolicy.needsUpdate(
+            current, current.copy(subtitle = "County · 3 queued")
+        ))
+        assertEquals(true, PlaybackNotificationPolicy.needsUpdate(
+            current, current.copy(title = "Fire dispatch")
+        ))
+    }
+
+    @Test
     fun missingActiveCallMetadataGetsNeutralFallbacks() {
         assertEquals(
             PlaybackNotificationText("Radio traffic", "Listening"),

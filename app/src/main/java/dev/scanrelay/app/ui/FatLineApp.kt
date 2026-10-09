@@ -790,25 +790,31 @@ private fun ChannelsScreen(
     var editingScanListId by remember(selectedProfileId) { mutableStateOf<String?>(null) }
     val editingScanList = server?.scanLists?.firstOrNull { it.id == editingScanListId }
     val normalizedQuery = channelQuery.trim().lowercase()
-    val visibleSystems = server?.systems.orEmpty()
-        .filterNot { it.systemRef in server?.hiddenSystemRefs.orEmpty() }
-        .mapNotNull { system ->
-        val systemMatches = normalizedQuery.isNotEmpty() && system.label.lowercase().contains(normalizedQuery)
-        val visibleTalkgroups = system.talkgroups.filter { talkgroup ->
-            val favoriteMatches = !favoritesOnly || talkgroup.favorite
-            val queryMatches = normalizedQuery.isEmpty() || systemMatches ||
-                talkgroup.displayName.lowercase().contains(normalizedQuery) ||
-                talkgroup.tag.lowercase().contains(normalizedQuery) ||
-                talkgroup.talkgroupRef.toString().contains(normalizedQuery)
-            favoriteMatches && queryMatches
-        }
-        system.copy(talkgroups = visibleTalkgroups).takeIf { visibleTalkgroups.isNotEmpty() }
+    // Call arrivals update scanner state frequently. Recompute channel
+    // filtering only for changes to channel configuration or search controls.
+    val visibleSystems = remember(selectedProfileId, server?.systems, server?.hiddenSystemRefs, normalizedQuery, favoritesOnly) {
+        server?.systems.orEmpty()
+            .filterNot { it.systemRef in server?.hiddenSystemRefs.orEmpty() }
+            .mapNotNull { system ->
+                val systemMatches = normalizedQuery.isNotEmpty() && system.label.lowercase().contains(normalizedQuery)
+                val visibleTalkgroups = system.talkgroups.filter { talkgroup ->
+                    val favoriteMatches = !favoritesOnly || talkgroup.favorite
+                    val queryMatches = normalizedQuery.isEmpty() || systemMatches ||
+                        talkgroup.displayName.lowercase().contains(normalizedQuery) ||
+                        talkgroup.tag.lowercase().contains(normalizedQuery) ||
+                        talkgroup.talkgroupRef.toString().contains(normalizedQuery)
+                    favoriteMatches && queryMatches
+                }
+                system.copy(talkgroups = visibleTalkgroups).takeIf { visibleTalkgroups.isNotEmpty() }
+            }
     }
-    val favoriteKeys = server?.systems.orEmpty()
-        .flatMap { it.talkgroups }
-        .filter { it.favorite }
-        .map { it.key }
-        .toSet()
+    val favoriteKeys = remember(selectedProfileId, server?.systems) {
+        server?.systems.orEmpty()
+            .flatMap { it.talkgroups }
+            .filter { it.favorite }
+            .map { it.key }
+            .toSet()
+    }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         item {
@@ -1518,15 +1524,19 @@ private fun HistoryScreen(
     }
 
     val normalizedHistoryQuery = historyQuery.trim().lowercase()
-    val visibleHistory = server?.history.orEmpty().filter { call ->
-        normalizedHistoryQuery.isEmpty() ||
-            call.systemLabel.lowercase().contains(normalizedHistoryQuery) ||
-            call.talkgroupLabel.lowercase().contains(normalizedHistoryQuery) ||
-            call.talkgroupRef.toString().contains(normalizedHistoryQuery) ||
-            call.id.toString().contains(normalizedHistoryQuery) ||
-            call.dateTime.lowercase().contains(normalizedHistoryQuery) ||
-            call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery) == true ||
-            call.transcript?.lowercase()?.contains(normalizedHistoryQuery) == true
+    // Playback position and other screen state must not repeatedly scan the
+    // loaded archive. Refresh this filter only when calls or the query change.
+    val visibleHistory = remember(selectedProfileId, server?.history, normalizedHistoryQuery) {
+        server?.history.orEmpty().filter { call ->
+            normalizedHistoryQuery.isEmpty() ||
+                call.systemLabel.lowercase().contains(normalizedHistoryQuery) ||
+                call.talkgroupLabel.lowercase().contains(normalizedHistoryQuery) ||
+                call.talkgroupRef.toString().contains(normalizedHistoryQuery) ||
+                call.id.toString().contains(normalizedHistoryQuery) ||
+                call.dateTime.lowercase().contains(normalizedHistoryQuery) ||
+                call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery) == true ||
+                call.transcript?.lowercase()?.contains(normalizedHistoryQuery) == true
+        }
     }
     val playingCall = currentlyPlayingCall?.takeIf { it.profileId == server?.profile?.id }
     val archiveFilterLabel = server?.let { current ->
