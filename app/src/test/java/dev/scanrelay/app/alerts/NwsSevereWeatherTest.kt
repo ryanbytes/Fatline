@@ -6,6 +6,36 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NwsSevereWeatherTest {
+    @Test fun duplicateWeatherZipsShareAFeedOncePerCycle() {
+        val cache = NwsAlertPollCache()
+        var requests = 0
+        val fetch: () -> List<NwsSevereAlert>? = {
+            requests++
+            listOf(NwsSevereAlert("warning-1", "Tornado Warning", "", "", "Severe"))
+        }
+        assertEquals("warning-1", cache.getOrFetch("46992", fetch)?.single()?.id)
+        assertEquals("warning-1", cache.getOrFetch("46992-1234", fetch)?.single()?.id)
+        assertEquals(1, requests)
+
+        // Each cycle must fetch again, so real new warnings are not delayed.
+        val nextCycle = NwsAlertPollCache()
+        nextCycle.getOrFetch("46992", fetch)
+        assertEquals(2, requests)
+    }
+
+    @Test fun failedWeatherFetchesCanRetryAndEmptySuccessIsCached() {
+        val cache = NwsAlertPollCache()
+        var requests = 0
+        val fetch: () -> List<NwsSevereAlert>? = {
+            requests++
+            if (requests == 1) null else emptyList()
+        }
+        assertEquals(null, cache.getOrFetch("46992", fetch))
+        assertEquals(emptyList<NwsSevereAlert>(), cache.getOrFetch("46992", fetch))
+        assertEquals(emptyList<NwsSevereAlert>(), cache.getOrFetch("46992", fetch))
+        assertEquals(2, requests)
+    }
+
     @Test fun keepsOnlyUniqueSevereAndExtremeAlerts() {
         val alerts = parseNwsSevereAlerts(JSONObject(
             """{"features":[
