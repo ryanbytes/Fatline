@@ -1135,6 +1135,14 @@ object ScannerRepository {
     private fun pruneQueuedLiveCalls(profileId: String) {
         appContext?.let { ScannerService.filterProfileMedia(it, profileId) }
     }
+    /** Refresh the first archive page without discarding the server-side search filters. */
+    fun refreshHistory(profileId: String) {
+        requestHistory(profileId, reset = true, preserveFilters = true)
+    }
+
+    internal fun clearedHistoryForRefresh(state: ServerScannerState): ServerScannerState =
+        state.copy(history = emptyList(), historyHasMore = false)
+
     fun requestHistory(
         profileId: String,
         reset: Boolean = true,
@@ -1144,15 +1152,21 @@ object ScannerRepository {
         group: String? = null,
         tag: String? = null,
         sort: Int = -1,
-        talkgroupRefs: List<Long> = emptyList()
+        talkgroupRefs: List<Long> = emptyList(),
+        preserveFilters: Boolean = false
     ) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
+            // Entering History must not wipe existing results while disconnected or negotiating.
+            if (preserveFilters && (session.state.status != ConnectionStatus.CONNECTED || session.socket == null)) return
             if (reset) {
-                val selectedTalkgroupRefs = (talkgroupRefs + listOfNotNull(talkgroupRef))
-                    .filter { it > 0 }.distinct()
                 session.historyOffset = 0
-                session.state = session.state.copy(
+                if (preserveFilters) {
+                    session.state = clearedHistoryForRefresh(session.state)
+                } else {
+                    val selectedTalkgroupRefs = (talkgroupRefs + listOfNotNull(talkgroupRef))
+                        .filter { it > 0 }.distinct()
+                    session.state = session.state.copy(
                     history = emptyList(),
                     historyHasMore = false,
                     historySystemRef = systemRef?.takeIf { it > 0 },
@@ -1162,7 +1176,8 @@ object ScannerRepository {
                     historyGroup = group?.trim()?.takeIf { it.isNotBlank() },
                     historyTag = tag?.trim()?.takeIf { it.isNotBlank() },
                     historySort = if (sort < 0) -1 else 1
-                )
+                    )
+                }
             }
             val activeSystemRef = session.state.historySystemRef
             val activeTalkgroupRef = session.state.historyTalkgroupRef
