@@ -60,6 +60,23 @@ internal fun newlyActiveNwsAlerts(
 }
 
 /**
+ * Share successful weather lookups for servers in the same ZIP during each
+ * polling pass. Do not cache errors: a later profile can retry immediately.
+ * A fresh cache is created every cycle, so new warnings are never held back.
+ */
+internal class NwsAlertPollCache {
+    private val byZip = mutableMapOf<String, List<NwsSevereAlert>>()
+
+    fun getOrFetch(zip: String, fetch: () -> List<NwsSevereAlert>?): List<NwsSevereAlert>? {
+        val key = zip.take(5)
+        byZip[key]?.let { return it }
+        val result = fetch() ?: return null
+        byZip[key] = result
+        return result
+    }
+}
+
+/**
  * Polls the same public NWS active-alert feed used by ThinLine's severe-weather ticker.
  * It runs only while the scanner foreground service is alive.
  */
@@ -92,23 +109,26 @@ class NwsSevereWeatherMonitor(context: Context) {
     }
 
     private fun pollProfiles() {
+        val cycleCache = NwsAlertPollCache()
         profiles.load()
             .filter { it.pin.isNotBlank() && it.baseUrl.isNotBlank() }
-            .forEach { profile -> runCatching { pollProfile(profile) } }
+            .forEach { profile -> runCatching { pollProfile(profile, cycleCache) } }
     }
 
-    private fun pollProfile(profile: ServerProfile) {
+    private fun pollProfile(profile: ServerProfile, cycleCache: NwsAlertPollCache) {
         val origin = httpOrigin(profile.baseUrl)
         val account = getJson(
             "$origin/api/account?pin=" + URLEncoder.encode(profile.pin.trim(), Charsets.UTF_8.name())
         ) ?: return
         val zip = account.optString("zipCode").trim()
         if (!Regex(ZIP_PATTERN).matches(zip)) return
-        val coords = resolveZip(zip) ?: return
-        val alerts = getJson(
-            "https://api.weather.gov/alerts/active?point=${coords.first},${coords.second}&status=actual",
-            nws = true
-        )?.let(::parseNwsSevereAlerts) ?: return
+        val alerts = cycleCache.getOrFetch(zip) {
+            val coords = resolveZip(zip) ?: return@getOrFetch null
+            getJson(
+                "https://api.weather.gov/alerts/active?point=${coords.first},${coords.second}&status=actual",
+                nws = true
+            )?.let(::parseNwsSevereAlerts)
+        } ?: return
 
         val key = "known:${zip.take(5)}"
         val knownIds = prefs.getStringSet(key, null)
