@@ -645,9 +645,11 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun createChannel() {
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Scanner playback", NotificationManager.IMPORTANCE_LOW)
-        )
+        val channel = NotificationChannel(CHANNEL_ID, "Scanner playback", NotificationManager.IMPORTANCE_LOW)
+        // Background playback is ongoing, not an unread alert: it must not
+        // produce a permanent home-screen launcher notification dot.
+        channel.setShowBadge(false)
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     private fun notification(title: String, text: String): Notification {

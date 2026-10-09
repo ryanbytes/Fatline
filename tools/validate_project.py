@@ -211,11 +211,26 @@ require(
 )
 require('AppTab.Alerts -> AlertsScreen(' in ui and 'AppTab.Transcripts -> TranscriptsScreen(' in ui,
         'Alerts must stay available through More when Transcripts is a primary tab')
+dot_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/AlertDotPolicy.kt').read_text()
+dot_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/AlertDotPolicyTest.kt').read_text()
+alert_notifier = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/AlertNotifier.kt').read_text()
+weather_notifier = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/WeatherAlertNotifier.kt').read_text()
+require('AlertDotPolicy.markViewedOrBaseline(' in ui and 'AlertDotPolicy.hasNewAlerts(' in ui
+        and 'if (hasNewAlerts && tab != AppTab.Alerts)' in ui and 'BadgedBox(badge = { Badge() })' in ui
+        and 'item == AppTab.Alerts && hasNewAlerts' in ui,
+        'unread alerts must display a dot on More while Alerts remains reachable')
+require('markViewedOrBaseline' in dot_policy and 'hasNewAlerts' in dot_policy
+        and 'newAlertsAcrossMultipleServersShowDotUntilAlertsViewed' in dot_tests,
+        'unread alert dot must not be based only on the presence of archived alerts')
+require('channel.setShowBadge(true)' in alert_notifier
+        and 'channel.setShowBadge(true)' in weather_notifier
+        and 'channel.setShowBadge(false)' in service,
+        'alert notification channels must allow launcher dots without the ongoing media notification')
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun ScannerHudPanel(', 1)[0]
 require('private fun NowPlayingCard(' not in ui and 'NowPlayingCard(server' not in scanner_screen, 'large duplicate now-playing card must not return')
 require('Text("Call actions")' in scanner_card and '"Avoid channel"' in scanner_card and 'viewModel.setSystemHold(' in scanner_card, 'compact now-playing actions must preserve controls')
-require('if (audioEnabled) "Stop audio" else "Play audio"' in scanner_card and 'viewModel.setAudioEnabled(!audioEnabled)' in scanner_card, 'independent audio Play/Stop control missing')
+require('if (audioEnabled) "Stop" else "Play"' in scanner_card and 'viewModel.setAudioEnabled(!audioEnabled)' in scanner_card, 'independent audio Play/Stop control missing')
 require('ACTION_SET_AUDIO_ENABLED' in service and 'KEY_AUDIO_ENABLED' in service and 'if (liveFeed && !_audioEnabled.value)' in service and 'player.pause()' in service, 'stopped audio must be persisted and suppress live output without disconnecting monitoring')
 require('if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)' in service, 'explicit replay must reactivate muted output')
 require('val audioEnabled: StateFlow<Boolean>' in service and 'ScannerService.setAudioEnabled(getApplication(), enabled)' in viewmodel, 'audio output state and view-model bridge missing')
@@ -283,8 +298,12 @@ require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
         and 'viewModel.setPaused(server.profile.id, !server.paused)' in scanner_status_controls
         and 'viewModel.replayLast(server.profile.id)' in scanner_status_controls
         and 'onClick = viewModel::skip' in scanner_status_controls
-        and 'viewModel.clearHold(server.profile.id)' in scanner_status_controls,
-        'all playback actions must remain reachable on small screens')
+        and 'viewModel.clearHold(server.profile.id)' in scanner_status_controls
+        and all('R.drawable.ic_fatline_' + name in scanner_status_controls
+                for name in ('stop', 'play', 'pause', 'replay', 'skip', 'clear'))
+        and scanner_status_controls.count('Icon(') >= 5
+        and 'contentDescription = "Skip current call"' in scanner_status_controls,
+        'all five icon-based playback actions must remain accessible on small screens')
 require('fun replayLast(profileId: String)' in repo and 'lastReplayCandidate(session.state)' in repo and 'playNow(profileId, call.id)' in repo, 'Replay last must select and immediately play most recent call')
 require('fun replayLast(profileId: String)' in viewmodel, 'Replay last ViewModel binding missing')
 replay_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()

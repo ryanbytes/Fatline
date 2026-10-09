@@ -32,6 +32,7 @@ object WeatherAlertNotifier {
             "${profile.name} severe weather",
             NotificationManager.IMPORTANCE_HIGH
         )
+        channel.setShowBadge(true)
         when (preference) {
             AlertSoundPreferences.SILENT -> channel.setSound(null, null)
             null -> channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttributes)

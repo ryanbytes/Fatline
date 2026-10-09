@@ -38,7 +38,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | --- | --- | --- |
 | Compact, truthful playback and connection status | **Implemented; device-unverified** | Removed the large duplicate Now Playing card, retained compact HUD and moved hold/avoid/replay into Call actions; verify legibility and usability on-device |
 | Automatic server-assigned feed sync | **Not implemented** | Only explore privacy-preserving sync directly with the user's own scanner server; never call ThinLine-hosted account/telemetry endpoints |
-| Mobile app usability | **Partially improved; device-unverified** | Bottom navigation now shows Scanner, Channels, History and Transcripts, with Alerts, Weather and Settings in More; scanner playback actions fit in two non-scrolling rows; confirm narrow-screen labels, pop-up reachability, accessibility and layout on an actual phone |
+| Mobile app usability | **Partially improved; device-unverified** | Bottom navigation now shows Scanner, Channels, History and Transcripts, with Alerts, Weather and Settings in More; scanner playback actions fit in two non-scrolling rows; Icon-labeled playback buttons and More unread-alert dot added; confirm narrow-screen labels, pop-up reachability, accessibility and layout on an actual phone |
 | Runtime interoperability | **Unverified** | Test phone process death, encrypted/audio relay, rapid reconnects, Android Auto, queue limits, background mixing, and resume behavior |
 
 ## Deliberately excluded by user request
