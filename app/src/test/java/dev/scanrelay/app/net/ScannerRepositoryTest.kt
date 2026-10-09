@@ -194,6 +194,45 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun archiveEntryRefreshClearsResultsButRetainsAllAppliedFilters() {
+        val call = RadioCall(
+            profileId = profile.id,
+            serverName = profile.name,
+            id = 101L,
+            systemRef = 1,
+            talkgroupRef = 11,
+            systemLabel = "One",
+            talkgroupLabel = "One-A",
+            dateTime = ""
+        )
+        val state = ServerScannerState(
+            profile = profile,
+            systems = systems,
+            history = listOf(call),
+            historyHasMore = true,
+            historySystemRef = 1,
+            historyTalkgroupRefs = listOf(11, 12),
+            historyDate = "2026-10-08T12:00:00Z",
+            historyGroup = "Dispatch",
+            historyTag = "Fire",
+            historySort = 1,
+            recentCalls = listOf(call),
+            paused = true
+        )
+        val refreshed = ScannerRepository.clearedHistoryForRefresh(state)
+        assertTrue(refreshed.history.isEmpty())
+        assertFalse(refreshed.historyHasMore)
+        assertEquals(state.historySystemRef, refreshed.historySystemRef)
+        assertEquals(state.historyTalkgroupRefs, refreshed.historyTalkgroupRefs)
+        assertEquals(state.historyDate, refreshed.historyDate)
+        assertEquals(state.historyGroup, refreshed.historyGroup)
+        assertEquals(state.historyTag, refreshed.historyTag)
+        assertEquals(state.historySort, refreshed.historySort)
+        assertEquals(state.recentCalls, refreshed.recentCalls)
+        assertEquals(state.paused, refreshed.paused)
+    }
+
+    @Test
     fun liveCallsRespectActiveHistoryFilter() {
         val state = ServerScannerState(
             profile = profile,
