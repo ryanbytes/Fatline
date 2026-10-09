@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -29,6 +31,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -54,6 +57,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -62,6 +66,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.scanrelay.app.AccountLoginPolicy
+import dev.scanrelay.app.R
 import dev.scanrelay.app.ScannerViewModel
 import dev.scanrelay.app.alerts.AlertSoundPreferences
 import dev.scanrelay.app.alerts.ServerAlertSounds
@@ -107,6 +112,19 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     var tab by remember { mutableStateOf(AppTab.Scanner) }
     var moreMenuExpanded by remember { mutableStateOf(false) }
     val primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Transcripts)
+    // More contains Alerts. Surface a visible dot for alerts received since the
+    // current app session first loaded them or the user last opened Alerts.
+    var seenAlertKeys by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
+    val currentAlertKeys = scanner.servers.mapValues { (_, state) ->
+        state.alerts.map { it.stableKey }.toSet()
+    }
+    LaunchedEffect(currentAlertKeys, tab) {
+        val next = AlertDotPolicy.markViewedOrBaseline(
+            seenAlertKeys, currentAlertKeys, viewingAlerts = tab == AppTab.Alerts
+        )
+        if (next != seenAlertKeys) seenAlertKeys = next
+    }
+    val hasNewAlerts = AlertDotPolicy.hasNewAlerts(seenAlertKeys, currentAlertKeys)
     val moreNavigationTabs = AppTab.entries.filterNot { it in primaryNavigationTabs }
     val systemDensity = LocalDensity.current
     val compactDensity = remember(systemDensity) {
@@ -175,7 +193,13 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                         modifier = Modifier.fillMaxWidth(),
                                         selected = tab in moreNavigationTabs,
                                         onClick = { moreMenuExpanded = true },
-                                        icon = { Text("⋯") },
+                                        icon = {
+                                            if (hasNewAlerts && tab != AppTab.Alerts) {
+                                                BadgedBox(badge = { Badge() }) { Text("⋯") }
+                                            } else {
+                                                Text("⋯")
+                                            }
+                                        },
                                         label = { Text("More", maxLines = 1, softWrap = false) }
                                     )
                                 }
@@ -187,7 +211,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
                                         DropdownMenuItem(
                                             text = {
                                                 Text(
-                                                    item.label,
+                                                    item.label + if (item == AppTab.Alerts && hasNewAlerts) " · New" else "",
                                                     fontWeight = if (tab == item) FontWeight.Bold else FontWeight.Normal
                                                 )
                                             },
@@ -528,14 +552,34 @@ private fun ScannerStatusCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Button(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).semantics {
+                            contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"
+                        },
                         onClick = { viewModel.setAudioEnabled(!audioEnabled) }
-                    ) { Text(if (audioEnabled) "Stop audio" else "Play audio", maxLines = 1, softWrap = false) }
+                    ) {
+                        Icon(
+                            painter = painterResource(if (audioEnabled) R.drawable.ic_fatline_stop else R.drawable.ic_fatline_play),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (audioEnabled) "Stop" else "Play", maxLines = 1, softWrap = false)
+                    }
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).semantics {
+                            contentDescription = if (server.paused) "Resume scanning" else "Pause scanning"
+                        },
                         onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
                         enabled = server.status == ConnectionStatus.CONNECTED
-                    ) { Text(if (server.paused) "Resume scan" else "Pause scan", maxLines = 1, softWrap = false) }
+                    ) {
+                        Icon(
+                            painter = painterResource(if (server.paused) R.drawable.ic_fatline_play else R.drawable.ic_fatline_pause),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (server.paused) "Resume" else "Pause", maxLines = 1, softWrap = false)
+                    }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -545,16 +589,28 @@ private fun ScannerStatusCard(
                         modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" },
                         onClick = { viewModel.replayLast(server.profile.id) },
                         enabled = server.recentCalls.isNotEmpty() || server.lastCall != null
-                    ) { Text("Replay", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
+                    ) {
+                        Icon(painterResource(R.drawable.ic_fatline_replay), null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Replay", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall)
+                    }
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).semantics { contentDescription = "Skip current call" },
                         onClick = viewModel::skip
-                    ) { Text("Skip", maxLines = 1, softWrap = false) }
+                    ) {
+                        Icon(painterResource(R.drawable.ic_fatline_skip), null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Skip", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall)
+                    }
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).semantics { contentDescription = "Clear scanner hold" },
                         onClick = { viewModel.clearHold(server.profile.id) },
                         enabled = server.hold != null || server.holdSystemRef != null
-                    ) { Text("Clear hold", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
+                    ) {
+                        Icon(painterResource(R.drawable.ic_fatline_clear), null, Modifier.size(16.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Hold", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
 

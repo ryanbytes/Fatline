@@ -26,6 +26,7 @@ object AlertNotifier {
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
             .build()
         val channel = NotificationChannel(channelId, "$profileName alerts", NotificationManager.IMPORTANCE_HIGH)
+        channel.setShowBadge(true)
         when (soundSetting) {
             AlertSoundPreferences.SILENT -> channel.setSound(null, null)
             null -> channel.setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttributes)

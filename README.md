@@ -10,6 +10,8 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 
 - Android 8.0+ (`minSdk 26`), compile/target SDK 36
 - Five-item bottom navigation with Scanner, Channels, History, and Transcripts directly accessible; Alerts, Weather, and Settings remain under More
+- More shows a notification dot for new alert entries received since the screen was last viewed in the current app session; opening Alerts clears it. Android launcher notification dots come from posted alert/connection/weather notifications, if allowed by system and launcher settings
+- Scanner playback buttons show real play, stop, pause, replay, skip, and release-hold icons alongside short labels, with TalkBack descriptions
 - Playback controls fit the scanner card in two non-scrolling rows, keeping Stop/Play audio, Pause/Resume scan, Replay, Skip, and Clear hold accessible on small phones
 - History tab refreshes the first archive page when opened or when the selected scanner reconnects, preserving the currently applied server-side archive filters
 - Compact scanner HUD shows current playback without a separate large Now Playing card; hold, avoid and replay actions remain in a small Call actions menu
