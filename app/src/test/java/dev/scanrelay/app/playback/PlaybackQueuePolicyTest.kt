@@ -32,7 +32,7 @@ class PlaybackQueuePolicyTest {
         assertTrue(tracker.observedProgress(id("live", 11), 150L))
         val finished = tracker.transitioned(true, id("live", 12), liveCall(12), true)
         assertEquals(11L, finished?.id)
-        assertEquals(null, tracker.ended()) // next call has not progressed
+        assertTrue(tracker.awaitingProgress(id("live", 12))) // next call has not progressed
         tracker.observedProgress(id("live", 12), 75L)
         assertEquals(12L, tracker.ended()?.id)
         assertEquals(null, tracker.ended()) // no duplicate
