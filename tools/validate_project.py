@@ -201,7 +201,7 @@ require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIn
 require('queuedCallCount' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
 navigation = ui.split('NavigationBar {', 1)[1].split(') { padding ->', 1)[0]
 require(
-    'primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Alerts)' in ui
+    'primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Transcripts)' in ui
     and 'moreNavigationTabs = AppTab.entries.filterNot { it in primaryNavigationTabs }' in ui
     and 'Box(Modifier.weight(1f))' in navigation
     and 'moreNavigationTabs.forEach { item ->' in navigation
@@ -209,6 +209,8 @@ require(
     and 'fontSize = 9.sp' not in navigation,
     'mobile navigation must keep every destination reachable without seven cramped bottom labels'
 )
+require('AppTab.Alerts -> AlertsScreen(' in ui and 'AppTab.Transcripts -> TranscriptsScreen(' in ui,
+        'Alerts must stay available through More when Transcripts is a primary tab')
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun ScannerHudPanel(', 1)[0]
 require('private fun NowPlayingCard(' not in ui and 'NowPlayingCard(server' not in scanner_screen, 'large duplicate now-playing card must not return')
@@ -272,8 +274,17 @@ recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifi
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
 
-scanner_status_controls = scanner_card.split('LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp))', 1)[1]
-require('viewModel.replayLast(server.profile.id)' in scanner_status_controls and 'Text("Replay last")' in scanner_status_controls, 'scanner must expose Replay last independently of Now Playing')
+scanner_status_controls = scanner_card.split('// Fixed-width playback controls:', 1)[1].split('if (!audioEnabled)', 1)[0]
+require('LazyRow(' not in scanner_status_controls and scanner_status_controls.count('modifier = Modifier.fillMaxWidth()') == 2
+        and scanner_status_controls.count('modifier = Modifier.weight(1f)') == 4
+        and 'modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" }' in scanner_status_controls,
+        'scanner playback controls must fit in two non-scrolling weighted rows')
+require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
+        and 'viewModel.setPaused(server.profile.id, !server.paused)' in scanner_status_controls
+        and 'viewModel.replayLast(server.profile.id)' in scanner_status_controls
+        and 'onClick = viewModel::skip' in scanner_status_controls
+        and 'viewModel.clearHold(server.profile.id)' in scanner_status_controls,
+        'all playback actions must remain reachable on small screens')
 require('fun replayLast(profileId: String)' in repo and 'lastReplayCandidate(session.state)' in repo and 'playNow(profileId, call.id)' in repo, 'Replay last must select and immediately play most recent call')
 require('fun replayLast(profileId: String)' in viewmodel, 'Replay last ViewModel binding missing')
 replay_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()
