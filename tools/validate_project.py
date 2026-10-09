@@ -352,6 +352,26 @@ require('EXTRA_PLAY_IMMEDIATELY' in service and 'player.seekTo(position, 0L)' in
 require('ScannerPausePolicy.suppressIncomingAudio(' in service and 'liveFeed = liveFeed,' in service and 'paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)' in service and 'liveFeed && paused' in pause_store, 'paused scanning must suppress live calls but permit manual replay')
 require('immediateReplayInsertsBeforeCurrentWithoutDiscardingQueue' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'manual replay priority queue regression missing')
 
+require('PlaybackQueueProjectionPolicy.project(' in service
+        and 'projection.activeMediaIds' in service
+        and 'projection.playingCall' in service
+        and 'projection.queuedCalls' in service
+        and 'val mediaIds = List(player.mediaItemCount)' not in service
+        and 'mediaCount = player.mediaItemCount' in service
+        and 'mediaIdAt = { index -> player.getMediaItemAt(index).mediaId }' in service,
+        'scanner service must use single-pass playback projection and lazy media iteration')
+require('internal object PlaybackQueueProjectionPolicy' in queue_policy
+        and 'for (index in 0 until mediaCount)' in queue_policy
+        and 'fun removalIndex(' in queue_policy
+        and 'val sameKind = mediaIds.indices.filter' not in queue_policy
+        and "val parts = mediaId.split(':')" not in queue_policy.split('internal fun mediaKind(mediaId: String)', 1)[1].split('internal data class PlaybackQueueProjection', 1)[0],
+        'media kind and playback queue operations must avoid per-item temporary lists')
+require('singlePassProjectionExactlyMatchesPreviousPlaybackAndQueueSemantics' in queue_tests
+        and 'lazyQueueTrimMatchesIndependentLegacyOverflowReference' in queue_tests
+        and 'lazyDuplicateCheckMatchesPreviousLookupAndAvoidsListConstruction' in queue_tests
+        and 'allocationFreeMediaKindParsingKeepsOldParsingSemantics' in queue_tests,
+        'playback performance changes require queue order/dedup/parsing equivalence tests')
+
 notification_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackNotificationPolicy.kt').read_text()
 notification_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt').read_text()
 require('if (!isPlaying) return PlaybackNotificationText("FatLine", "Waiting for traffic")' in notification_policy, 'idle notifications must not claim stale playback metadata')

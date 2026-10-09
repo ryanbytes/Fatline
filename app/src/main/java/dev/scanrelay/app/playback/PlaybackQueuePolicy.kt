@@ -20,10 +20,25 @@ internal object PlaybackQueuePolicy {
         callId: Long,
         recentlyAccepted: Set<CallKey>,
         mediaIds: List<String>
+    ): Boolean = shouldEnqueueLiveCall(
+        profileId, callId, recentlyAccepted, mediaIds.size, mediaIds::get
+    )
+
+    /** Look up player media IDs lazily: no temporary full-playlist List per arrival. */
+    fun shouldEnqueueLiveCall(
+        profileId: String,
+        callId: Long,
+        recentlyAccepted: Set<CallKey>,
+        mediaCount: Int,
+        mediaIdAt: (Int) -> String
     ): Boolean {
         if (callId <= 0L) return true
         val key = CallKey(profileId, callId)
-        return key !in recentlyAccepted && mediaIds.none { liveCallKey(it) == key }
+        if (key in recentlyAccepted) return false
+        for (index in 0 until mediaCount) {
+            if (liveCallKey(mediaIdAt(index)) == key) return false
+        }
+        return true
     }
 
     const val LIVE_LIMIT = 30
@@ -33,14 +48,25 @@ internal object PlaybackQueuePolicy {
         mediaIds: List<String>,
         currentIndex: Int,
         incomingLiveFeed: Boolean
+    ): Int = removalIndex(mediaIds.size, currentIndex, incomingLiveFeed, mediaIds::get)
+
+    /** Single pass, without a filtered list of up to 500 replay media IDs. */
+    fun removalIndex(
+        mediaCount: Int,
+        currentIndex: Int,
+        incomingLiveFeed: Boolean,
+        mediaIdAt: (Int) -> String
     ): Int {
         val incomingKind = if (incomingLiveFeed) "live" else "replay"
         val limit = if (incomingLiveFeed) LIVE_LIMIT else REPLAY_LIMIT
-        val sameKind = mediaIds.indices.filter { index ->
-            mediaKind(mediaIds[index]) == incomingKind
+        var sameKindCount = 0
+        var firstRemovable = -1
+        for (index in 0 until mediaCount) {
+            if (mediaKind(mediaIdAt(index)) != incomingKind) continue
+            sameKindCount++
+            if (firstRemovable == -1 && index != currentIndex) firstRemovable = index
         }
-        if (sameKind.size < limit) return -1
-        return sameKind.firstOrNull { it != currentIndex } ?: -1
+        return if (sameKindCount >= limit) firstRemovable else -1
     }
 
     fun queuedCount(mediaCount: Int, currentIndex: Int): Int {
@@ -80,9 +106,53 @@ internal object PlaybackQueuePolicy {
     }
 
     internal fun mediaKind(mediaId: String): String? {
-        val parts = mediaId.split(':')
-        if (parts.size < 3 || parts[0] != "call") return null
-        return parts[2].takeIf { it == "live" || it == "replay" }
+        if (!mediaId.startsWith("call:")) return null
+        val afterProfile = mediaId.indexOf(':', startIndex = 5)
+        if (afterProfile < 0) return null
+        val kindStart = afterProfile + 1
+        val nextDelimiter = mediaId.indexOf(':', startIndex = kindStart)
+        val kindLength = (if (nextDelimiter >= 0) nextDelimiter else mediaId.length) - kindStart
+        return when {
+            kindLength == 4 && mediaId.regionMatches(kindStart, "live", 0, 4) -> "live"
+            kindLength == 6 && mediaId.regionMatches(kindStart, "replay", 0, 6) -> "replay"
+            else -> null
+        }
+    }
+}
+
+
+/** One playlist walk provides current playback, queued preview and stale-ID cleanup. */
+internal data class PlaybackQueueProjection(
+    val activeMediaIds: Set<String>,
+    val playingCall: RadioCall?,
+    val queuedCalls: List<QueuedCall>
+)
+
+internal object PlaybackQueueProjectionPolicy {
+    fun project(
+        mediaCount: Int,
+        currentIndex: Int,
+        isPlaying: Boolean,
+        mediaIdAt: (Int) -> String,
+        callsByMediaId: Map<String, RadioCall>
+    ): PlaybackQueueProjection {
+        val activeIds = HashSet<String>(mediaCount.coerceAtLeast(0))
+        val queue = ArrayList<QueuedCall>()
+        val firstQueued = PlaybackQueuePolicy.firstQueuedIndex(mediaCount, currentIndex)
+        var playingCall: RadioCall? = null
+        for (index in 0 until mediaCount) {
+            val mediaId = mediaIdAt(index)
+            activeIds.add(mediaId)
+            if (index == currentIndex && isPlaying) {
+                playingCall = callsByMediaId[mediaId]
+            }
+            if (index >= firstQueued) {
+                callsByMediaId[mediaId]?.let { call ->
+                    queue.add(QueuedCall(call, PlaybackQueuePolicy.mediaKind(mediaId) == "live"))
+                }
+            }
+        }
+        return PlaybackQueueProjection(activeIds, playingCall, queue)
     }
 }
 
