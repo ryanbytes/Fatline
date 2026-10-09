@@ -777,6 +777,36 @@ require('getSharedPreferences("fatline_dismissed_alerts"' in alert_dismissal
         and 'tombstonesAreBoundedAndRedismissedAlertsMoveToNewest' in alert_dismissal_tests,
         'dismissal store and regression tests missing')
 
+probe = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PerformanceProbe.kt').read_text()
+probe_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PerformanceProbeTest.kt').read_text()
+require('object PerformanceReader' in probe
+        and 'Process.getElapsedCpuTime()' in probe
+        and 'Debug.getPss()' in probe
+        and 'TrafficStats.getUidRxBytes' in probe
+        and 'BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER' in probe
+        and 'BatteryManager.BATTERY_PROPERTY_CAPACITY' in probe
+        and 'class PerformanceProbe(' in probe,
+        'performance probe must capture CPU, PSS, UID network and optional battery counters')
+require('private var performanceJob: Job? = null' in service
+        and 'delay(10_000L)' in service
+        and 'ACTION_START_PERFORMANCE_CAPTURE -> startPerformanceProbe(' in service
+        and 'ACTION_STOP_PERFORMANCE_CAPTURE -> stopPerformanceProbe()' in service
+        and 'performanceJob?.cancel()' in service
+        and 'stopPerformanceProbe()' in service.split('override fun onDestroy()', 1)[1],
+        'performance sampling must run only while enabled and stop on service destruction')
+require('Text("Performance probe"' in ui
+        and 'ScannerService.startPerformanceCapture(context, performanceScenario)' in ui
+        and 'ScannerService.stopPerformanceCapture(context)' in ui
+        and 'ClipData.newPlainText(' in ui
+        and 'No data is uploaded.' in ui,
+        'performance measurement needs opt-in, stop and local copy controls')
+require('reportSeparatesCpuPssNetworkAndWholePhoneBattery' in probe_tests
+        and 'unsupportedCountersAndResetNetworkCountersStayUnavailable' in probe_tests
+        and 'pluggingInDisablesBatteryDischargeClaims' in probe_tests
+        and 'invalidOutOfOrderSamplesAreIgnoredAndCpuPercentMayExceed100' in probe_tests
+        and 'zeroDurationDoesNotDivideByZero' in probe_tests,
+        'performance counters require accuracy, unsupported and charging regression coverage')
+
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
     stripped = re.sub(r'""".*?"""', '', text, flags=re.S)

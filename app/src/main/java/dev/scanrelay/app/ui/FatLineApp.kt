@@ -2993,7 +2993,10 @@ private fun SettingsScreen(
     val passwordRecovery by viewModel.passwordRecovery.collectAsStateWithLifecycle()
     val accountPasswordChange by viewModel.accountPasswordChange.collectAsStateWithLifecycle()
     val accountEmailChange by viewModel.accountEmailChange.collectAsStateWithLifecycle()
+    val performanceCapture by ScannerService.performanceCapture.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var performanceScenario by remember { mutableStateOf("Idle monitoring") }
+    var performanceScenarioMenu by remember { mutableStateOf(false) }
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
     }
@@ -3766,6 +3769,78 @@ private fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            Card(Modifier.padding(horizontal = 16.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Performance probe", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Optional local measurement: FatLine CPU, app memory, network bytes and available phone battery counters. " +
+                            "Sampling runs every 10 seconds in the scanner service, even when this screen is closed. " +
+                            "No data is uploaded.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box {
+                            OutlinedButton(
+                                onClick = { performanceScenarioMenu = true },
+                                enabled = !performanceCapture.running
+                            ) { Text(performanceScenario) }
+                            DropdownMenu(
+                                expanded = performanceScenarioMenu,
+                                onDismissRequest = { performanceScenarioMenu = false }
+                            ) {
+                                listOf("Idle monitoring", "Live playback", "Transcript monitoring").forEach { scenario ->
+                                    DropdownMenuItem(
+                                        text = { Text(scenario) },
+                                        onClick = {
+                                            performanceScenario = scenario
+                                            performanceScenarioMenu = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { ScannerService.startPerformanceCapture(context, performanceScenario) },
+                            enabled = !performanceCapture.running && scanner.servers.isNotEmpty()
+                        ) { Text("Start") }
+                        OutlinedButton(
+                            onClick = { ScannerService.stopPerformanceCapture(context) },
+                            enabled = performanceCapture.running
+                        ) { Text("Stop") }
+                    }
+                    if (performanceCapture.running) {
+                        Text(
+                            "Recording: ${performanceCapture.label}. Return here to stop. " +
+                                "For comparisons, record at least five minutes per scenario.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    performanceCapture.error?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (performanceCapture.report.isNotEmpty()) {
+                        OutlinedButton(onClick = {
+                            context.getSystemService(android.content.ClipboardManager::class.java)
+                                .setPrimaryClip(
+                                    android.content.ClipData.newPlainText(
+                                        "FatLine performance report", performanceCapture.report
+                                    )
+                                )
+                        }) { Text("Copy report") }
+                        Text(performanceCapture.report, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        "Choose a scenario label; it does not change scanner behavior. " +
+                            "Battery data measures the whole phone and cannot isolate FatLine.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
