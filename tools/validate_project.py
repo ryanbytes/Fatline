@@ -711,6 +711,35 @@ require(re.search(r'tg\.displayName,\s*maxLines\s*=\s*1,\s*overflow\s*=\s*TextOv
 require(re.search(r'Text\(\s*"SYSTEM".*?system\.label', ui, re.S) is not None, 'system sections must be explicitly labeled')
 require(re.search(r'Text\(\s*"CHANNEL".*?tg\.displayName,.*?LazyRow\(\s*modifier\s*=\s*Modifier\.fillMaxWidth\(\),\s*horizontalArrangement\s*=\s*Arrangement\.spacedBy\(6\.dp\)', ui, re.S) is not None, 'channel rows must be labeled and their actions must scroll independently')
 
+alert_dismissal = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/AlertDismissalStore.kt').read_text()
+alert_dismissal_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/alerts/AlertDismissalPolicyTest.kt').read_text()
+scanner_alert_preview = ui.split('if (server.alerts.isNotEmpty()) {', 1)[1].split('// Incoming or queued traffic', 1)[0]
+alerts_list = ui.split('itemsIndexed(\n                    visibleAlerts,', 1)[1].split('        item { Spacer(Modifier.height(16.dp)) }', 1)[0]
+alert_card = ui.split('private fun AlertCard(', 1)[1].split('internal fun incidentMapUri(', 1)[0]
+require('viewModel.playNow(alert.profileId, callId)' in scanner_alert_preview
+        and 'onDelete = { viewModel.dismissAlert(alert) }' in scanner_alert_preview,
+        'scanner home alerts must have immediate playback and delete')
+require('viewModel.playNow(alert.profileId, callId)' in alerts_list
+        and 'onDelete = { viewModel.dismissAlert(alert) }' in alerts_list,
+        'full Alerts list must have the same playback and delete actions')
+require('contentDescription = "Play alert recording"' in alert_card
+        and 'contentDescription = "Delete alert"' in alert_card
+        and 'AlertDialog(' in alert_card and 'server\'s copy is not deleted' in alert_card
+        and (ROOT / 'app/src/main/res/drawable/ic_fatline_delete.xml').exists(),
+        'alert actions need accessible icons and deletion confirmation')
+require('fun dismissAlert(alert: ScannerAlert)' in repo and 'store.dismiss(alert)' in repo
+        and 'alertDismissalStore?.visible(session.profile.id' in repo
+        and 'alertDismissalStore?.visible(profile.id' in repo
+        and 'fun dismissAlert(alert:' in viewmodel
+        and 'AlertDismissalStore(getApplication()).clearProfile(profileId)' in viewmodel,
+        'alert local deletion must persist across refresh/reconnect and be cleared with its profile')
+require('getSharedPreferences("fatline_dismissed_alerts"' in alert_dismissal
+        and 'fun retain(previous:' in alert_dismissal and 'const val LIMIT = 2000' in alert_dismissal
+        and 'deletedAlertStaysHiddenAfterHistoryIsReloaded' in alert_dismissal_tests
+        and 'deletionDoesNotHideOtherAlertsOrAnotherScanner' in alert_dismissal_tests
+        and 'tombstonesAreBoundedAndRedismissedAlertsMoveToNewest' in alert_dismissal_tests,
+        'dismissal store and regression tests missing')
+
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
     stripped = re.sub(r'""".*?"""', '', text, flags=re.S)

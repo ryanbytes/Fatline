@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -46,6 +47,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -382,7 +384,11 @@ private fun ScannerScreen(
                     AlertCard(
                         alert,
                         mappingEnabled = server.incidentMappingEnabled,
-                        time12hFormat = server.time12hFormat
+                        time12hFormat = server.time12hFormat,
+                        onReplay = alert.callId?.takeIf { it > 0 }?.let { callId ->
+                            { viewModel.playNow(alert.profileId, callId) }
+                        },
+                        onDelete = { viewModel.dismissAlert(alert) }
                     )
                 }
             }
@@ -2960,9 +2966,10 @@ private fun AlertsScreen(
                         alert,
                         mappingEnabled = server.incidentMappingEnabled,
                         time12hFormat = server.time12hFormat,
-                        onReplay = alert.callId?.let { callId ->
-                            { viewModel.replay(server.profile.id, callId) }
-                        }
+                        onReplay = alert.callId?.takeIf { it > 0 }?.let { callId ->
+                            { viewModel.playNow(alert.profileId, callId) }
+                        },
+                        onDelete = { viewModel.dismissAlert(alert) }
                     )
                 }
             }
@@ -3938,10 +3945,12 @@ private fun AlertCard(
     alert: ScannerAlert,
     mappingEnabled: Boolean,
     time12hFormat: Boolean,
-    onReplay: (() -> Unit)? = null
+    onReplay: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val mapUri = incidentMapUri(alert, mappingEnabled)
+    var confirmDelete by remember(alert.profileId, alert.stableKey) { mutableStateOf(false) }
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(alert.title, fontWeight = FontWeight.SemiBold)
@@ -3981,10 +3990,23 @@ private fun AlertCard(
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            if (onReplay != null || mapUri != null) {
+            if (onReplay != null || onDelete != null || mapUri != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    onReplay?.let {
-                        OutlinedButton(onClick = it) { Text("Replay call") }
+                    onReplay?.let { play ->
+                        OutlinedIconButton(
+                            onClick = play,
+                            modifier = Modifier.semantics { contentDescription = "Play alert recording" }
+                        ) {
+                            Icon(painterResource(R.drawable.ic_fatline_play), contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    onDelete?.let {
+                        OutlinedIconButton(
+                            onClick = { confirmDelete = true },
+                            modifier = Modifier.semantics { contentDescription = "Delete alert" }
+                        ) {
+                            Icon(painterResource(R.drawable.ic_fatline_delete), contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
                     }
                     mapUri?.let { uri ->
                         OutlinedButton(onClick = {
@@ -3997,6 +4019,22 @@ private fun AlertCard(
                 }
             }
         }
+    }
+    if (confirmDelete && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete alert?") },
+            text = { Text("Remove this alert from FatLine on this device. The scanner server's copy is not deleted.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            }
+        )
     }
 }
 

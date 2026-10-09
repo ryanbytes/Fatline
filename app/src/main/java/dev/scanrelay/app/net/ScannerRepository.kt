@@ -9,6 +9,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.widget.Toast
 import dev.scanrelay.app.alerts.AlertNotifier
+import dev.scanrelay.app.alerts.AlertDismissalStore
 import dev.scanrelay.app.alerts.LocalTranscriptAlertPolicy
 import dev.scanrelay.app.alerts.LocalTranscriptAlertStore
 import dev.scanrelay.app.alerts.localTranscriptAlert
@@ -208,6 +209,7 @@ object ScannerRepository {
     @Volatile private var profileStore: ProfileStore? = null
     @Volatile private var pauseStore: ScannerPauseStore? = null
     @Volatile private var localTranscriptStore: LocalTranscriptAlertStore? = null
+    @Volatile private var alertDismissalStore: AlertDismissalStore? = null
     @Volatile private var networkAvailable = true
 
     fun initialize(context: Context) {
@@ -219,6 +221,7 @@ object ScannerRepository {
                 profileStore = ProfileStore(context.applicationContext)
                 pauseStore = ScannerPauseStore(context.applicationContext)
                 localTranscriptStore = LocalTranscriptAlertStore(context.applicationContext)
+                alertDismissalStore = AlertDismissalStore(context.applicationContext)
             }
         }
     }
@@ -234,7 +237,9 @@ object ScannerRepository {
                 hold = savedOverrides.hold,
                 holdSystemRef = savedOverrides.holdSystemRef,
                 avoided = savedOverrides.avoided,
-                alerts = localTranscriptStore?.alerts(profile.id, profile.name).orEmpty()
+                alerts = alertDismissalStore?.visible(profile.id,
+                    localTranscriptStore?.alerts(profile.id, profile.name).orEmpty()
+                ).orEmpty()
             )
         }
         sessions[profile.id] = session
@@ -1326,7 +1331,9 @@ object ScannerRepository {
                 if (!isCurrent(session)) return@launch
                 synchronized(session) {
                     session.state = session.state.copy(
-                        alerts = (localTranscriptStore?.alerts(session.profile.id, session.profile.name).orEmpty() + alerts).take(500),
+                        alerts = alertDismissalStore?.visible(session.profile.id,
+                            localTranscriptStore?.alerts(session.profile.id, session.profile.name).orEmpty() + alerts
+                        )?.take(500) ?: alerts.take(500),
                         alertsLoading = false,
                         alertsError = null
                     )
@@ -1344,6 +1351,25 @@ object ScannerRepository {
                 publish()
             }
         }
+    }
+
+    /** Hide an alert locally; the server's alert history remains untouched. */
+    fun dismissAlert(alert: ScannerAlert) {
+        val store = alertDismissalStore ?: return
+        store.dismiss(alert)
+        val session = sessions[alert.profileId] ?: return
+        val changed = synchronized(session) {
+            if (!isCurrent(session)) false
+            else {
+                val visible = session.state.alerts.filterNot { it.stableKey == alert.stableKey }
+                if (visible.size == session.state.alerts.size) false
+                else {
+                    session.state = session.state.copy(alerts = visible)
+                    true
+                }
+            }
+        }
+        if (changed) publish()
     }
 
     /** Enable or disable local transcript monitoring; never registers a push token. */
@@ -1442,6 +1468,7 @@ object ScannerRepository {
             profileId, session.profile.name, callId, transcript, matches,
             systemLabel, talkgroupLabel
         )
+        if (alertDismissalStore?.visible(profileId, listOf(alert))?.isEmpty() == true) return
         store.addAlert(alert)
         synchronized(session) {
             session.state = session.state.copy(
