@@ -30,6 +30,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -544,73 +546,57 @@ private fun ScannerStatusCard(
                 )
             }
 
-            // Fixed-width playback controls: never hide actions offscreen in a LazyRow.
-            // Two actions on the first row and three compact actions below fit phone widths.
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+            // Fixed-width playback controls: five icon-only buttons fit on one row.
+            // Descriptions remain available to accessibility services.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilledIconButton(
+                    modifier = Modifier.weight(1f).semantics {
+                        contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"
+                    },
+                    onClick = { viewModel.setAudioEnabled(!audioEnabled) }
                 ) {
-                    Button(
-                        modifier = Modifier.weight(1f).semantics {
-                            contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"
-                        },
-                        onClick = { viewModel.setAudioEnabled(!audioEnabled) }
-                    ) {
-                        Icon(
-                            painter = painterResource(if (audioEnabled) R.drawable.ic_fatline_stop else R.drawable.ic_fatline_play),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(if (audioEnabled) "Stop" else "Play", maxLines = 1, softWrap = false)
-                    }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f).semantics {
-                            contentDescription = if (server.paused) "Resume scanning" else "Pause scanning"
-                        },
-                        onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
-                        enabled = server.status == ConnectionStatus.CONNECTED
-                    ) {
-                        Icon(
-                            painter = painterResource(if (server.paused) R.drawable.ic_fatline_play else R.drawable.ic_fatline_pause),
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(if (server.paused) "Resume" else "Pause", maxLines = 1, softWrap = false)
-                    }
+                    Icon(
+                        painter = painterResource(if (audioEnabled) R.drawable.ic_fatline_stop else R.drawable.ic_fatline_play),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                OutlinedIconButton(
+                    modifier = Modifier.weight(1f).semantics {
+                        contentDescription = if (server.paused) "Resume scanning" else "Pause scanning"
+                    },
+                    onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
+                    enabled = server.status == ConnectionStatus.CONNECTED
                 ) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" },
-                        onClick = { viewModel.replayLast(server.profile.id) },
-                        enabled = server.recentCalls.isNotEmpty() || server.lastCall != null
-                    ) {
-                        Icon(painterResource(R.drawable.ic_fatline_replay), null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text("Replay", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall)
-                    }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f).semantics { contentDescription = "Skip current call" },
-                        onClick = viewModel::skip
-                    ) {
-                        Icon(painterResource(R.drawable.ic_fatline_skip), null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text("Skip", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall)
-                    }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f).semantics { contentDescription = "Clear scanner hold" },
-                        onClick = { viewModel.clearHold(server.profile.id) },
-                        enabled = server.hold != null || server.holdSystemRef != null
-                    ) {
-                        Icon(painterResource(R.drawable.ic_fatline_clear), null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(3.dp))
-                        Text("Hold", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall)
-                    }
+                    Icon(
+                        painter = painterResource(if (server.paused) R.drawable.ic_fatline_play else R.drawable.ic_fatline_pause),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                OutlinedIconButton(
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" },
+                    onClick = { viewModel.replayLast(server.profile.id) },
+                    enabled = server.recentCalls.isNotEmpty() || server.lastCall != null
+                ) {
+                    Icon(painterResource(R.drawable.ic_fatline_replay), null, Modifier.size(20.dp))
+                }
+                OutlinedIconButton(
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Skip current call" },
+                    onClick = viewModel::skip
+                ) {
+                    Icon(painterResource(R.drawable.ic_fatline_skip), null, Modifier.size(20.dp))
+                }
+                OutlinedIconButton(
+                    modifier = Modifier.weight(1f).semantics { contentDescription = "Clear scanner hold" },
+                    onClick = { viewModel.clearHold(server.profile.id) },
+                    enabled = server.hold != null || server.holdSystemRef != null
+                ) {
+                    Icon(painterResource(R.drawable.ic_fatline_clear), null, Modifier.size(20.dp))
                 }
             }
 
