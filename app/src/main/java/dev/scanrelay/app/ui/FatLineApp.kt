@@ -615,8 +615,10 @@ private fun ScannerStatusCard(
                 )
             }
 
-            // Fixed-width playback controls: five icon-only buttons fit on one row.
-            // Descriptions remain available to accessibility services.
+            // Four standard icon-only playback controls fit on one row.
+            // A Resume-only recovery control appears solely for profiles that
+            // were paused in an older version, so no saved pause can strand audio.
+            // TalkBack descriptions remain available without visible labels.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -634,18 +636,21 @@ private fun ScannerStatusCard(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-                OutlinedIconButton(
-                    modifier = Modifier.weight(1f).semantics {
-                        contentDescription = if (server.paused) "Resume scanning" else "Pause scanning"
-                    },
-                    onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
-                    enabled = server.status == ConnectionStatus.CONNECTED
-                ) {
-                    Icon(
-                        painter = painterResource(if (server.paused) R.drawable.ic_fatline_play else R.drawable.ic_fatline_pause),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
+                // Previous app versions saved per-server Pause. Offer a one-way
+                // Resume only when needed, never a Pause button in normal use.
+                if (server.paused) {
+                    OutlinedIconButton(
+                        modifier = Modifier.weight(1f).semantics {
+                            contentDescription = "Resume previously paused scanner"
+                        },
+                        onClick = { viewModel.setPaused(server.profile.id, false) }
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_fatline_play),
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
                 OutlinedIconButton(
                     modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" },
