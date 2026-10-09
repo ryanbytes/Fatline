@@ -21,7 +21,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | Channel/system enablement, local favorites, system/tag/channel tree | Implemented | Mobile screen and subscription state vs. actual server |
 | Scan lists and server-backed list membership/reordering | Implemented | Synchronization and conflict/reconnect tests |
 | Hold system/talkgroup, avoid/unavoid, Pause, Skip | Implemented | Verify selection/resume behavior on a real server |
-| Recently played live calls, tap to play, **Replay last** | Implemented; Recent remains hidden until a live call naturally finishes playback; unplayed, skipped and replay-only calls are excluded | Verify empty Recent section, completed call ordering, skips, manual Stop, queue backlog, replays and final item completion on Android device |
+| Recently played live calls, tap to play, **Replay last** | Implemented; Recent remains hidden until a live call naturally finishes **with observed media-position progress**; mere receipt, queued, unrendered, skipped and replay-only calls are excluded | Verify empty Recent section, completed call ordering, skips, manual Stop, queue backlog, replays and final item completion on Android device |
 | Archive/history filters, replay, continue, downloads | Implemented, including incremental stable live-History insertion, unchanged paged merging, multi-talkgroup server filtering, entry refresh and compact icon-only archive/filter/call actions | Verify stable order for equal timestamps, duplicate call metadata, both sort directions, filter preservation, pagination, replay and continuation against live server |
 | Queue count, preview, clear, durable recovery, de-duplication | Implemented | Android service restart and Wi-Fi/cellular handoff tests |
 | Reopen-app recovery of previously active scanner sessions | Implemented | Kill the foreground service, reopen app, and verify old connections resume without disrupting existing ones; no boot auto-start |
@@ -31,6 +31,9 @@ account information, or encryption keys to ThinLine-hosted services):
 | Account login, password/email changes, server account details | Implemented | Privacy-safe endpoint and authentication tests |
 | Android Auto MediaLibrary browse/play | Implemented; favorites cache reused across unrelated scanner-state changes while configuration changes still notify connected browsers | Test browse, profile changes and favorite edits with an Android Auto host |
 | Custom per-scanner sounds, connection-loss and local severe-weather alerts | Implemented | Notification permission and real-device audio behavior |
+
+
+**Recent playback gate:** The UI reads only `recentCalls`; socket CALL receipt changes archive and `lastCall`, never Recent. Media3 must see the item start and its position advance before an automatic transition/end can add it. A quick device acceptance check is to accumulate queued calls while another call is playing: pending calls must not appear in Recent until each actually plays through. Test again with audio stopped and then resumed; the list must not grow just from received calls. The service does not persist Recent across process recreation.
 
 ## Functional and usability gaps (open)
 
