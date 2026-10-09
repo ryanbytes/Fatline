@@ -14,7 +14,7 @@ internal object AlertDismissalPolicy {
 
     fun key(alert: ScannerAlert): String {
         val digest = MessageDigest.getInstance("SHA-256")
-            .digest(alert.stableKey.toByteArray(Charsets.UTF_8))
+            .digest((alert.profileId + "\u0000" + alert.stableKey).toByteArray(Charsets.UTF_8))
         val hex = "0123456789abcdef"
         return buildString(digest.size * 2) {
             digest.forEach { byte ->
