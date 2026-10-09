@@ -108,6 +108,18 @@ python3 tools/validate_project.py
 gradle testDebugUnitTest assembleDebug
 ```
 
+## Local performance measurement
+
+Open **Settings → Performance probe** on the Android phone, select a scenario, and tap **Start**. The probe samples the scanner service every 10 seconds even if the Settings screen closes. It only runs when explicitly started and stops on command or service termination. Measurements never go to a server or third party; tap **Stop** then **Copy report** to share the results manually.
+
+For a useful comparison, run **three separate 5–10 minute captures** on the same phone with the same network, screen and charging conditions:
+
+1. **Idle monitoring:** scanner connected, no current traffic, audio enabled; keep the screen off.
+2. **Live playback:** scanner connected with typical calls playing; keep the screen off.
+3. **Transcript monitoring:** locally enabled keyword monitor with typical transcript traffic, otherwise similar conditions.
+
+Do not change settings mid-capture. Record whether other phone apps are active, and compare the reported average *FatLine process CPU* (100% = one full CPU core), Java/native heap, PSS, and network RX/TX. Device battery level and charge-counter measurements are **whole-phone readings**, not energy attributable to FatLine. A very short capture or one taken while charging cannot reliably measure battery impact. The probe cannot measure individual modules' CPU time or wakeups; for those use Android Studio/Perfetto/ADB while the scenario is reproduced. Actual device baselines are not available from CI.
+
 ## Security
 
 The CI debug signing key is intentionally repository-visible and is only for personal/test builds of `dev.scanrelay.app`; it must never be reused for a production/release package. Its purpose is stable sideload updates across GitHub Actions runners.
