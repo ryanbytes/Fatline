@@ -230,6 +230,17 @@ require('channel.setShowBadge(true)' in alert_notifier
         'alert channels must allow real alerts to badge, while playback migrates to a new non-badging channel')
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun ScannerHudPanel(', 1)[0]
+clock_view = ui.split('private fun ScannerClock()', 1)[1].split('private fun ScannerScreen(', 1)[0]
+require('"FatLine"' not in scanner_screen and '"ThinLine-compatible scanner"' not in scanner_screen,
+        'Scanner screen must not show a redundant page title above the status card')
+require('TextClock(context)' in clock_view and 'format12Hour = "h:mm a"' in clock_view
+        and 'format24Hour = "HH:mm"' in clock_view and 'AndroidView(' in clock_view
+        and 'clock.setTextColor(clockColor.toArgb())' in clock_view,
+        'live scanner clock must follow Android system time, timezone, locale and 12/24-hour setting')
+require(scanner_screen.count('ScannerClock()') >= 2
+        and 'ScannerClock()' in scanner_card.split('ScannerHudPanel(', 1)[0],
+        'clock must live in scanner status cards, including disconnected fallback, not as an extra top title')
+
 require('private fun NowPlayingCard(' not in ui and 'NowPlayingCard(server' not in scanner_screen, 'large duplicate now-playing card must not return')
 require('Text("Call actions")' in scanner_card and '"Avoid channel"' in scanner_card and 'viewModel.setSystemHold(' in scanner_card, 'compact now-playing actions must preserve controls')
 require('contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"' in scanner_card

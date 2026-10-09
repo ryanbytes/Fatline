@@ -4,6 +4,9 @@ import android.app.Activity
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import android.graphics.Typeface
+import android.util.TypedValue
+import android.widget.TextClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -54,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -66,6 +70,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.scanrelay.app.AccountLoginPolicy
 import dev.scanrelay.app.R
@@ -291,6 +296,28 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     }
 }
 
+/**
+ * Android TextClock runs only while attached and automatically follows system
+ * 12/24-hour format, clock ticks, timezone changes and locale updates.
+ * No background polling timer or extra notification is required.
+ */
+@Composable
+private fun ScannerClock() {
+    val clockColor = MaterialTheme.colorScheme.onSurface
+    AndroidView(
+        factory = { context ->
+            TextClock(context).apply {
+                format12Hour = "h:mm a"
+                format24Hour = "HH:mm"
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+                setSingleLine(true)
+            }
+        },
+        update = { clock -> clock.setTextColor(clockColor.toArgb()) }
+    )
+}
+
 @Composable
 private fun ScannerScreen(
     scanner: ScannerState,
@@ -311,18 +338,8 @@ private fun ScannerScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Column(Modifier.padding(top = 16.dp)) {
-                Text(
-                    "FatLine",
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "ThinLine-compatible scanner",
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall
-                )
+            // The scanner card carries the clock; avoid a duplicate page title.
+            Column(Modifier.padding(top = 6.dp)) {
                 ProfileStrip(profiles, selectedProfileId, onSelectProfile)
             }
         }
@@ -332,7 +349,10 @@ private fun ScannerScreen(
             item {
                 Card(Modifier.padding(horizontal = 16.dp)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("No scanner configured", style = MaterialTheme.typography.titleLarge)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("No scanner configured", style = MaterialTheme.typography.titleLarge)
+                            ScannerClock()
+                        }
                         Text("Add a scanner under Settings.")
                     }
                 }
@@ -341,8 +361,13 @@ private fun ScannerScreen(
             item {
                 Card(Modifier.padding(horizontal = 16.dp)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(profile.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                        Text("Disconnected")
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) {
+                                Text(profile.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text("Disconnected")
+                            }
+                            ScannerClock()
+                        }
                         Button(onClick = { viewModel.connect(profile) }) { Text("Connect") }
                     }
                 }
@@ -425,10 +450,16 @@ private fun ScannerStatusCard(
                     Text(server.profile.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(server.statusText)
                 }
-                if (server.status == ConnectionStatus.CONNECTED) {
-                    OutlinedButton(onClick = { viewModel.disconnect(server.profile.id) }) { Text("Disconnect") }
-                } else {
-                    Button(onClick = { viewModel.connect(server.profile) }) { Text("Reconnect") }
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    ScannerClock()
+                    if (server.status == ConnectionStatus.CONNECTED) {
+                        OutlinedButton(onClick = { viewModel.disconnect(server.profile.id) }) { Text("Disconnect") }
+                    } else {
+                        Button(onClick = { viewModel.connect(server.profile) }) { Text("Reconnect") }
+                    }
                 }
             }
 
