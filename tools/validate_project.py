@@ -391,6 +391,23 @@ require('queuedAndStartedCallsAreNotRecentUntilNaturalCompletion' in queue_tests
         and 'replayItemsAndUnstartedCallsNeverCountAsPlayedLive' in queue_tests,
         'completed-live tracker needs pending, skip, stop and end-of-playlist coverage')
 
+require('private var playbackAdvanced = false' in queue_policy
+        and 'fun observedProgress(mediaId: String?, positionMs: Long)' in queue_policy
+        and 'if (automatic && playbackAdvanced)' in queue_policy
+        and 'val completed = if (playbackAdvanced)' in queue_policy,
+        'Recent completion must require actual player position progress')
+require('private val playbackProgressCheck = object : Runnable' in service
+        and 'playedLiveCallTracker.observedProgress(id, player.currentPosition)' in service
+        and 'override fun onPositionDiscontinuity(' in service
+        and 'reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION' in service
+        and 'oldPosition.mediaItem?.mediaId, oldPosition.positionMs' in service
+        and 'playbackProgressHandler.removeCallbacks(playbackProgressCheck)' in service,
+        'service must verify progress and stop monitoring it when idle')
+require('otherArrivalsAndReplayProgressCannotAdvanceCurrentLiveCall' in queue_tests
+        and 'autoTransitionRequiresPlaybackProgressAndCannotInventRecentEntries' in queue_tests
+        and 'assertFalse(tracker.observedProgress(id("live", 11), 0L))' in queue_tests,
+        'Recent needs zero-progress and unrelated-arrival regression coverage')
+
 scanner_status_controls = scanner_card.split('// Four standard icon-only playback controls', 1)[1].split('if (!audioEnabled)', 1)[0]
 require('LazyRow(' not in scanner_status_controls
         and scanner_status_controls.count('modifier = Modifier.weight(1f)') == 5
