@@ -346,7 +346,7 @@ recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifi
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
 
-scanner_status_controls = scanner_card.split('// Fixed-width playback controls:', 1)[1].split('if (!audioEnabled)', 1)[0]
+scanner_status_controls = scanner_card.split('// Four standard icon-only playback controls', 1)[1].split('if (!audioEnabled)', 1)[0]
 require('LazyRow(' not in scanner_status_controls
         and scanner_status_controls.count('modifier = Modifier.weight(1f)') == 5
         and scanner_status_controls.count('OutlinedIconButton(') == 4
@@ -354,17 +354,23 @@ require('LazyRow(' not in scanner_status_controls
         and scanner_status_controls.count('Icon(') == 5
         and 'Text(' not in scanner_status_controls
         and 'Spacer(' not in scanner_status_controls,
-        'all five playback actions must be icon-only, visible in one non-scrolling row')
+        'four standard icon-only playback actions plus conditional legacy Resume must fit one row')
+require('if (server.paused) {' in scanner_status_controls
+        and 'viewModel.setPaused(server.profile.id, false)' in scanner_status_controls
+        and 'contentDescription = "Resume previously paused scanner"' in scanner_status_controls
+        and 'viewModel.setPaused(server.profile.id, !server.paused)' not in scanner_status_controls
+        and 'R.drawable.ic_fatline_pause' not in scanner_status_controls
+        and 'Pause scanning' not in scanner_status_controls,
+        'main scanner card must not allow pausing; legacy paused users must still be able to resume')
 require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
-        and 'viewModel.setPaused(server.profile.id, !server.paused)' in scanner_status_controls
         and 'viewModel.replayLast(server.profile.id)' in scanner_status_controls
         and 'onClick = viewModel::skip' in scanner_status_controls
         and 'viewModel.clearHold(server.profile.id)' in scanner_status_controls
         and all('R.drawable.ic_fatline_' + name in scanner_status_controls
-                for name in ('stop', 'play', 'pause', 'replay', 'skip', 'clear'))
+                for name in ('stop', 'play', 'replay', 'skip', 'clear'))
         and 'contentDescription = "Skip current call"' in scanner_status_controls
         and 'contentDescription = "Clear scanner hold"' in scanner_status_controls,
-        'all five icon-only controls must retain functions and accessible descriptions')
+        'Play/Stop, Replay, Skip and Clear Hold must remain accessible and functional')
 require('fun replayLast(profileId: String)' in repo and 'lastReplayCandidate(session.state)' in repo and 'playNow(profileId, call.id)' in repo, 'Replay last must select and immediately play most recent call')
 require('fun replayLast(profileId: String)' in viewmodel, 'Replay last ViewModel binding missing')
 replay_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()
