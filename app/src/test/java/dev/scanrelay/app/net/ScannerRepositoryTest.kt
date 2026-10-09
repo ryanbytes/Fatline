@@ -3,6 +3,8 @@ package dev.scanrelay.app.net
 import dev.scanrelay.app.model.AlertPreference
 import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
+import dev.scanrelay.app.model.ScannerAlert
+import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ScanList
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
@@ -17,6 +19,44 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScannerRepositoryTest {
+    @Test
+    fun unchangedHistoryAndAlertsAreReusedAcrossStatusAndTranscriptUpdates() {
+        val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val call = RadioCall(profileId = "one", serverName = "One", id = 1,
+            systemRef = 1, talkgroupRef = 101, systemLabel = "System",
+            talkgroupLabel = "Dispatch", dateTime = "2026-10-09T10:00:00Z")
+        val history = listOf(call)
+        val alerts = listOf(ScannerAlert("one", "One", "Alert", "Body"))
+        val initial = ServerScannerState(profile = profile, history = history, alerts = alerts)
+        val previous = ScannerState(servers = mapOf("one" to initial), history = history, alerts = alerts)
+        val later = initial.copy(statusText = "Connected", transcriptsLoading = true)
+        assertTrue(ScannerStateAggregationPolicy.reuseHistory(previous, mapOf("one" to later)))
+        assertTrue(ScannerStateAggregationPolicy.reuseAlerts(previous, mapOf("one" to later)))
+    }
+
+    @Test
+    fun changedArchiveOrAlertsInvalidateOnlyTheirOwnAggregatedCache() {
+        val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val call = RadioCall(profileId = "one", serverName = "One", id = 1,
+            systemRef = 1, talkgroupRef = 101, systemLabel = "System",
+            talkgroupLabel = "Dispatch", dateTime = "2026-10-09T10:00:00Z")
+        val original = ServerScannerState(
+            profile = profile, history = listOf(call),
+            alerts = listOf(ScannerAlert("one", "One", "Alert", "Body"))
+        )
+        val old = ScannerState(servers = mapOf("one" to original),
+            history = original.history, alerts = original.alerts)
+        val newHistory = original.copy(history = listOf(call.copy(id = 2)))
+        assertFalse(ScannerStateAggregationPolicy.reuseHistory(old, mapOf("one" to newHistory)))
+        assertTrue(ScannerStateAggregationPolicy.reuseAlerts(old, mapOf("one" to newHistory)))
+
+        val newAlerts = original.copy(alerts = listOf(ScannerAlert("one", "One", "New", "Body")))
+        assertTrue(ScannerStateAggregationPolicy.reuseHistory(old, mapOf("one" to newAlerts)))
+        assertFalse(ScannerStateAggregationPolicy.reuseAlerts(old, mapOf("one" to newAlerts)))
+        assertFalse(ScannerStateAggregationPolicy.reuseHistory(old, emptyMap()))
+        assertFalse(ScannerStateAggregationPolicy.reuseAlerts(old, emptyMap()))
+    }
+
     @Test
     fun historyContinueStartsAtSelectedAndMovesTowardNewest() {
         assertEquals(
