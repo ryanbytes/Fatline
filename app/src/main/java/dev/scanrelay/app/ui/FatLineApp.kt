@@ -337,14 +337,8 @@ private fun ScannerScreen(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            // The scanner card carries the clock; avoid a duplicate page title.
-            Column(Modifier.padding(top = 6.dp)) {
-                ProfileStrip(profiles, selectedProfileId, onSelectProfile)
-            }
-        }
-
-
+        // No separate scanner chip above the card. The scanner title itself
+        // opens the profile chooser when more than one server is configured.
         if (profile == null) {
             item {
                 Card(Modifier.padding(horizontal = 16.dp)) {
@@ -363,7 +357,7 @@ private fun ScannerScreen(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column(Modifier.weight(1f)) {
-                                Text(profile.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                ScannerProfileTitle(profile, profiles, onSelectProfile)
                                 Text("Disconnected")
                             }
                             ScannerClock()
@@ -373,7 +367,7 @@ private fun ScannerScreen(
                 }
             }
         } else {
-            item { ScannerStatusCard(server, queuedCallCount, queuedCalls, playingCall, viewModel) }
+            item { ScannerStatusCard(server, profiles, onSelectProfile, queuedCallCount, queuedCalls, playingCall, viewModel) }
 
             if (server.alerts.isNotEmpty()) {
                 item {
@@ -426,9 +420,53 @@ private fun ScannerScreen(
     }
 }
 
+/**
+ * Scanner switching is attached to its existing status-card title, not a
+ * separate chip or row that wastes vertical space on the main screen.
+ */
+@Composable
+private fun ScannerProfileTitle(
+    profile: ServerProfile,
+    profiles: List<ServerProfile>,
+    onSelectProfile: (String) -> Unit
+) {
+    var expanded by remember(profile.id) { mutableStateOf(false) }
+    Box {
+        Text(
+            profile.name + if (profiles.size > 1) " ▾" else "",
+            modifier = if (profiles.size > 1) {
+                Modifier.clickable(
+                    role = Role.Button,
+                    onClickLabel = "Switch scanner",
+                    onClick = { expanded = true }
+                )
+            } else Modifier,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (profiles.size > 1) {
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                profiles.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.name) },
+                        onClick = {
+                            expanded = false
+                            onSelectProfile(option.id)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ScannerStatusCard(
     server: ServerScannerState,
+    profiles: List<ServerProfile>,
+    onSelectProfile: (String) -> Unit,
     queuedCallCount: Int,
     queuedCalls: List<QueuedCall>,
     currentlyPlayingCall: RadioCall?,
@@ -447,7 +485,7 @@ private fun ScannerStatusCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(server.profile.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    ScannerProfileTitle(server.profile, profiles, onSelectProfile)
                     Text(server.statusText)
                 }
                 Column(
