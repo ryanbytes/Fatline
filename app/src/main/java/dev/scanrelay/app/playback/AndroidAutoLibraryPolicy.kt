@@ -1,6 +1,7 @@
 package dev.scanrelay.app.playback
 
 import dev.scanrelay.app.model.ScannerState
+import dev.scanrelay.app.model.SystemConfig
 
 internal data class AndroidAutoFavorite(
     val mediaId: String,
@@ -30,4 +31,59 @@ internal object AndroidAutoLibraryPolicy {
         previous: List<AndroidAutoFavorite>?,
         current: List<AndroidAutoFavorite>
     ): Boolean = previous != null && previous != current
+}
+
+/**
+ * Android Auto's favorite-channel library depends only on system configuration
+ * and hidden-system membership. Live calls, queue changes and transcript alerts
+ * leave these immutable input references unchanged, so avoid rebuilding the
+ * entire favorites list for every scanner state emission.
+ *
+ * Owned by ScannerService's main-thread state collector; no synchronization
+ * with the repository thread or global cache lifetime is required.
+ */
+internal data class AndroidAutoFavoritesUpdate(
+    val favorites: List<AndroidAutoFavorite>,
+    val changed: Boolean,
+    val rebuilt: Boolean
+)
+
+internal class AndroidAutoFavoritesCache {
+    private data class Snapshot(
+        val systems: List<SystemConfig>,
+        val hiddenSystems: Set<Long>,
+        val favorites: List<AndroidAutoFavorite>
+    )
+
+    private val snapshots = mutableMapOf<String, Snapshot>()
+
+    val profileIds: Set<String> get() = snapshots.keys.toSet()
+
+    fun refresh(profileId: String, state: ScannerState): AndroidAutoFavoritesUpdate {
+        val server = state.servers[profileId]
+        val previous = snapshots[profileId]
+        if (server == null) {
+            snapshots.remove(profileId)
+            return AndroidAutoFavoritesUpdate(
+                favorites = emptyList(),
+                changed = AndroidAutoLibraryPolicy.childrenChanged(previous?.favorites, emptyList()),
+                rebuilt = previous != null
+            )
+        }
+
+        if (previous != null &&
+            previous.systems === server.systems &&
+            previous.hiddenSystems === server.hiddenSystemRefs
+        ) {
+            return AndroidAutoFavoritesUpdate(previous.favorites, changed = false, rebuilt = false)
+        }
+
+        val current = AndroidAutoLibraryPolicy.favoriteChannels(profileId, state)
+        snapshots[profileId] = Snapshot(server.systems, server.hiddenSystemRefs, current)
+        return AndroidAutoFavoritesUpdate(
+            favorites = current,
+            changed = AndroidAutoLibraryPolicy.childrenChanged(previous?.favorites, current),
+            rebuilt = true
+        )
+    }
 }
