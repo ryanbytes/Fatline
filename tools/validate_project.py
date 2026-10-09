@@ -517,6 +517,13 @@ require('historyTalkgroupRefs' in models and '"talkgroups", JSONArray(selectedTa
         'archive multi-talkgroup selection must survive protocol, pagination and UI')
 require('activeSystemRef = session.state.historySystemRef' in repo and 'activeTalkgroupRef = session.state.historyTalkgroupRef' in repo, 'archive pagination must reuse the active server filter')
 require('matchesHistoryFilter(session.state, call)' in repo, 'live calls must respect the active archive filter')
+require('LiveHistoryMergePolicy.insert(' in repo
+        and 'session.state.history, call, newestFirst = session.state.historySort < 0' in repo
+        and 'val combined = (session.state.history + calls).associateBy { it.id }.values' in repo
+        and 'incrementalHistoryInsertPreservesChronologyBothDirections' in aggregation_tests
+        and 'incrementalHistoryDuplicateKeepsStablePositionAmongEqualTimes' in aggregation_tests
+        and 'incrementalHistoryMatchesStableSortForLargePagedArchiveAndUpdates' in aggregation_tests,
+        'incremental live History must preserve chronological, stable-tie, duplicate-ID and paged batch behavior')
 require('liveCallsRespectActiveHistoryFilter' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive-filter live-call regression test missing')
 require('Current TG' in ui and 'Current SYS' in ui and 'All archive' in ui, 'current-channel/system archive filter controls missing')
 require('talkgroupRef: Long? = null' in viewmodel and 'ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)' in viewmodel, 'archive filter bridge missing from view model')

@@ -22,7 +22,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | Scan lists and server-backed list membership/reordering | Implemented | Synchronization and conflict/reconnect tests |
 | Hold system/talkgroup, avoid/unavoid, Pause, Skip | Implemented | Verify selection/resume behavior on a real server |
 | Recent live calls, tap to play, **Replay last** | Implemented | Correct most recent call with and without active playback |
-| Archive/history filters, replay, continue, downloads | Implemented, including multi-talkgroup server filter, refresh on History entry and compact icon-only archive/filter/call actions | Verify icon labels/selected badges, on-entry first-page refresh, preserved active filters, pagination, replay, continuation and authenticated downloads on-device |
+| Archive/history filters, replay, continue, downloads | Implemented, including incremental stable live-History insertion, unchanged paged merging, multi-talkgroup server filtering, entry refresh and compact icon-only archive/filter/call actions | Verify stable order for equal timestamps, duplicate call metadata, both sort directions, filter preservation, pagination, replay and continuation against live server |
 | Queue count, preview, clear, durable recovery, de-duplication | Implemented | Android service restart and Wi-Fi/cellular handoff tests |
 | Reopen-app recovery of previously active scanner sessions | Implemented | Kill the foreground service, reopen app, and verify old connections resume without disrupting existing ones; no boot auto-start |
 | Server alert preferences, keyword/tone matching, alert listing | Implemented | Validate against authorized self-hosted server responses |

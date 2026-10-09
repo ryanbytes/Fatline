@@ -15,10 +15,104 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 class ScannerRepositoryTest {
+    private fun historyCall(id: Long, time: String, label: String = "Call $id"): RadioCall =
+        RadioCall(
+            profileId = "one", serverName = "Scanner", id = id,
+            systemRef = 1, talkgroupRef = 42, systemLabel = "Law",
+            talkgroupLabel = label, dateTime = time
+        )
+
+    // Keep an independent, deliberately slower reference to the previous
+    // associateBy+stable-sort behavior for an exact equivalence check.
+    private fun oldHistoryInsertion(
+        history: List<RadioCall>, call: RadioCall, newestFirst: Boolean
+    ): List<RadioCall> {
+        val merged = (history + call).associateBy { it.id }.values
+        val sortKey: (RadioCall) -> Long = {
+            runCatching { Instant.parse(it.dateTime).toEpochMilli() }.getOrDefault(0L)
+        }
+        return if (newestFirst) merged.sortedByDescending(sortKey) else merged.sortedBy(sortKey)
+    }
+
+    @Test
+    fun incrementalHistoryInsertPreservesChronologyBothDirections() {
+        val base = listOf(
+            historyCall(1, "2026-10-09T10:00:00Z"),
+            historyCall(2, "2026-10-09T10:10:00Z"),
+            historyCall(3, "2026-10-09T10:20:00Z")
+        )
+        val cases = listOf(
+            historyCall(4, "2026-10-09T09:50:00Z"), // older
+            historyCall(4, "2026-10-09T10:15:00Z"), // between
+            historyCall(4, "2026-10-09T10:25:00Z"), // newer
+            historyCall(4, "2026-10-09T10:10:00Z"), // stable equal timestamp
+            historyCall(4, ""),                     // invalid date = epoch 0
+            historyCall(2, "2026-10-09T10:40:00Z", "Updated"),
+            historyCall(2, "2026-10-09T09:00:00Z", "Updated")
+        )
+        for (newestFirst in listOf(true, false)) {
+            val sorted = if (newestFirst) base.asReversed() else base
+            for (incoming in cases) {
+                assertEquals(
+                    "sort=$newestFirst, id=${incoming.id}, time=${incoming.dateTime}",
+                    oldHistoryInsertion(sorted, incoming, newestFirst),
+                    LiveHistoryMergePolicy.insert(sorted, incoming, newestFirst)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun incrementalHistoryDuplicateKeepsStablePositionAmongEqualTimes() {
+        val sameTime = "2026-10-09T10:10:00Z"
+        for (newestFirst in listOf(true, false)) {
+            val existing = (1L..4L).map { historyCall(it, sameTime) }
+            val updated = historyCall(2, sameTime, "Updated transcript")
+            val result = LiveHistoryMergePolicy.insert(existing, updated, newestFirst)
+            assertEquals(listOf(1L, 2L, 3L, 4L), result.map { it.id })
+            assertEquals("Updated transcript", result[1].talkgroupLabel)
+            assertEquals(oldHistoryInsertion(existing, updated, newestFirst), result)
+            // Identical duplicate should not trigger an archive recomputation.
+            assertSame(existing, LiveHistoryMergePolicy.insert(existing, existing[1], newestFirst))
+        }
+    }
+
+    @Test
+    fun incrementalHistoryMatchesStableSortForLargePagedArchiveAndUpdates() {
+        val origin = (1..180).map { i ->
+            historyCall(
+                i.toLong(),
+                if (i % 19 == 0) "not-an-instant"
+                else "2026-10-09T10:${(i % 13).toString().padStart(2, '0')}:00Z"
+            )
+        }
+        val sortKey: (RadioCall) -> Long = {
+            runCatching { Instant.parse(it.dateTime).toEpochMilli() }.getOrDefault(0L)
+        }
+        for (newestFirst in listOf(true, false)) {
+            // Multiple same-time records and invalid times stress stable sorting.
+            var history = if (newestFirst) origin.sortedByDescending(sortKey) else origin.sortedBy(sortKey)
+            for (i in 0..230) {
+                val incoming = historyCall(
+                    if (i % 3 == 0) (i % 180 + 1).toLong() else (181 + i).toLong(),
+                    if (i % 17 == 0) ""
+                    else "2026-10-09T10:${(i % 13).toString().padStart(2, '0')}:00Z",
+                    "Replacement $i"
+                )
+                val expected = oldHistoryInsertion(history, incoming, newestFirst)
+                history = LiveHistoryMergePolicy.insert(history, incoming, newestFirst)
+                assertEquals("step $i, newestFirst=$newestFirst", expected, history)
+                assertEquals(history.map { it.id }.distinct().size, history.size)
+            }
+        }
+    }
+
     @Test
     fun unchangedHistoryAndAlertsAreReusedAcrossStatusAndTranscriptUpdates() {
         val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
