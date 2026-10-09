@@ -96,6 +96,27 @@ internal object PlaybackCachePolicy {
         newestFirst.filterNot { it in protectedPaths }.drop(retainUnprotected)
 }
 
+/**
+ * Run an immediate cache sweep after the first audio write in a process, then
+ * once per [interval] subsequent writes per scanner. This avoids directory
+ * listing, mtime sort and saved-queue reads for most incoming calls while
+ * keeping only up to interval - 1 extra unprotected files between sweeps.
+ *
+ * Queue-protected paths are still read afresh during every actual sweep.
+ */
+internal class PlaybackCachePruneSchedule(private val interval: Int = 16) {
+    init { require(interval > 0) }
+
+    private val writesSincePrune = mutableMapOf<String, Int>()
+
+    @Synchronized
+    fun afterWrite(profileId: String): Boolean {
+        val count = writesSincePrune[profileId] ?: 0
+        writesSincePrune[profileId] = (count + 1) % interval
+        return count == 0
+    }
+}
+
 internal class PlaybackQueueStore(context: Context) {
     private val prefs = context.getSharedPreferences("fatline_playback_queue", Context.MODE_PRIVATE)
 
