@@ -1363,7 +1363,8 @@ object ScannerRepository {
         val store = localTranscriptStore ?: return
         val profileId = session.profile.id
         if (!isCurrent(session) || !store.active(profileId)) return
-        val matches = LocalTranscriptAlertPolicy.matches(transcript, store.rules(profileId))
+        // Reuse pre-normalized phrase rules across all live and delayed transcripts.
+        val matches = store.matches(profileId, transcript)
         if (matches.isEmpty() || !store.accept(profileId, callId)) return
         val alert = localTranscriptAlert(
             profileId, session.profile.name, callId, transcript, matches,

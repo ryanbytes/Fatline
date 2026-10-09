@@ -36,6 +36,43 @@ class LocalTranscriptAlertPolicyTest {
     }
 
     @Test
+    fun preparedRulesRetainPhraseMatchingAndWordBoundaries() {
+        val rules = LocalTranscriptAlertPolicy.terms("shots fired, fire, cardiac arrest")
+        val prepared = LocalTranscriptAlertPolicy.prepare(rules)
+        for (text in listOf(
+            "SHOTS, FIRED reported", "Firefighter answering for firefighter",
+            "Working structure FIRE", "possible cardiac-arrest", "no matching words"
+        )) {
+            assertEquals(
+                LocalTranscriptAlertPolicy.matches(text, rules),
+                LocalTranscriptAlertPolicy.matchesPrepared(text, prepared)
+            )
+        }
+        assertEquals(listOf("shots fired"),
+            LocalTranscriptAlertPolicy.matchesPrepared("SHOTS, FIRED reported", prepared))
+        assertTrue(LocalTranscriptAlertPolicy.matchesPrepared("firefighter", prepared).isEmpty())
+    }
+
+    @Test
+    fun cachedRulesReusedAndRepreparedAsSoonAsRuleTextChanges() {
+        val cache = TranscriptRuleCache()
+        val initial = cache.get("one", "fire, pursuit")
+        assertTrue(initial === cache.get("one", "fire, pursuit"))
+        assertEquals(listOf("fire"), LocalTranscriptAlertPolicy.matchesPrepared("working fire", initial.prepared))
+
+        val edited = cache.get("one", "shots fired, pursuit")
+        assertTrue(edited !== initial)
+        assertTrue(LocalTranscriptAlertPolicy.matchesPrepared("working fire", edited.prepared).isEmpty())
+        assertEquals(listOf("shots fired"),
+            LocalTranscriptAlertPolicy.matchesPrepared("Shots, fired!", edited.prepared))
+
+        // Per-server caches are separate; deleting clears prior data.
+        assertTrue(cache.get("two", "fire") !== edited)
+        cache.clear("one")
+        assertTrue(cache.get("one", "shots fired, pursuit") !== edited)
+    }
+
+    @Test
     fun batterySaverHalvesPeriodicNetworkChecks() {
         assertEquals(30_000L, LocalTranscriptAlertPolicy.pollIntervalMs(false))
         assertEquals(60_000L, LocalTranscriptAlertPolicy.pollIntervalMs(true))

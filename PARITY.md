@@ -26,7 +26,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | Queue count, preview, clear, durable recovery, de-duplication | Implemented | Android service restart and Wi-Fi/cellular handoff tests |
 | Reopen-app recovery of previously active scanner sessions | Implemented | Kill the foreground service, reopen app, and verify old connections resume without disrupting existing ones; no boot auto-start |
 | Server alert preferences, keyword/tone matching, alert listing | Implemented | Validate against authorized self-hosted server responses |
-| On-device transcript keyword/phrase alerts | Implemented (opt-in) | Verify 30-second fast vs. 1-minute battery-saver polling while paused, immediate live CALL matching, deduplication and late transcripts on-device |
+| On-device transcript keyword/phrase alerts | Implemented (opt-in), with cached pre-normalized phrase rules invalidated on settings changes | Verify identical live/delayed phrase matches, rule edits, 30-second vs. 1-minute polling, deduplication and timely notifications on-device |
 | Transcripts, filtering and pagination | Implemented | Server-provided transcript and date edge cases |
 | Account login, password/email changes, server account details | Implemented | Privacy-safe endpoint and authentication tests |
 | Android Auto MediaLibrary browse/play | Implemented; favorites cache reused across unrelated scanner-state changes while configuration changes still notify connected browsers | Test browse, profile changes and favorite edits with an Android Auto host |
