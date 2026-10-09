@@ -29,7 +29,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | On-device transcript keyword/phrase alerts | Implemented (opt-in) | Verify 30-second fast vs. 1-minute battery-saver polling while paused, immediate live CALL matching, deduplication and late transcripts on-device |
 | Transcripts, filtering and pagination | Implemented | Server-provided transcript and date edge cases |
 | Account login, password/email changes, server account details | Implemented | Privacy-safe endpoint and authentication tests |
-| Android Auto MediaLibrary browse/play | Implemented | Test with an Android Auto host |
+| Android Auto MediaLibrary browse/play | Implemented; favorites cache reused across unrelated scanner-state changes while configuration changes still notify connected browsers | Test browse, profile changes and favorite edits with an Android Auto host |
 | Custom per-scanner sounds, connection-loss and local severe-weather alerts | Implemented | Notification permission and real-device audio behavior |
 
 ## Functional and usability gaps (open)
@@ -39,7 +39,7 @@ account information, or encryption keys to ThinLine-hosted services):
 | Compact, truthful playback and connection status | **Implemented; device-unverified** | Removed the large duplicate Now Playing card, retained compact HUD and moved hold/avoid/replay into Call actions; verify legibility and usability on-device |
 | Automatic server-assigned feed sync | **Not implemented** | Only explore privacy-preserving sync directly with the user's own scanner server; never call ThinLine-hosted account/telemetry endpoints |
 | Mobile app usability | **Partially improved; device-unverified** | Bottom navigation now shows Scanner, Channels, History and Transcripts, with Alerts, Weather and Settings in More; scanner playback actions fit in a single non-scrolling row of five icon-only accessible buttons; the top scanner title is removed and a live Android 12/24-hour clock is integrated into the scanner card; the redundant profile pill above the card is removed, with switching available from the scanner name in the card; More unread-alert dot added, and old media notification channel replaced to avoid permanent launcher badges; status-bar visibility over dark edge-to-edge backgrounds fixed; confirm narrow-screen reachability, accessibility and the absence of idle media badges on a device |
-| Runtime interoperability | **Unverified** | Test phone process death, encrypted/audio relay, rapid reconnects, Android Auto, queue limits, background mixing, and resume behavior |
+| Runtime interoperability | **Unverified** | Batched cache pruning protects queued audio; test phone process death, cache churn, encrypted/audio relay, rapid reconnects, Android Auto, queue limits, background mixing, and resume behavior |
 
 ## Deliberately excluded by user request
 
