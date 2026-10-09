@@ -74,6 +74,7 @@ class ScannerService : MediaLibraryService() {
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
+    private val playedLiveCallTracker = PlayedLiveCallTracker()
     // Keep recent accepted live IDs through socket reconnects. Bounded in memory.
     private val recentlyAcceptedLiveCalls = LinkedHashSet<CallKey>()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -140,15 +141,32 @@ class ScannerService : MediaLibraryService() {
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    // The last call has no next-item transition; terminal END
+                    // is its natural playback-completion signal.
+                    if (playbackState == Player.STATE_ENDED) {
+                        playedLiveCallTracker.ended()?.let(ScannerRepository::recordCompletedLiveCall)
+                    }
                     persistPlaybackQueue()
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (isPlaying) {
+                        val id = player.currentMediaItem?.mediaId
+                        playedLiveCallTracker.started(id, id?.let(callByMediaId::get))
+                    }
                     syncCurrentlyPlayingCall()
                     updatePlaybackNotification()
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val nextId = mediaItem?.mediaId
+                    val completed = playedLiveCallTracker.transitioned(
+                        automatic = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
+                        nextMediaId = nextId,
+                        nextCall = nextId?.let(callByMediaId::get),
+                        nextPlaying = player.isPlaying
+                    )
+                    completed?.let(ScannerRepository::recordCompletedLiveCall)
                     syncCurrentlyPlayingCall()
                     updatePlaybackNotification()
                 }
@@ -221,6 +239,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        playedLiveCallTracker.cancel()
         persistPlaybackQueue()
         releasingPlayer = true
         serviceScope.cancel()
@@ -560,6 +579,7 @@ class ScannerService : MediaLibraryService() {
             val systemRef = parts[4].toLongOrNull() ?: continue
             val talkgroupRef = parts[5].toLongOrNull() ?: continue
             if (!ScannerRepository.isChannelSubscribed(profileId, systemRef, talkgroupRef)) {
+                playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
                 player.removeMediaItem(index)
             }
         }
@@ -630,6 +650,7 @@ class ScannerService : MediaLibraryService() {
     private fun skipInternal() {
         if (player.mediaItemCount <= 0) return
         val index = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0
+        playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
         player.removeMediaItem(index)
         if (player.mediaItemCount > 0 && !player.playWhenReady) player.play()
     }
@@ -645,6 +666,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun stopAudioInternal() {
+        playedLiveCallTracker.cancel()
         player.stop()
         player.clearMediaItems()
         callByMediaId.clear()
@@ -654,6 +676,7 @@ class ScannerService : MediaLibraryService() {
     private fun removeLiveProfileMedia(profileId: String) {
         for (index in player.mediaItemCount - 1 downTo 0) {
             if (PlaybackQueuePolicy.isLiveCallForProfile(player.getMediaItemAt(index).mediaId, profileId)) {
+                playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
                 player.removeMediaItem(index)
             }
         }
@@ -661,7 +684,10 @@ class ScannerService : MediaLibraryService() {
 
     private fun removeProfileMedia(profileId: String) {
         for (index in player.mediaItemCount - 1 downTo 0) {
-            if (player.getMediaItemAt(index).mediaId.startsWith("call:$profileId:")) player.removeMediaItem(index)
+            if (player.getMediaItemAt(index).mediaId.startsWith("call:$profileId:")) {
+                playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
+                player.removeMediaItem(index)
+            }
         }
     }
 
