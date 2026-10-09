@@ -98,6 +98,48 @@ internal object ScannerCallRoutingPolicy {
     }
 }
 
+/**
+ * A single live call can be inserted into the already date-sorted archive
+ * without building an ID map and re-sorting every loaded call.
+ *
+ * The prior associateBy + stable sort kept the original position of a replaced
+ * ID among equal timestamps. Keep that tie behavior (and treat invalid dates
+ * exactly as epoch zero) so replay and History order do not change.
+ *
+ * Paged archive results still use the existing one-shot merge/sort, because
+ * individually inserting a full page would be slower.
+ */
+internal object LiveHistoryMergePolicy {
+    private fun sortKey(call: RadioCall): Long =
+        runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
+
+    fun insert(history: List<RadioCall>, incoming: RadioCall, newestFirst: Boolean): List<RadioCall> {
+        val originalIndex = history.indexOfFirst { it.id == incoming.id }
+        if (originalIndex >= 0 && history[originalIndex] == incoming) return history
+
+        val newTime = sortKey(incoming)
+        val result = ArrayList<RadioCall>(history.size + if (originalIndex < 0) 1 else 0)
+        var inserted = false
+        for (index in history.indices) {
+            if (index == originalIndex) continue
+            val existing = history[index]
+            if (!inserted) {
+                val existingTime = sortKey(existing)
+                val belongsBefore = if (newestFirst) newTime > existingTime else newTime < existingTime
+                // A duplicate keeps its former relative position among equals.
+                val tieBefore = newTime == existingTime && originalIndex >= 0 && index > originalIndex
+                if (belongsBefore || tieBefore) {
+                    result.add(incoming)
+                    inserted = true
+                }
+            }
+            result.add(existing)
+        }
+        if (!inserted) result.add(incoming)
+        return result
+    }
+}
+
 object ScannerRepository {
     private class Session(profile: ServerProfile) {
         @Volatile var profile: ServerProfile = profile
@@ -3214,12 +3256,9 @@ object ScannerRepository {
             val avoided = key in session.state.avoided
             shouldPlay = replayRequested || (!session.state.paused && enabled && talkgroupHoldAllows && systemHoldAllows && !avoided)
             val merged = if (matchesHistoryFilter(session.state, call)) {
-                val combined = (session.state.history + call).associateBy { it.id }.values
-                if (session.state.historySort < 0) {
-                    combined.sortedByDescending(::callSortKey)
-                } else {
-                    combined.sortedBy(::callSortKey)
-                }
+                LiveHistoryMergePolicy.insert(
+                    session.state.history, call, newestFirst = session.state.historySort < 0
+                )
             } else {
                 session.state.history
             }
