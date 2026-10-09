@@ -104,7 +104,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(AppTab.Scanner) }
     var moreMenuExpanded by remember { mutableStateOf(false) }
-    val primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Alerts)
+    val primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Transcripts)
     val moreNavigationTabs = AppTab.entries.filterNot { it in primaryNavigationTabs }
     val systemDensity = LocalDensity.current
     val compactDensity = remember(systemDensity) {
@@ -518,32 +518,41 @@ private fun ScannerStatusCard(
                 )
             }
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                item {
+            // Fixed-width playback controls: never hide actions offscreen in a LazyRow.
+            // Two actions on the first row and three compact actions below fit phone widths.
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Button(
+                        modifier = Modifier.weight(1f),
                         onClick = { viewModel.setAudioEnabled(!audioEnabled) }
-                    ) { Text(if (audioEnabled) "Stop audio" else "Play audio") }
-                }
-                item {
+                    ) { Text(if (audioEnabled) "Stop audio" else "Play audio", maxLines = 1, softWrap = false) }
                     OutlinedButton(
+                        modifier = Modifier.weight(1f),
                         onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
                         enabled = server.status == ConnectionStatus.CONNECTED
-                    ) { Text(if (server.paused) "Resume scan" else "Pause scan") }
+                    ) { Text(if (server.paused) "Resume scan" else "Pause scan", maxLines = 1, softWrap = false) }
                 }
-                item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     OutlinedButton(
+                        modifier = Modifier.weight(1f),
                         onClick = { viewModel.replayLast(server.profile.id) },
                         enabled = server.recentCalls.isNotEmpty() || server.lastCall != null
-                    ) { Text("Replay last") }
-                }
-                item {
-                    OutlinedButton(onClick = viewModel::skip) { Text("Skip") }
-                }
-                item {
+                    ) { Text("Replay", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
                     OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = viewModel::skip
+                    ) { Text("Skip", maxLines = 1, softWrap = false) }
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
                         onClick = { viewModel.clearHold(server.profile.id) },
                         enabled = server.hold != null || server.holdSystemRef != null
-                    ) { Text("Clear hold") }
+                    ) { Text("Clear hold", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
                 }
             }
 
