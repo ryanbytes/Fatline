@@ -356,7 +356,11 @@ notification_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/Play
 notification_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt').read_text()
 require('if (!isPlaying) return PlaybackNotificationText("FatLine", "Waiting for traffic")' in notification_policy, 'idle notifications must not claim stale playback metadata')
 require('updatePlaybackNotification()' in service and 'PlaybackNotificationPolicy.display(' in service, 'player notification must use current playback state')
-require('override fun onIsPlayingChanged(isPlaying: Boolean)' in service and 'updatePlaybackNotification()' in service.split('override fun onIsPlayingChanged(isPlaying: Boolean)', 1)[1].split('}', 1)[0], 'playback state changes must refresh notification')
+require('override fun onIsPlayingChanged(isPlaying: Boolean)' in service
+        and 'updatePlaybackNotification()' in service.split(
+            'override fun onIsPlayingChanged(isPlaying: Boolean)', 1
+        )[1].split('override fun onMediaItemTransition(', 1)[0],
+        'playback state changes must refresh notification')
 require('stoppedOrPausedPlaybackDoesNotShowStaleCallMetadata' in notification_tests, 'stale playback notification regression test missing')
 require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)' in service
         and 'private var foregroundStarted = false' in service
