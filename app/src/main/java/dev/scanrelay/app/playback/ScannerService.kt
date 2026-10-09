@@ -45,6 +45,8 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -102,6 +104,36 @@ class ScannerService : MediaLibraryService() {
     private val recentlyAcceptedLiveCalls = LinkedHashSet<CallKey>()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val favoriteLibraryCache = AndroidAutoFavoritesCache()
+    private var performanceProbe: PerformanceProbe? = null
+    private var performanceJob: Job? = null
+
+    private fun startPerformanceProbe(label: String) {
+        if (activeProfileIds().isEmpty()) {
+            _performanceCapture.value = PerformanceCaptureState(error = "Connect a scanner before measuring")
+            return
+        }
+        stopPerformanceProbe()
+        val probe = PerformanceProbe(label, PerformanceReader.read(this))
+        performanceProbe = probe
+        _performanceCapture.value = PerformanceCaptureState(running = true, label = label)
+        performanceJob = serviceScope.launch {
+            while (true) {
+                delay(10_000L)
+                // Collect snapshots on the service main thread; only emit the
+                // completed report, avoiding periodic UI recompositions.
+                performanceProbe?.sample(PerformanceReader.read(this@ScannerService))
+            }
+        }
+    }
+
+    private fun stopPerformanceProbe() {
+        performanceJob?.cancel()
+        performanceJob = null
+        val probe = performanceProbe ?: return
+        performanceProbe = null
+        probe.sample(PerformanceReader.read(this))
+        _performanceCapture.value = PerformanceCaptureState(report = probe.report(), label = probe.scenario)
+    }
 
     private val networkLossCheck = Runnable {
         val active = connectivityManager.activeNetwork
@@ -250,6 +282,10 @@ class ScannerService : MediaLibraryService() {
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
             ACTION_DISCONNECT_ALL -> disconnectAll()
             ACTION_ENQUEUE -> addMediaFromIntent(intent)
+            ACTION_START_PERFORMANCE_CAPTURE -> startPerformanceProbe(
+                intent.getStringExtra(EXTRA_PERFORMANCE_SCENARIO).orEmpty().ifBlank { "General" }
+            )
+            ACTION_STOP_PERFORMANCE_CAPTURE -> stopPerformanceProbe()
             ACTION_SET_OUTPUT_VOLUME -> setOutputVolumeInternal(
                 intent.getIntExtra(EXTRA_VOLUME_PERCENT, PlaybackVolumePolicy.DEFAULT_PERCENT)
             )
@@ -285,6 +321,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        stopPerformanceProbe()
         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         playedLiveCallTracker.cancel()
         persistPlaybackQueue()
@@ -889,6 +926,8 @@ class ScannerService : MediaLibraryService() {
         private val _queuedCalls = MutableStateFlow<List<QueuedCall>>(emptyList())
         val queuedCalls: StateFlow<List<QueuedCall>> = _queuedCalls.asStateFlow()
         private val pendingCalls = ConcurrentHashMap<String, RadioCall>()
+        private val _performanceCapture = MutableStateFlow(PerformanceCaptureState())
+        val performanceCapture: StateFlow<PerformanceCaptureState> = _performanceCapture.asStateFlow()
 
         // Channel configuration is immutable after Android creates it. Use a new ID
         // so existing installations inherit showBadge=false on the media channel.
@@ -916,6 +955,9 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_CLEAR_QUEUE = "dev.scanrelay.CLEAR_QUEUE"
         const val ACTION_STOP_AUDIO = "dev.scanrelay.STOP_AUDIO"
         const val ACTION_REMOVE_PROFILE = "dev.scanrelay.REMOVE_PROFILE"
+        const val ACTION_START_PERFORMANCE_CAPTURE = "dev.scanrelay.START_PERFORMANCE_CAPTURE"
+        const val ACTION_STOP_PERFORMANCE_CAPTURE = "dev.scanrelay.STOP_PERFORMANCE_CAPTURE"
+        const val EXTRA_PERFORMANCE_SCENARIO = "performance_scenario"
         const val EXTRA_PROFILE_ID = "profile_id"
         const val EXTRA_CALL_ID = "call_id"
         const val EXTRA_SYSTEM_REF = "system_ref"
@@ -995,6 +1037,22 @@ class ScannerService : MediaLibraryService() {
                 .putExtra(EXTRA_PROFILE_ID, profileId)
                 .putExtra(EXTRA_PAUSED, paused)
             runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
+
+        /** Explicitly requested, in-process sample capture; no telemetry upload. */
+        fun startPerformanceCapture(context: Context, scenario: String) {
+            val intent = Intent(context, ScannerService::class.java)
+                .setAction(ACTION_START_PERFORMANCE_CAPTURE)
+                .putExtra(EXTRA_PERFORMANCE_SCENARIO, scenario)
+            runCatching { context.startService(intent) }
+                .onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
+
+        fun stopPerformanceCapture(context: Context) {
+            val intent = Intent(context, ScannerService::class.java)
+                .setAction(ACTION_STOP_PERFORMANCE_CAPTURE)
+            runCatching { context.startService(intent) }
+                .onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
         fun skip(context: Context) {
