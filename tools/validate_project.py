@@ -224,13 +224,16 @@ require('markViewedOrBaseline' in dot_policy and 'hasNewAlerts' in dot_policy
         'unread alert dot must not be based only on the presence of archived alerts')
 require('channel.setShowBadge(true)' in alert_notifier
         and 'channel.setShowBadge(true)' in weather_notifier
-        and 'channel.setShowBadge(false)' in service,
-        'alert notification channels must allow launcher dots without the ongoing media notification')
+        and 'channel.setShowBadge(false)' in service
+        and 'private const val CHANNEL_ID = "fatline_playback_no_badge_v2"' in service
+        and 'NotificationCompat.Builder(this, CHANNEL_ID)' in service,
+        'alert channels must allow real alerts to badge, while playback migrates to a new non-badging channel')
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun ScannerHudPanel(', 1)[0]
 require('private fun NowPlayingCard(' not in ui and 'NowPlayingCard(server' not in scanner_screen, 'large duplicate now-playing card must not return')
 require('Text("Call actions")' in scanner_card and '"Avoid channel"' in scanner_card and 'viewModel.setSystemHold(' in scanner_card, 'compact now-playing actions must preserve controls')
-require('if (audioEnabled) "Stop" else "Play"' in scanner_card and 'viewModel.setAudioEnabled(!audioEnabled)' in scanner_card, 'independent audio Play/Stop control missing')
+require('contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"' in scanner_card
+        and 'viewModel.setAudioEnabled(!audioEnabled)' in scanner_card, 'independent audio Play/Stop control missing')
 require('ACTION_SET_AUDIO_ENABLED' in service and 'KEY_AUDIO_ENABLED' in service and 'if (liveFeed && !_audioEnabled.value)' in service and 'player.pause()' in service, 'stopped audio must be persisted and suppress live output without disconnecting monitoring')
 require('if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)' in service, 'explicit replay must reactivate muted output')
 require('val audioEnabled: StateFlow<Boolean>' in service and 'ScannerService.setAudioEnabled(getApplication(), enabled)' in viewmodel, 'audio output state and view-model bridge missing')
@@ -290,10 +293,14 @@ recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
 
 scanner_status_controls = scanner_card.split('// Fixed-width playback controls:', 1)[1].split('if (!audioEnabled)', 1)[0]
-require('LazyRow(' not in scanner_status_controls and scanner_status_controls.count('modifier = Modifier.fillMaxWidth()') == 2
+require('LazyRow(' not in scanner_status_controls
         and scanner_status_controls.count('modifier = Modifier.weight(1f)') == 5
-        and 'modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" }' in scanner_status_controls,
-        'scanner playback controls must fit in two non-scrolling weighted rows')
+        and scanner_status_controls.count('OutlinedIconButton(') == 4
+        and scanner_status_controls.count('FilledIconButton(') == 1
+        and scanner_status_controls.count('Icon(') == 5
+        and 'Text(' not in scanner_status_controls
+        and 'Spacer(' not in scanner_status_controls,
+        'all five playback actions must be icon-only, visible in one non-scrolling row')
 require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
         and 'viewModel.setPaused(server.profile.id, !server.paused)' in scanner_status_controls
         and 'viewModel.replayLast(server.profile.id)' in scanner_status_controls
@@ -301,9 +308,9 @@ require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
         and 'viewModel.clearHold(server.profile.id)' in scanner_status_controls
         and all('R.drawable.ic_fatline_' + name in scanner_status_controls
                 for name in ('stop', 'play', 'pause', 'replay', 'skip', 'clear'))
-        and scanner_status_controls.count('Icon(') >= 5
-        and 'contentDescription = "Skip current call"' in scanner_status_controls,
-        'all five icon-based playback actions must remain accessible on small screens')
+        and 'contentDescription = "Skip current call"' in scanner_status_controls
+        and 'contentDescription = "Clear scanner hold"' in scanner_status_controls,
+        'all five icon-only controls must retain functions and accessible descriptions')
 require('fun replayLast(profileId: String)' in repo and 'lastReplayCandidate(session.state)' in repo and 'playNow(profileId, call.id)' in repo, 'Replay last must select and immediately play most recent call')
 require('fun replayLast(profileId: String)' in viewmodel, 'Replay last ViewModel binding missing')
 replay_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()

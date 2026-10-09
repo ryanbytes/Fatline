@@ -797,7 +797,9 @@ class ScannerService : MediaLibraryService() {
         val queuedCalls: StateFlow<List<QueuedCall>> = _queuedCalls.asStateFlow()
         private val pendingCalls = ConcurrentHashMap<String, RadioCall>()
 
-        private const val CHANNEL_ID = "fatline_playback"
+        // Channel configuration is immutable after Android creates it. Use a new ID
+        // so existing installations inherit showBadge=false on the media channel.
+        private const val CHANNEL_ID = "fatline_playback_no_badge_v2"
         private const val NOTIFICATION_ID = 8101
         private const val PREFS = "fatline_session"
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
