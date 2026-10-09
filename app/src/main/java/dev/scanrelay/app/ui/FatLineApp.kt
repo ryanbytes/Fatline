@@ -312,7 +312,6 @@ private fun ScannerClock() {
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
                 setTypeface(Typeface.DEFAULT, Typeface.BOLD)
                 setSingleLine(true)
-                contentDescription = "Current local time"
             }
         },
         update = { clock -> clock.setTextColor(clockColor.toArgb()) }
