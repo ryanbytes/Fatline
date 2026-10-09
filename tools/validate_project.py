@@ -398,7 +398,15 @@ require('store.baseline(' in repo and 'store.isNewSinceEnable(' in repo and 'sto
 require('processLocalTranscript(session, id, call.transcript' in repo and 'row.reviewedTranscript' in repo, 'monitor must process both live and delayed transcript text')
 require('localTranscriptStore?.alerts(session.profile.id, session.profile.name)' in repo and 'store.addAlert(alert)' in repo, 'locally generated alerts must survive refresh and restarts')
 require('session.transcriptMonitorJob?.cancel()' in repo and 'session.profile.pin.isNotBlank()' in repo, 'monitor must stop at disconnect and use authenticated scanner API')
-require('LocalTranscriptAlertPolicy.matches(' in repo and 'fun matches(transcript: String, rules: List<String>)' in local_monitor, 'local transcript phrase matching missing')
+require('store.matches(profileId, transcript)' in repo
+        and 'fun matchesPrepared(transcript: String, prepared: List<PreparedRule>)' in local_monitor
+        and 'fun matches(transcript: String, rules: List<String>)' in local_monitor
+        and 'cachedRules.get(profileId, rawRules(profileId)).prepared' in local_monitor
+        and 'cachedRules.clear(profileId)' in local_monitor,
+        'local transcript matching must use pre-normalized phrase rules and invalidate edits/deletions')
+require('preparedRulesRetainPhraseMatchingAndWordBoundaries' in local_monitor_tests
+        and 'cachedRulesReusedAndRepreparedAsSoonAsRuleTextChanges' in local_monitor_tests,
+        'prepared local keyword matcher must be covered by equivalence and cache invalidation tests')
 require('phrasesMatchRegardlessOfCaseAndSeparator' in local_monitor_tests and 'wordBoundariesAvoidAccidentalMatches' in local_monitor_tests, 'phrase matching regression tests missing')
 require('LocalTranscriptAlertStore(getApplication()).clearProfile(profileId)' in viewmodel, 'deleting scanner must erase its local rules and alerts')
 require('localTranscriptMonitorStatus' in ui and 'Transcript API unavailable' in repo, 'monitor status and API error visibility missing')
