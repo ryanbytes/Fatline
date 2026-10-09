@@ -66,6 +66,10 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - Android Auto browse tree: profiles → favorited talkgroups; server items are browsable/playable, selecting a favorite sets a talkgroup hold, and subscribed browsers are refreshed when favorite-channel metadata changes
 - Efficiency: Android Auto favorites are cached across unrelated call, alert, transcript and queue state changes; changing favorites, system configuration, or hidden systems still refreshes subscribers
 - Efficiency: playback audio cache cleanup runs on the first write and then every 16 writes per scanner rather than sorting the directory after every call; all persisted queued/playing audio remains protected at every cleanup
+- Efficiency: cached scanner history and alerts avoid re-sorting on unrelated status/transcript updates, while changed feeds still refresh correctly
+- Efficiency: redundant playback foreground-service posts and identical notifications are skipped, including while retaining visible queue changes
+- Efficiency: NWS alerts for multiple scanners in the same ZIP share one successful public weather lookup per five-minute polling cycle; failures retry and every new cycle fetches fresh alerts
+- Efficiency: channel tree, favorite-key and History text filters recompute only when their underlying lists, filters or profile change
 - Foreground-service restore cleanup for deleted/stale profiles and bounded playback queue handling
 
 ## Connection-loss and network-switch recovery
