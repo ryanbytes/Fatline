@@ -230,6 +230,17 @@ require('channel.setShowBadge(true)' in alert_notifier
         'alert channels must allow real alerts to badge, while playback migrates to a new non-badging channel')
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
 scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun ScannerHudPanel(', 1)[0]
+require('ProfileStrip(' not in scanner_screen and 'ScannerProfileTitle(' in scanner_screen,
+        'scanner home must not show a redundant profile pill above its status card')
+profile_title = ui.split('private fun ScannerProfileTitle(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
+require('profiles.size > 1' in profile_title and 'onSelectProfile(option.id)' in profile_title
+        and 'onClickLabel = "Switch scanner"' in profile_title
+        and 'DropdownMenu(' in profile_title,
+        'multiple scanner profiles must stay selectable by tapping the status card title')
+require('ScannerProfileTitle(server.profile, profiles, onSelectProfile)' in scanner_card
+        and 'ScannerStatusCard(server, profiles, onSelectProfile,' in scanner_screen,
+        'active scanner must pass profile chooser into its card without an external pill')
+
 clock_view = ui.split('private fun ScannerClock()', 1)[1].split('private fun ScannerScreen(', 1)[0]
 require('"FatLine"' not in scanner_screen and '"ThinLine-compatible scanner"' not in scanner_screen,
         'Scanner screen must not show a redundant page title above the status card')

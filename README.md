@@ -10,7 +10,7 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 
 - Android 8.0+ (`minSdk 26`), compile/target SDK 36
 - Five-item bottom navigation with Scanner, Channels, History, and Transcripts directly accessible; Alerts, Weather, and Settings remain under More
-- Scanner home removes the redundant FatLine title/subtitle and places a live local clock in the scanner status card beside the connection controls, following Android 12/24-hour settings; disconnected and unconfigured states also show the clock
+- Scanner home removes the redundant FatLine title/subtitle and places a live local clock in the scanner status card beside the connection controls, following Android 12/24-hour settings; disconnected and unconfigured states also show the clock; the separate profile-selector pill above the card is removed, and tapping the scanner name in the card switches servers when multiple are configured
 - More shows a notification dot for new alert entries received since the screen was last viewed in the current app session; opening Alerts clears it. Android launcher notification dots come from posted alert/connection/weather notifications, if allowed by system and launcher settings
 - Five **icon-only** playback controls fit in one non-scrolling row: audio Play/Stop, scanning Pause/Resume, Replay, Skip, and Clear hold. TalkBack labels preserve accessibility without cramped text
 - Playback foreground notifications use a new Android notification channel with launcher badges disabled (required to update the channel on existing installations); actual alert notifications can still show launcher dots if Android permits them
