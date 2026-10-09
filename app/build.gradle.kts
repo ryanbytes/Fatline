@@ -4,6 +4,16 @@ plugins {
 }
 
 val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+// GITHUB_RUN_NUMBER is scoped to each workflow. Android CI run #266 and the
+// first release run #1 produced codes 10266 and 10001 respectively, preventing
+// users from updating in place. GITHUB_RUN_ID is globally ordered across jobs
+// and workflows; divide it to stay comfortably inside Android's versionCode range.
+val ciVersionCode = System.getenv("GITHUB_RUN_ID")?.toLongOrNull()?.let { runId ->
+    val code = runId / 1_000L
+    require(code in 1L..2_100_000_000L) { "GitHub run ID exceeds Android versionCode range" }
+    code.toInt()
+}
+val releaseVersionName = System.getenv("FATLINE_VERSION_NAME")?.trim()?.takeIf { it.isNotEmpty() }
 val ciKeystorePath = System.getenv("FATLINE_CI_KEYSTORE")
 
 android {
@@ -14,8 +24,8 @@ android {
         applicationId = "dev.scanrelay.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = ciRunNumber?.let { 10_000 + it } ?: 2
-        versionName = ciRunNumber?.let { "0.2.0-ci.$it" } ?: "0.2.0"
+        versionCode = ciVersionCode ?: 2
+        versionName = releaseVersionName ?: ciRunNumber?.let { "0.2.0-ci.$it" } ?: "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

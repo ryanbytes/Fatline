@@ -85,7 +85,14 @@ require('okhttp-bom:5.3.0' in app_gradle, 'OkHttp BOM not pinned')
 require('lifecycle-runtime-compose:2.10.0' in app_gradle, 'Lifecycle Compose dependency missing')
 require('media3-session:1.11.0' in app_gradle and 'media3-exoplayer:1.11.0' in app_gradle, 'Media3 1.11.0 dependencies missing')
 require('FATLINE_CI_KEYSTORE' in app_gradle and 'ciDebug' in app_gradle, 'stable CI signing config missing')
-require('GITHUB_RUN_NUMBER' in app_gradle and '10_000 + it' in app_gradle, 'monotonic CI version code missing')
+require('GITHUB_RUN_ID' in app_gradle and 'runId / 1_000L' in app_gradle and 'versionCode = ciVersionCode ?: 2' in app_gradle,
+        'Android versionCode must use cross-workflow monotonic GitHub run IDs, not workflow-specific run numbers')
+require('FATLINE_VERSION_NAME' in app_gradle and 'versionName = releaseVersionName' in app_gradle,
+        'GitHub release APK must report its explicit prerelease version name')
+require(37_867_092_490 // 1_000 > 10_000 + 266,
+        'new release code must be higher than the previous Android CI code 10266')
+require((37_867_092_490 // 1_000) <= (37_867_092_569 // 1_000),
+        'adjacent release and CI workflow version codes must not decrease')
 require('fatline-ci-debug.p12.b64' in (ROOT / '.github/workflows/android.yml').read_text(), 'stable CI signing key decode missing')
 require('Verify stable APK signing certificate' in (ROOT / '.github/workflows/android.yml').read_text(), 'APK certificate verification missing')
 require((ROOT / 'tools/fatline-ci-debug.p12.b64').is_file(), 'stable CI debug key material missing')
