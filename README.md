@@ -10,6 +10,9 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 
 - Android 8.0+ (`minSdk 26`), compile/target SDK 36
 - Five-item compact bottom navigation with Scanner, Channels, History and Alerts directly accessible; Weather, Transcripts and Settings are in More instead of using seven tiny tab labels
+- History tab refreshes the first archive page when opened or when the selected scanner reconnects, preserving the currently applied server-side archive filters
+- Compact scanner HUD shows current playback without a separate large Now Playing card; hold, avoid and replay actions remain in a small Call actions menu
+- Persistent Play audio / Stop audio switch silences incoming scanner traffic without disconnecting background transcript and alert monitoring; explicit replay resumes audio and buffered queue playback intent survives service recreation
 - Kotlin + Jetpack Compose
 - Multiple scanner servers connected simultaneously
 - Open and PIN-protected servers; PINs stored with Android Keystore AES-GCM and masked in the UI
