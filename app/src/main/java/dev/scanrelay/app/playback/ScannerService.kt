@@ -575,7 +575,8 @@ class ScannerService : MediaLibraryService() {
                 profileId = profileId,
                 callId = callId,
                 recentlyAccepted = recentlyAcceptedLiveCalls,
-                mediaIds = List(player.mediaItemCount) { player.getMediaItemAt(it).mediaId }
+                mediaCount = player.mediaItemCount,
+                mediaIdAt = { index -> player.getMediaItemAt(index).mediaId }
             )) {
             pendingCalls.remove(token)
             return
@@ -663,33 +664,27 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun syncCurrentlyPlayingCall() {
-        val activeIds = (0 until player.mediaItemCount)
-            .mapTo(mutableSetOf()) { index -> player.getMediaItemAt(index).mediaId }
-        callByMediaId.keys.retainAll(activeIds)
-        val mediaIds = List(player.mediaItemCount) { index ->
-            player.getMediaItemAt(index).mediaId
-        }
-        _currentlyPlayingCall.value = PlaybackQueuePolicy
-            .playingMediaId(mediaIds, player.currentMediaItemIndex, player.isPlaying)
-            ?.let(callByMediaId::get)
-        _queuedCalls.value = PlaybackQueuePolicy
-            .queuedMediaIds(mediaIds, player.currentMediaItemIndex)
-            .mapNotNull { mediaId ->
-                callByMediaId[mediaId]?.let { call ->
-                    QueuedCall(call, liveFeed = PlaybackQueuePolicy.mediaKind(mediaId) == "live")
-                }
-            }
+        // Only one walk of Media3's timeline. Avoid constructing temporary
+        // media-ID and queued-sublist arrays on each player callback.
+        val projection = PlaybackQueueProjectionPolicy.project(
+            mediaCount = player.mediaItemCount,
+            currentIndex = player.currentMediaItemIndex,
+            isPlaying = player.isPlaying,
+            mediaIdAt = { index -> player.getMediaItemAt(index).mediaId },
+            callsByMediaId = callByMediaId
+        )
+        callByMediaId.keys.retainAll(projection.activeMediaIds)
+        _currentlyPlayingCall.value = projection.playingCall
+        _queuedCalls.value = projection.queuedCalls
         persistPlaybackQueue()
     }
 
     private fun trimQueueForIncomingCall(liveFeed: Boolean) {
-        val mediaIds = List(player.mediaItemCount) { index ->
-            player.getMediaItemAt(index).mediaId
-        }
         val removeIndex = PlaybackQueuePolicy.removalIndex(
-            mediaIds = mediaIds,
+            mediaCount = player.mediaItemCount,
             currentIndex = player.currentMediaItemIndex,
-            incomingLiveFeed = liveFeed
+            incomingLiveFeed = liveFeed,
+            mediaIdAt = { index -> player.getMediaItemAt(index).mediaId }
         )
         if (removeIndex >= 0) player.removeMediaItem(removeIndex)
     }
