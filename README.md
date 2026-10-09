@@ -18,6 +18,7 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - History tab refreshes the first archive page when opened or when the selected scanner reconnects, preserving the currently applied server-side archive filters
 - History uses compact icon-only toolbar, filter menus, search/reset and per-call Continue/Replay/Download actions; active filters have visual badge markers and descriptive TalkBack labels, keeping the dropdown option names and archive behavior intact
 - Compact scanner HUD shows current playback without a separate large Now Playing card; hold, avoid and replay actions remain in a small Call actions menu
+- Scanner Recent list is hidden until an actual live call finishes playback. Queued, unplayed, stopped, skipped and replay-only calls do not populate Recent; completed live calls appear newest first and are tap-to-replay. The main Replay control likewise targets the last completed live call, not the last received one.
 - Persistent Play audio / Stop audio switch silences incoming scanner traffic without disconnecting background transcript and alert monitoring; explicit replay resumes audio and buffered queue playback intent survives service recreation
 - Kotlin + Jetpack Compose
 - Multiple scanner servers connected simultaneously

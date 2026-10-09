@@ -356,7 +356,11 @@ notification_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/Play
 notification_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackNotificationPolicyTest.kt').read_text()
 require('if (!isPlaying) return PlaybackNotificationText("FatLine", "Waiting for traffic")' in notification_policy, 'idle notifications must not claim stale playback metadata')
 require('updatePlaybackNotification()' in service and 'PlaybackNotificationPolicy.display(' in service, 'player notification must use current playback state')
-require('override fun onIsPlayingChanged(isPlaying: Boolean)' in service and 'updatePlaybackNotification()' in service.split('override fun onIsPlayingChanged(isPlaying: Boolean)', 1)[1].split('}', 1)[0], 'playback state changes must refresh notification')
+require('override fun onIsPlayingChanged(isPlaying: Boolean)' in service
+        and 'updatePlaybackNotification()' in service.split(
+            'override fun onIsPlayingChanged(isPlaying: Boolean)', 1
+        )[1].split('override fun onMediaItemTransition(', 1)[0],
+        'playback state changes must refresh notification')
 require('stoppedOrPausedPlaybackDoesNotShowStaleCallMetadata' in notification_tests, 'stale playback notification regression test missing')
 require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)' in service
         and 'private var foregroundStarted = false' in service
@@ -369,6 +373,23 @@ require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
+require('if (recent.isNotEmpty()) {' in ui
+        and '"No live calls received yet."' not in ui
+        and 'enabled = server.recentCalls.isNotEmpty()' in scanner_card,
+        'hide Recent until a call has completed; Replay must not target unplayed calls')
+require('fun recordCompletedLiveCall(call: RadioCall)' in repo
+        and 'RecentlyPlayedCallsPolicy.complete(session.state.recentCalls, call)' in repo
+        and 'recentCalls = recent' not in repo.split('val shouldPlay: Boolean', 1)[1]
+        and 'playedLiveCallTracker.ended()?.let(ScannerRepository::recordCompletedLiveCall)' in service
+        and 'reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO' in service
+        and 'completed?.let(ScannerRepository::recordCompletedLiveCall)' in service
+        and 'playedLiveCallTracker.cancelIf(' in service
+        and 'playedLiveCallTracker.cancel()' in service,
+        'Recent must update exclusively when actual live playback completes, never on arrival, Skip or Stop')
+require('queuedAndStartedCallsAreNotRecentUntilNaturalCompletion' in queue_tests
+        and 'manualStopAndRemovingAPlayingCallNeverMarkItPlayed' in queue_tests
+        and 'replayItemsAndUnstartedCallsNeverCountAsPlayedLive' in queue_tests,
+        'completed-live tracker needs pending, skip, stop and end-of-playlist coverage')
 
 scanner_status_controls = scanner_card.split('// Four standard icon-only playback controls', 1)[1].split('if (!audioEnabled)', 1)[0]
 require('LazyRow(' not in scanner_status_controls
@@ -398,7 +419,11 @@ require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
 require('fun replayLast(profileId: String)' in repo and 'lastReplayCandidate(session.state)' in repo and 'playNow(profileId, call.id)' in repo, 'Replay last must select and immediately play most recent call')
 require('fun replayLast(profileId: String)' in viewmodel, 'Replay last ViewModel binding missing')
 replay_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()
-require('replayLastChoosesMostRecentReceivedLiveCall' in replay_tests and 'replayLastFallsBackToLastReceivedWhenRecentListEmpty' in replay_tests, 'Replay last selection regression tests missing')
+require('replayLastChoosesMostRecentlyCompletedLiveCall' in replay_tests
+        and 'replayLastNeverTargetsReceivedButUnplayedCalls' in replay_tests
+        and 'recentlyPlayedIsBoundedDeduplicatedAndNewestCompletedFirst' in replay_tests
+        and 'invalidCallIdsCannotEnterRecent' in replay_tests,
+        'Replay last and Recent must use completed live calls exclusively')
 
 require('                    CallRow(' not in recent_main and 'onDownload' not in recent_main, 'recent live call list must not use History actions')
 require('.clickable(' in recent_row and 'onClick = onPlay' in recent_row and 'OutlinedButton(' not in recent_row and 'Button(' not in recent_row, 'recent live rows must be tappable without buttons')

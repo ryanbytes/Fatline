@@ -1,6 +1,7 @@
 package dev.scanrelay.app.playback
 
 import dev.scanrelay.app.model.CallKey
+import dev.scanrelay.app.model.RadioCall
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -8,6 +9,54 @@ import org.junit.Test
 
 class PlaybackQueuePolicyTest {
     private fun id(kind: String, n: Int) = "call:p1:$kind:$n:1:1:$n"
+
+    private fun liveCall(n: Long) = RadioCall(
+        profileId = "p1", serverName = "Scanner", id = n,
+        systemRef = 1, talkgroupRef = 11, systemLabel = "Law",
+        talkgroupLabel = "Dispatch $n", dateTime = "2026-10-09T10:00:00Z"
+    )
+
+    @Test
+    fun queuedAndStartedCallsAreNotRecentUntilNaturalCompletion() {
+        val tracker = PlayedLiveCallTracker()
+        val call = liveCall(11)
+        // A queued arrival does not pass through tracker at all.
+        tracker.started(id("live", 11), call)
+        assertEquals(null, tracker.transitioned(false, id("live", 12), liveCall(12), false))
+        assertEquals(null, tracker.ended()) // manual skip discarded the first call
+
+        tracker.started(id("live", 11), call)
+        val finished = tracker.transitioned(true, id("live", 12), liveCall(12), true)
+        assertEquals(11L, finished?.id)
+        // The next call is now playing, but not complete.
+        assertEquals(12L, tracker.ended()?.id)
+        assertEquals(null, tracker.ended()) // no duplicate completion
+    }
+
+    @Test
+    fun manualStopAndRemovingAPlayingCallNeverMarkItPlayed() {
+        val tracker = PlayedLiveCallTracker()
+        tracker.started(id("live", 1), liveCall(1))
+        tracker.cancelIf(id("live", 1))
+        assertEquals(null, tracker.ended())
+        tracker.started(id("live", 2), liveCall(2))
+        tracker.cancel()
+        assertEquals(null, tracker.transitioned(true, null, null, false))
+        assertEquals(null, tracker.ended())
+    }
+
+    @Test
+    fun replayItemsAndUnstartedCallsNeverCountAsPlayedLive() {
+        val tracker = PlayedLiveCallTracker()
+        tracker.started(id("replay", 1), liveCall(1))
+        assertEquals(null, tracker.ended())
+        tracker.started(null, null)
+        assertEquals(null, tracker.transitioned(true, id("live", 2), liveCall(2), false))
+        assertEquals(null, tracker.ended()) // next item has not actually started
+        tracker.started(id("live", 2), liveCall(2))
+        assertEquals(2L, tracker.ended()?.id) // last playable item reached natural end
+        assertEquals(null, tracker.ended())
+    }
 
     @Test
     fun reconnectCannotQueueDuplicateLiveCallOrEvictOtherWaitingCalls() {

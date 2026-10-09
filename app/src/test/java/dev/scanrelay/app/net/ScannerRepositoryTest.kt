@@ -224,7 +224,39 @@ class ScannerRepositoryTest {
     )
 
     @Test
-    fun replayLastChoosesMostRecentReceivedLiveCall() {
+    fun recentlyPlayedIsBoundedDeduplicatedAndNewestCompletedFirst() {
+        val source = (1L..12L).map { id ->
+            RadioCall(profileId = profile.id, serverName = profile.name, id = id,
+                systemRef = 1, talkgroupRef = 11, systemLabel = "Law",
+                talkgroupLabel = "Dispatch $id", dateTime = "")
+        }
+        var recent = emptyList<RadioCall>()
+        for (call in source) {
+            recent = RecentlyPlayedCallsPolicy.complete(recent, call)
+        }
+        assertEquals(10, recent.size)
+        assertEquals(listOf(12L, 11L, 10L, 9L, 8L, 7L, 6L, 5L, 4L, 3L), recent.map { it.id })
+
+        recent = RecentlyPlayedCallsPolicy.complete(recent, source[4].copy(talkgroupLabel = "Updated"))
+        assertEquals(10, recent.size)
+        assertEquals(5L, recent.first().id)
+        assertEquals("Updated", recent.first().talkgroupLabel)
+        assertEquals(1, recent.count { it.id == 5L })
+        assertEquals(10, recent.map { it.id }.distinct().size)
+    }
+
+    @Test
+    fun invalidCallIdsCannotEnterRecent() {
+        val known = RadioCall(profileId = profile.id, serverName = profile.name, id = 42,
+            systemRef = 1, talkgroupRef = 11, systemLabel = "Law",
+            talkgroupLabel = "Call", dateTime = "")
+        val original = listOf(known)
+        assertTrue(original === RecentlyPlayedCallsPolicy.complete(original, known.copy(id = 0)))
+        assertTrue(original === RecentlyPlayedCallsPolicy.complete(original, known.copy(id = -1)))
+    }
+
+    @Test
+    fun replayLastChoosesMostRecentlyCompletedLiveCall() {
         val old = RadioCall(
             profileId = profile.id, serverName = profile.name, id = 25L,
             systemRef = 1, talkgroupRef = 11, systemLabel = "One",
@@ -240,13 +272,13 @@ class ScannerRepositoryTest {
     }
 
     @Test
-    fun replayLastFallsBackToLastReceivedWhenRecentListEmpty() {
+    fun replayLastNeverTargetsReceivedButUnplayedCalls() {
         val call = RadioCall(
             profileId = profile.id, serverName = profile.name, id = 99L,
             systemRef = 1, talkgroupRef = 11, systemLabel = "One",
             talkgroupLabel = "One-A", dateTime = ""
         )
-        assertEquals(99L, ScannerRepository.lastReplayCandidate(ServerScannerState(profile = profile, lastCall = call))?.id)
+        assertEquals(null, ScannerRepository.lastReplayCandidate(ServerScannerState(profile = profile, lastCall = call)))
         assertEquals(null, ScannerRepository.lastReplayCandidate(ServerScannerState(profile = profile)))
     }
 
