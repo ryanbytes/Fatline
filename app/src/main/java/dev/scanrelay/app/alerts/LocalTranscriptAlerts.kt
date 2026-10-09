@@ -30,22 +30,56 @@ internal object LocalTranscriptAlertPolicy {
     private fun normalize(text: String): String =
         text.lowercase(Locale.ROOT).replace(separator, " ").trim()
 
+    internal data class PreparedRule(val original: String, val normalized: String)
+
+    fun prepare(rules: List<String>): List<PreparedRule> = rules.map { rule ->
+        PreparedRule(rule, normalize(rule))
+    }
+
     /** Token boundaries protect "fire" from matching "firefighter". */
-    fun matches(transcript: String, rules: List<String>): List<String> {
-        val haystack = " " + normalize(transcript) + " "
+    fun matchesPrepared(transcript: String, prepared: List<PreparedRule>): List<String> {
         if (transcript.isBlank()) return emptyList()
-        return rules.filter { candidate ->
-            val needle = normalize(candidate)
-            needle.isNotBlank() && haystack.contains(" " + needle + " ")
+        val haystack = " " + normalize(transcript) + " "
+        return prepared.filter { rule ->
+            rule.normalized.isNotBlank() && haystack.contains(" " + rule.normalized + " ")
+        }.map { it.original }
+    }
+
+    fun matches(transcript: String, rules: List<String>): List<String> =
+        matchesPrepared(transcript, prepare(rules))
+}
+
+/** Immutable, normalized rules are reused until the persisted raw text changes. */
+internal class TranscriptRuleCache {
+    data class Entry(
+        val raw: String,
+        val rules: List<String>,
+        val prepared: List<LocalTranscriptAlertPolicy.PreparedRule>
+    )
+
+    private val entries = mutableMapOf<String, Entry>()
+
+    @Synchronized
+    fun get(profileId: String, raw: String): Entry {
+        entries[profileId]?.takeIf { it.raw == raw }?.let { return it }
+        val rules = LocalTranscriptAlertPolicy.terms(raw)
+        return Entry(raw, rules, LocalTranscriptAlertPolicy.prepare(rules)).also {
+            entries[profileId] = it
         }
     }
+
+    @Synchronized
+    fun clear(profileId: String) { entries.remove(profileId) }
 }
 
 internal class LocalTranscriptAlertStore(context: Context) {
     private val prefs = context.getSharedPreferences("fatline_local_transcript_alerts", Context.MODE_PRIVATE)
+    private val cachedRules = TranscriptRuleCache()
 
     fun rawRules(profileId: String): String = prefs.getString("rules_$profileId", "").orEmpty()
-    fun rules(profileId: String): List<String> = LocalTranscriptAlertPolicy.terms(rawRules(profileId))
+    fun rules(profileId: String): List<String> = cachedRules.get(profileId, rawRules(profileId)).rules
+    fun matches(profileId: String, transcript: String): List<String> =
+        LocalTranscriptAlertPolicy.matchesPrepared(transcript, cachedRules.get(profileId, rawRules(profileId)).prepared)
     fun enabled(profileId: String): Boolean = prefs.getBoolean("enabled_$profileId", false)
     fun batterySaver(profileId: String): Boolean = prefs.getBoolean("battery_saver_$profileId", true)
     fun active(profileId: String): Boolean = enabled(profileId) && rules(profileId).isNotEmpty()
@@ -68,6 +102,7 @@ internal class LocalTranscriptAlertStore(context: Context) {
             .putBoolean("enabled_$profileId", enabled)
             .putBoolean("battery_saver_$profileId", batterySaver)
             .apply()
+        cachedRules.clear(profileId)
         if (restartBaseline) {
             prefs.edit().putLong("since_$profileId", System.currentTimeMillis()).apply()
         }
@@ -154,6 +189,7 @@ internal class LocalTranscriptAlertStore(context: Context) {
     }
 
     fun clearProfile(profileId: String) {
+        cachedRules.clear(profileId)
         prefs.edit().remove("rules_$profileId").remove("enabled_$profileId")
             .remove("battery_saver_$profileId")
             .remove("seen_$profileId").remove("bootstrapped_$profileId")
