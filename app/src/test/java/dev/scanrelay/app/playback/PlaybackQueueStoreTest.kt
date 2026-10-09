@@ -37,6 +37,35 @@ class PlaybackQueueStoreTest {
     }
 
     @Test
+    fun identicalQueueSnapshotsDoNotNeedRepeatedDiskWrites() {
+        val original = SavedPlaybackQueue(
+            calls = listOf(SavedPlaybackCall("call:one:live:1:4:120:a", call(1), true)),
+            positionMs = 750L,
+            playWhenReady = true
+        )
+        assertTrue(PlaybackQueueJournalPolicy.shouldWrite(null, original))
+        assertFalse(PlaybackQueueJournalPolicy.shouldWrite(original, original.copy()))
+        assertFalse(PlaybackQueueJournalPolicy.shouldWrite(null, null))
+    }
+
+    @Test
+    fun queueEditsAndRecoveryPositionStillJournalImmediately() {
+        val first = SavedPlaybackQueue(
+            calls = listOf(SavedPlaybackCall("call:one:live:1:4:120:a", call(1), true)),
+            positionMs = 750L,
+            playWhenReady = true
+        )
+        val second = first.copy(calls = first.calls +
+            SavedPlaybackCall("call:one:live:2:4:120:b", call(2), true))
+        assertTrue(PlaybackQueueJournalPolicy.shouldWrite(first, second))
+        assertTrue(PlaybackQueueJournalPolicy.shouldWrite(second, second.copy(positionMs = 751L)))
+        assertTrue(PlaybackQueueJournalPolicy.shouldWrite(second, second.copy(playWhenReady = false)))
+        assertTrue(PlaybackQueueJournalPolicy.shouldWrite(second, null))
+        assertTrue(PlaybackQueueJournalPolicy.shouldWrite(null, second))
+        assertFalse(PlaybackQueueJournalPolicy.shouldWrite(second, second.copy()))
+    }
+
+    @Test
     fun cachePruningProtectsAllQueuedFilesAcrossProfiles() {
         val newest = (1..200).map { "/cache/$it.mp3" }
         val pinned = setOf(newest[0], newest[190], newest[199])
