@@ -58,6 +58,19 @@ for rel in required:
 app_gradle = (ROOT / 'app/build.gradle.kts').read_text()
 root_gradle = (ROOT / 'build.gradle.kts').read_text()
 manifest_text = (ROOT / 'app/src/main/AndroidManifest.xml').read_text()
+activity = (ROOT / 'app/src/main/java/dev/scanrelay/app/MainActivity.kt').read_text()
+theme = (ROOT / 'app/src/main/res/values/themes.xml').read_text()
+require('<item name="android:windowLightStatusBar">false</item>' in theme
+        and '<item name="android:windowFullscreen">false</item>' in theme,
+        'dark FatLine theme must use visible light status-bar icons and keep status bar enabled')
+require('WindowCompat.getInsetsController(window, window.decorView)' in activity
+        and 'isAppearanceLightStatusBars = false' in activity
+        and 'show(WindowInsetsCompat.Type.statusBars())' in activity
+        and 'window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)' in activity,
+        'Android 15+ edge-to-edge must show light status bar icons and never use immersive fullscreen')
+require('hide(WindowInsetsCompat.Type.statusBars())' not in activity
+        and 'FLAG_FULLSCREEN,' not in activity,
+        'activity must not hide the status bar')
 protocol = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/ThinLineProtocol.kt').read_text()
 socket = (ROOT / 'app/src/main/java/dev/scanrelay/app/net/ThinLineSocket.kt').read_text()
 service = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/ScannerService.kt').read_text()
