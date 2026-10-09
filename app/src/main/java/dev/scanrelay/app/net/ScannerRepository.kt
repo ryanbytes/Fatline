@@ -140,6 +140,19 @@ internal object LiveHistoryMergePolicy {
     }
 }
 
+/**
+ * Recent is a list of completed live playback, not incoming or pending calls.
+ * Keep the newest completed call first and avoid duplicate rows by server ID.
+ */
+internal object RecentlyPlayedCallsPolicy {
+    const val LIMIT = 10
+
+    fun complete(previous: List<RadioCall>, call: RadioCall): List<RadioCall> {
+        if (call.id <= 0) return previous
+        return (listOf(call) + previous.filterNot { it.id == call.id }).take(LIMIT)
+    }
+}
+
 object ScannerRepository {
     private class Session(profile: ServerProfile) {
         @Volatile var profile: ServerProfile = profile
@@ -2224,7 +2237,7 @@ object ScannerRepository {
             .build()
         return parseAlertKeywordLists(executeJsonArray(request))
     }
-    /** Replay the most recently received live call without needing a Now Playing card. */
+    /** Replay the latest completed live call, never one still waiting in the queue. */
     fun replayLast(profileId: String) {
         val session = sessions[profileId] ?: return
         val call = synchronized(session) { lastReplayCandidate(session.state) } ?: return
@@ -2232,7 +2245,24 @@ object ScannerRepository {
     }
 
     internal fun lastReplayCandidate(state: ServerScannerState): RadioCall? =
-        state.recentCalls.firstOrNull() ?: state.lastCall
+        state.recentCalls.firstOrNull()
+
+    /** Invoked only when Media3 completes a live call that actually started playing. */
+    fun recordCompletedLiveCall(call: RadioCall) {
+        val session = sessions[call.profileId] ?: return
+        val changed = synchronized(session) {
+            if (!isCurrent(session) || call.id <= 0L) false
+            else {
+                val recent = RecentlyPlayedCallsPolicy.complete(session.state.recentCalls, call)
+                if (recent === session.state.recentCalls || recent == session.state.recentCalls) false
+                else {
+                    session.state = session.state.copy(recentCalls = recent)
+                    true
+                }
+            }
+        }
+        if (changed) publish()
+    }
 
     fun playNow(profileId: String, callId: Long) {
         val session = sessions[profileId] ?: return
@@ -3262,14 +3292,10 @@ object ScannerRepository {
             } else {
                 session.state.history
             }
-            val recent = if (replayRequested) {
-                session.state.recentCalls
-            } else {
-                (listOf(call) + session.state.recentCalls.filterNot { it.id == call.id }).take(10)
-            }
+            // Receiving/enqueuing is not playback. Only the media service's
+            // completed-live callback may add calls to the Recent list.
             session.state = session.state.copy(
                 history = merged,
-                recentCalls = recent,
                 lastCall = if (replayRequested) session.state.lastCall else call
             )
         }
