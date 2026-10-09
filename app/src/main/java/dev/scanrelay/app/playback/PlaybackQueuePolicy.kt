@@ -87,33 +87,54 @@ internal object PlaybackQueuePolicy {
 }
 
 /**
- * Receipts and queued items must never populate Recent. Track an item only
- * after Media3 reports actual playback, and publish it only after the player
- * naturally completes the item (automatic transition or final STATE_ENDED).
- * Manual Skip/Stop/playlist removal cancels the pending completion.
+ * Recent means a completed, actually progressed live recording, never merely
+ * an arrived/queued media item or a transient Media3 ready/playing callback.
+ * Keep position evidence tied to the media ID so later arrivals cannot
+ * advance a different call's Recent state.
  */
 internal class PlayedLiveCallTracker {
     private var startedMediaId: String? = null
     private var startedCall: RadioCall? = null
+    private var startPositionMs = 0L
+    private var playbackAdvanced = false
 
-    fun started(mediaId: String?, call: RadioCall?) {
+    fun started(mediaId: String?, call: RadioCall?, positionMs: Long = 0L) {
         if (mediaId != null && PlaybackQueuePolicy.mediaKind(mediaId) == "live" && call != null) {
-            startedMediaId = mediaId
-            startedCall = call
+            // isPlaying can toggle during buffering/pause. Never reset already
+            // observed progress for the same media item.
+            if (mediaId != startedMediaId) {
+                startedMediaId = mediaId
+                startedCall = call
+                startPositionMs = positionMs.coerceAtLeast(0L)
+                playbackAdvanced = false
+            }
         } else {
             cancel()
         }
     }
 
-    fun transitioned(automatic: Boolean, nextMediaId: String?, nextCall: RadioCall?, nextPlaying: Boolean): RadioCall? {
-        val completed = if (automatic) startedCall else null
+    /** Returns true after the currently playing recording's position has moved. */
+    fun observedProgress(mediaId: String?, positionMs: Long): Boolean {
+        if (mediaId == null || mediaId != startedMediaId) return false
+        if (positionMs > startPositionMs && positionMs >= 0L) playbackAdvanced = true
+        return playbackAdvanced
+    }
+
+    fun awaitingProgress(mediaId: String?): Boolean =
+        mediaId != null && mediaId == startedMediaId && !playbackAdvanced
+
+    fun transitioned(
+        automatic: Boolean, nextMediaId: String?, nextCall: RadioCall?,
+        nextPlaying: Boolean, nextPositionMs: Long = 0L
+    ): RadioCall? {
+        val completed = if (automatic && playbackAdvanced) startedCall else null
         cancel()
-        if (nextPlaying) started(nextMediaId, nextCall)
+        if (nextPlaying) started(nextMediaId, nextCall, nextPositionMs)
         return completed
     }
 
     fun ended(): RadioCall? {
-        val completed = startedCall
+        val completed = if (playbackAdvanced) startedCall else null
         cancel()
         return completed
     }
@@ -121,6 +142,8 @@ internal class PlayedLiveCallTracker {
     fun cancel() {
         startedMediaId = null
         startedCall = null
+        startPositionMs = 0L
+        playbackAdvanced = false
     }
 
     fun cancelIf(mediaId: String) {
