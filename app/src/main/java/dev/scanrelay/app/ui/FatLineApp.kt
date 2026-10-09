@@ -322,12 +322,6 @@ private fun ScannerScreen(
         } else {
             item { ScannerStatusCard(server, queuedCallCount, queuedCalls, playingCall, viewModel) }
 
-            playingCall?.let { call ->
-                item(key = "playing-" + server.profile.id + "-" + call.id) {
-                    NowPlayingCard(server, call, viewModel)
-                }
-            }
-
             if (server.alerts.isNotEmpty()) {
                 item {
                     Text(
@@ -388,6 +382,7 @@ private fun ScannerStatusCard(
     viewModel: ScannerViewModel
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
+    val audioEnabled by ScannerService.audioEnabled.collectAsStateWithLifecycle()
     val outputVolumePercent by ScannerService.outputVolumePercent.collectAsStateWithLifecycle()
     var pendingVolume by remember { mutableStateOf(outputVolumePercent) }
     LaunchedEffect(outputVolumePercent) { pendingVolume = outputVolumePercent }
@@ -422,6 +417,51 @@ private fun ScannerStatusCard(
             )
 
             ScannerHudPanel(server, currentlyPlayingCall)
+
+            currentlyPlayingCall?.takeIf { it.profileId == server.profile.id }?.let { call ->
+                val key = ChannelKey(call.systemRef, call.talkgroupRef)
+                var callMenuExpanded by remember(server.profile.id, call.id) { mutableStateOf(false) }
+                Box {
+                    OutlinedButton(onClick = { callMenuExpanded = true }) { Text("Call actions") }
+                    DropdownMenu(
+                        expanded = callMenuExpanded,
+                        onDismissRequest = { callMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(if (server.hold == key) "Release TG hold" else "Hold TG") },
+                            onClick = {
+                                callMenuExpanded = false
+                                if (server.hold == key) viewModel.clearHold(server.profile.id)
+                                else viewModel.setHold(server.profile.id, call.systemRef, call.talkgroupRef)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (server.holdSystemRef == call.systemRef) "Release system hold" else "Hold system") },
+                            onClick = {
+                                callMenuExpanded = false
+                                viewModel.setSystemHold(
+                                    server.profile.id,
+                                    if (server.holdSystemRef == call.systemRef) null else call.systemRef
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (key in server.avoided) "Unavoid channel" else "Avoid channel") },
+                            onClick = {
+                                callMenuExpanded = false
+                                viewModel.avoid(server.profile.id, call.systemRef, call.talkgroupRef, key !in server.avoided)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Replay call") },
+                            onClick = {
+                                callMenuExpanded = false
+                                viewModel.replay(call.profileId, call.id)
+                            }
+                        )
+                    }
+                }
+            }
 
             Row(
                 Modifier.fillMaxWidth(),
@@ -481,9 +521,14 @@ private fun ScannerStatusCard(
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 item {
                     Button(
+                        onClick = { viewModel.setAudioEnabled(!audioEnabled) }
+                    ) { Text(if (audioEnabled) "Stop audio" else "Play audio") }
+                }
+                item {
+                    OutlinedButton(
                         onClick = { viewModel.setPaused(server.profile.id, !server.paused) },
                         enabled = server.status == ConnectionStatus.CONNECTED
-                    ) { Text(if (server.paused) "Resume" else "Pause") }
+                    ) { Text(if (server.paused) "Resume scan" else "Pause scan") }
                 }
                 item {
                     OutlinedButton(
@@ -502,6 +547,12 @@ private fun ScannerStatusCard(
                 }
             }
 
+            if (!audioEnabled) {
+                Text(
+                    "Audio stopped · Connections and alerts remain active",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
             Text("Scanner output · $pendingVolume%", style = MaterialTheme.typography.bodySmall)
             Slider(
                 value = pendingVolume / 100f,
@@ -589,72 +640,6 @@ private fun ScannerHudPanel(server: ServerScannerState, currentlyPlayingCall: Ra
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun NowPlayingCard(server: ServerScannerState, call: RadioCall, viewModel: ScannerViewModel) {
-    val key = ChannelKey(call.systemRef, call.talkgroupRef)
-    val talkgroup = server.systems
-        .firstOrNull { it.systemRef == call.systemRef }
-        ?.talkgroups
-        ?.firstOrNull { it.talkgroupRef == call.talkgroupRef }
-
-    Card(Modifier.padding(horizontal = 16.dp)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("NOW PLAYING", style = MaterialTheme.typography.labelLarge)
-            Text(call.talkgroupLabel, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-
-            InfoRow("System", call.systemLabel)
-            InfoRow("TGID", call.talkgroupRef.toString())
-            talkgroup?.tag?.takeIf { it.isNotBlank() }?.let { InfoRow("Tag", it) }
-            call.sourceDisplay?.let { InfoRow(if (call.sources.size > 1) "Units" else "Unit", it) }
-            call.frequency?.let { InfoRow("Frequency", formatFrequency(it)) }
-            call.durationSeconds?.let { InfoRow("Duration", String.format(Locale.US, "%.1f s", it)) }
-            if (call.dateTime.isNotBlank()) {
-                InfoRow(
-                    "Time",
-                    formatServerDateTime(
-                        call.dateTime,
-                        time12hFormat = server.time12hFormat,
-                        includeDate = false
-                    )
-                )
-            }
-
-            call.transcript?.takeIf { it.isNotBlank() }?.let {
-                HorizontalDivider()
-                Text(it, style = MaterialTheme.typography.bodyMedium)
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick = {
-                    if (server.hold == key) viewModel.clearHold(server.profile.id)
-                    else viewModel.setHold(server.profile.id, call.systemRef, call.talkgroupRef)
-                }) { Text(if (server.hold == key) "Release TG" else "Hold TG") }
-
-                OutlinedButton(onClick = {
-                    viewModel.setSystemHold(
-                        server.profile.id,
-                        if (server.holdSystemRef == call.systemRef) null else call.systemRef
-                    )
-                }) { Text(if (server.holdSystemRef == call.systemRef) "Release SYS" else "Hold SYS") }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedButton(onClick = {
-                    viewModel.avoid(
-                        server.profile.id,
-                        call.systemRef,
-                        call.talkgroupRef,
-                        key !in server.avoided
-                    )
-                }) { Text(if (key in server.avoided) "Unavoid" else "Avoid") }
-
-                OutlinedButton(onClick = { viewModel.replay(call.profileId, call.id) }) { Text("Replay") }
-                OutlinedButton(onClick = viewModel::skip) { Text("Skip") }
             }
         }
     }
@@ -1293,6 +1278,13 @@ private fun HistoryScreen(
     modifier: Modifier
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
+    // HistoryScreen leaves composition when another tab is selected. This refreshes once
+    // on every entry, and once after a disconnected scanner becomes connected.
+    LaunchedEffect(server?.profile?.id, server?.status == ConnectionStatus.CONNECTED) {
+        if (server?.status == ConnectionStatus.CONNECTED) {
+            viewModel.refreshHistory(server.profile.id)
+        }
+    }
     var historyQuery by remember(selectedProfileId) { mutableStateOf("") }
     var archiveSystemRef by remember(selectedProfileId, server?.historySystemRef) {
         mutableStateOf(server?.historySystemRef)
