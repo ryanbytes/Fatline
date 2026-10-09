@@ -15,6 +15,7 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - Five **icon-only** playback controls fit in one non-scrolling row: audio Play/Stop, scanning Pause/Resume, Replay, Skip, and Clear hold. TalkBack labels preserve accessibility without cramped text
 - Playback foreground notifications use a new Android notification channel with launcher badges disabled (required to update the channel on existing installations); actual alert notifications can still show launcher dots if Android permits them
 - History tab refreshes the first archive page when opened or when the selected scanner reconnects, preserving the currently applied server-side archive filters
+- History uses compact icon-only toolbar, filter menus, search/reset and per-call Continue/Replay/Download actions; active filters have visual badge markers and descriptive TalkBack labels, keeping the dropdown option names and archive behavior intact
 - Compact scanner HUD shows current playback without a separate large Now Playing card; hold, avoid and replay actions remain in a small Call actions menu
 - Persistent Play audio / Stop audio switch silences incoming scanner traffic without disconnecting background transcript and alert monitoring; explicit replay resumes audio and buffered queue playback intent survives service recreation
 - Kotlin + Jetpack Compose
