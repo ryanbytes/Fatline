@@ -1389,6 +1389,27 @@ private fun ArchiveMenuButton(
     }
 }
 
+/** Compact archive actions keep full descriptive TalkBack labels, without button text. */
+@Composable
+private fun HistoryIconAction(
+    icon: Int,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    primary: Boolean = false
+) {
+    val modifier = Modifier.semantics { contentDescription = label }
+    if (primary) {
+        FilledIconButton(onClick = onClick, enabled = enabled, modifier = modifier) {
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+        }
+    } else {
+        OutlinedIconButton(onClick = onClick, enabled = enabled, modifier = modifier) {
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
 @Composable
 private fun HistoryScreen(
     scanner: ScannerState,
@@ -1532,74 +1553,75 @@ private fun HistoryScreen(
             item { Text("Connect the selected scanner to retrieve history.", modifier = Modifier.padding(16.dp)) }
         } else {
             item {
-                LazyRow(
+                Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    item {
-                        Button(
+                    HistoryIconAction(
+                        icon = R.drawable.ic_fatline_refresh,
+                        label = if (archiveFilterLabel == null) "Refresh all archive" else "All archive",
+                        onClick = {
+                            archiveSystemRef = null
+                            archiveTalkgroupRefs = emptySet()
+                            archiveGroup = null
+                            archiveTag = null
+                            archiveDate = ""
+                            archiveTime = ""
+                            archiveSort = -1
+                            viewModel.requestHistory(server.profile.id, true)
+                        },
+                        enabled = server.status == ConnectionStatus.CONNECTED,
+                        primary = true
+                    )
+                    playingCall?.let { call ->
+                        HistoryIconAction(
+                            icon = R.drawable.ic_fatline_talkgroup,
+                            label = "Current TG",
                             onClick = {
-                                archiveSystemRef = null
+                                archiveSystemRef = call.systemRef
+                                archiveTalkgroupRefs = setOf(call.talkgroupRef)
+                                archiveGroup = null
+                                archiveTag = null
+                                archiveDate = ""
+                                archiveTime = ""
+                                archiveSort = -1
+                                viewModel.requestHistory(
+                                    server.profile.id,
+                                    true,
+                                    call.systemRef,
+                                    call.talkgroupRef
+                                )
+                            },
+                            enabled = server.status == ConnectionStatus.CONNECTED
+                        )
+                        HistoryIconAction(
+                            icon = R.drawable.ic_fatline_system,
+                            label = "Current SYS",
+                            onClick = {
+                                archiveSystemRef = call.systemRef
                                 archiveTalkgroupRefs = emptySet()
                                 archiveGroup = null
                                 archiveTag = null
                                 archiveDate = ""
                                 archiveTime = ""
                                 archiveSort = -1
-                                viewModel.requestHistory(server.profile.id, true)
+                                viewModel.requestHistory(
+                                    server.profile.id,
+                                    true,
+                                    call.systemRef,
+                                    null
+                                )
                             },
                             enabled = server.status == ConnectionStatus.CONNECTED
-                        ) { Text(if (archiveFilterLabel == null) "Refresh archive" else "All archive") }
-                    }
-                    playingCall?.let { call ->
-                        item {
-                            OutlinedButton(
-                                onClick = {
-                                    archiveSystemRef = call.systemRef
-                                    archiveTalkgroupRefs = setOf(call.talkgroupRef)
-                                    archiveGroup = null
-                                    archiveTag = null
-                                    archiveDate = ""
-                                    archiveTime = ""
-                                    archiveSort = -1
-                                    viewModel.requestHistory(
-                                        server.profile.id,
-                                        true,
-                                        call.systemRef,
-                                        call.talkgroupRef
-                                    )
-                                },
-                                enabled = server.status == ConnectionStatus.CONNECTED
-                            ) { Text("Current TG") }
-                        }
-                        item {
-                            OutlinedButton(
-                                onClick = {
-                                    archiveSystemRef = call.systemRef
-                                    archiveTalkgroupRefs = emptySet()
-                                    archiveGroup = null
-                                    archiveTag = null
-                                    archiveDate = ""
-                                    archiveTime = ""
-                                    archiveSort = -1
-                                    viewModel.requestHistory(
-                                        server.profile.id,
-                                        true,
-                                        call.systemRef,
-                                        null
-                                    )
-                                },
-                                enabled = server.status == ConnectionStatus.CONNECTED
-                            ) { Text("Current SYS") }
-                        }
+                        )
                     }
                     if (server.historyHasMore) {
-                        item {
-                            OutlinedButton(
-                                onClick = { viewModel.requestHistory(server.profile.id, false) },
-                                enabled = server.status == ConnectionStatus.CONNECTED
-                            ) { Text("More") }
-                        }
+                        HistoryIconAction(
+                            icon = R.drawable.ic_fatline_more_calls,
+                            label = "Load more archive calls",
+                            onClick = { viewModel.requestHistory(server.profile.id, false) },
+                            enabled = server.status == ConnectionStatus.CONNECTED
+                        )
                     }
                 }
             }
@@ -1773,7 +1795,9 @@ private fun HistoryScreen(
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
+                            HistoryIconAction(
+                                icon = R.drawable.ic_fatline_search,
+                                label = "Search server archive",
                                 onClick = {
                                     viewModel.requestHistoryFiltered(
                                         profileId = server.profile.id,
@@ -1786,10 +1810,12 @@ private fun HistoryScreen(
                                         sort = archiveSort
                                     )
                                 },
-                                enabled = server.status == ConnectionStatus.CONNECTED &&
-                                    archiveDateValid
-                            ) { Text("Search server") }
-                            OutlinedButton(
+                                enabled = server.status == ConnectionStatus.CONNECTED && archiveDateValid,
+                                primary = true
+                            )
+                            HistoryIconAction(
+                                icon = R.drawable.ic_fatline_clear,
+                                label = "Clear archive filter fields",
                                 onClick = {
                                     archiveSystemRef = null
                                     archiveTalkgroupRefs = emptySet()
@@ -1799,10 +1825,10 @@ private fun HistoryScreen(
                                     archiveTime = ""
                                     archiveSort = -1
                                 }
-                            ) { Text("Clear fields") }
+                            )
                         }
                         Text(
-                            "Server results load 200 calls at a time. Use More to continue the same search.",
+                            "Server results load 200 calls at a time. Use the load-more icon to continue.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -1831,7 +1857,11 @@ private fun HistoryScreen(
                             style = MaterialTheme.typography.bodySmall
                         )
                         if (historyQuery.isNotBlank()) {
-                            OutlinedButton(onClick = { historyQuery = "" }) { Text("Clear") }
+                            HistoryIconAction(
+                                icon = R.drawable.ic_fatline_clear,
+                                label = "Clear loaded history search",
+                                onClick = { historyQuery = "" }
+                            )
                         }
                     }
                 }
@@ -3819,30 +3849,44 @@ private fun CallRow(
     onContinue: (() -> Unit)? = null
 ) {
     Card(Modifier.padding(horizontal = 16.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            Modifier.fillMaxWidth().padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(call.talkgroupLabel, fontWeight = FontWeight.SemiBold)
-                Text(call.systemLabel + " · TG " + call.talkgroupRef, style = MaterialTheme.typography.bodySmall)
-                call.sourceDisplay?.let { Text("Unit: " + it, style = MaterialTheme.typography.bodySmall) }
-                if (call.dateTime.isNotBlank()) {
-                    Text(
-                        formatServerDateTime(call.dateTime, time12hFormat),
-                        style = MaterialTheme.typography.bodySmall
+            Text(call.talkgroupLabel, fontWeight = FontWeight.SemiBold)
+            Text(call.systemLabel + " · TG " + call.talkgroupRef, style = MaterialTheme.typography.bodySmall)
+            call.sourceDisplay?.let { Text("Unit: " + it, style = MaterialTheme.typography.bodySmall) }
+            if (call.dateTime.isNotBlank()) {
+                Text(
+                    formatServerDateTime(call.dateTime, time12hFormat),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            call.transcript?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                onContinue?.let {
+                    HistoryIconAction(
+                        icon = R.drawable.ic_fatline_continue,
+                        label = "Continue history playback from this call",
+                        onClick = it
                     )
                 }
-                call.transcript?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                onContinue?.let {
-                    OutlinedButton(onClick = it) { Text("Continue") }
-                }
-                OutlinedButton(onClick = onReplay) { Text("Replay") }
-                OutlinedButton(onClick = onDownload) { Text("Download") }
+                HistoryIconAction(
+                    icon = R.drawable.ic_fatline_replay,
+                    label = "Replay archived call",
+                    onClick = onReplay
+                )
+                HistoryIconAction(
+                    icon = R.drawable.ic_fatline_download,
+                    label = "Download archived call audio",
+                    onClick = onDownload
+                )
             }
         }
     }
