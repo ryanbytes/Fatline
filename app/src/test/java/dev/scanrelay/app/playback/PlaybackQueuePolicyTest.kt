@@ -20,26 +20,33 @@ class PlaybackQueuePolicyTest {
     fun queuedAndStartedCallsAreNotRecentUntilNaturalCompletion() {
         val tracker = PlayedLiveCallTracker()
         val call = liveCall(11)
-        // A queued arrival does not pass through tracker at all.
+        // A queued arrival never enters this tracker; a Media3 "playing"
+        // callback alone is not evidence that the recording was consumed.
         tracker.started(id("live", 11), call)
-        assertEquals(null, tracker.transitioned(false, id("live", 12), liveCall(12), false))
-        assertEquals(null, tracker.ended()) // manual skip discarded the first call
+        assertEquals(null, tracker.transitioned(true, id("live", 12), liveCall(12), true))
+        assertEquals(null, tracker.ended()) // still no position movement
 
-        tracker.started(id("live", 11), call)
+        tracker.started(id("live", 11), call, 0L)
+        assertTrue(tracker.awaitingProgress(id("live", 11)))
+        assertFalse(tracker.observedProgress(id("live", 11), 0L))
+        assertTrue(tracker.observedProgress(id("live", 11), 150L))
         val finished = tracker.transitioned(true, id("live", 12), liveCall(12), true)
         assertEquals(11L, finished?.id)
-        // The next call is now playing, but not complete.
+        assertEquals(null, tracker.ended()) // next call has not progressed
+        tracker.observedProgress(id("live", 12), 75L)
         assertEquals(12L, tracker.ended()?.id)
-        assertEquals(null, tracker.ended()) // no duplicate completion
+        assertEquals(null, tracker.ended()) // no duplicate
     }
 
     @Test
     fun manualStopAndRemovingAPlayingCallNeverMarkItPlayed() {
         val tracker = PlayedLiveCallTracker()
         tracker.started(id("live", 1), liveCall(1))
+        tracker.observedProgress(id("live", 1), 700L)
         tracker.cancelIf(id("live", 1))
         assertEquals(null, tracker.ended())
         tracker.started(id("live", 2), liveCall(2))
+        tracker.observedProgress(id("live", 2), 200L)
         tracker.cancel()
         assertEquals(null, tracker.transitioned(true, null, null, false))
         assertEquals(null, tracker.ended())
@@ -49,13 +56,47 @@ class PlaybackQueuePolicyTest {
     fun replayItemsAndUnstartedCallsNeverCountAsPlayedLive() {
         val tracker = PlayedLiveCallTracker()
         tracker.started(id("replay", 1), liveCall(1))
+        assertFalse(tracker.observedProgress(id("replay", 1), 1000L))
         assertEquals(null, tracker.ended())
         tracker.started(null, null)
         assertEquals(null, tracker.transitioned(true, id("live", 2), liveCall(2), false))
-        assertEquals(null, tracker.ended()) // next item has not actually started
+        assertEquals(null, tracker.ended()) // next item never started
         tracker.started(id("live", 2), liveCall(2))
-        assertEquals(2L, tracker.ended()?.id) // last playable item reached natural end
+        assertEquals(null, tracker.ended()) // Media3 ended without rendered progress
+        tracker.started(id("live", 2), liveCall(2))
+        assertTrue(tracker.observedProgress(id("live", 2), 25L))
+        assertEquals(2L, tracker.ended()?.id)
         assertEquals(null, tracker.ended())
+    }
+
+    @Test
+    fun otherArrivalsAndReplayProgressCannotAdvanceCurrentLiveCall() {
+        val tracker = PlayedLiveCallTracker()
+        tracker.started(id("live", 8), liveCall(8), 500L)
+        assertFalse(tracker.observedProgress(id("live", 9), 900L))
+        assertFalse(tracker.observedProgress(id("replay", 8), 900L))
+        assertFalse(tracker.observedProgress(id("live", 8), 500L))
+        assertTrue(tracker.awaitingProgress(id("live", 8)))
+        // Repeated "playing" callback during buffering must not reset evidence
+        // or starting position for the same call.
+        tracker.started(id("live", 8), liveCall(8), 850L)
+        assertTrue(tracker.observedProgress(id("live", 8), 501L))
+        tracker.started(id("live", 8), liveCall(8), 1000L)
+        assertFalse(tracker.awaitingProgress(id("live", 8)))
+        assertEquals(8L, tracker.ended()?.id)
+    }
+
+    @Test
+    fun autoTransitionRequiresPlaybackProgressAndCannotInventRecentEntries() {
+        val tracker = PlayedLiveCallTracker()
+        tracker.started(id("live", 1), liveCall(1))
+        // The service receives a second media item but the first never rendered.
+        assertEquals(null, tracker.transitioned(true, id("live", 2), liveCall(2), false))
+        assertEquals(null, tracker.ended())
+        tracker.started(id("live", 3), liveCall(3))
+        assertEquals(null, tracker.transitioned(false, id("live", 4), liveCall(4), true))
+        tracker.observedProgress(id("live", 4), 70L)
+        assertEquals(4L, tracker.ended()?.id)
     }
 
     @Test
