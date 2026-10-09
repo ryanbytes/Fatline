@@ -203,7 +203,13 @@ require(
     'mobile navigation must keep every destination reachable without seven cramped bottom labels'
 )
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
-scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun NowPlayingCard(', 1)[0]
+scanner_card = ui.split('private fun ScannerStatusCard(', 1)[1].split('private fun ScannerHudPanel(', 1)[0]
+require('private fun NowPlayingCard(' not in ui and 'NowPlayingCard(server' not in scanner_screen, 'large duplicate now-playing card must not return')
+require('Text("Call actions")' in scanner_card and '"Avoid channel"' in scanner_card and 'viewModel.setSystemHold(' in scanner_card, 'compact now-playing actions must preserve controls')
+require('if (audioEnabled) "Stop audio" else "Play audio"' in scanner_card and 'viewModel.setAudioEnabled(!audioEnabled)' in scanner_card, 'independent audio Play/Stop control missing')
+require('ACTION_SET_AUDIO_ENABLED' in service and 'KEY_AUDIO_ENABLED' in service and 'if (liveFeed && !_audioEnabled.value)' in service and 'player.pause()' in service, 'stopped audio must be persisted and suppress live output without disconnecting monitoring')
+require('if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)' in service, 'explicit replay must reactivate muted output')
+require('val audioEnabled: StateFlow<Boolean>' in service and 'ScannerService.setAudioEnabled(getApplication(), enabled)' in viewmodel, 'audio output state and view-model bridge missing')
 require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
 
 hud_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/ScannerHudPolicy.kt').read_text()
@@ -346,6 +352,9 @@ require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'talkgroup h
 require('effectiveLivefeedSystems' in repo and 'sendEffectiveLivefeedLocked' in repo, 'hold/avoid must filter the server LFM subscription')
 require('talkgroup.key !in state.avoided' in repo, 'avoided channels must be excluded from the server subscription')
 require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
+require('LaunchedEffect(server?.profile?.id, server?.status == ConnectionStatus.CONNECTED)' in ui and 'viewModel.refreshHistory(server.profile.id)' in ui, 'opening History must refresh the archive')
+require('fun refreshHistory(profileId: String)' in repo and 'preserveFilters = true' in repo and 'historyOffset = 0' in repo, 'History entry refresh must restart from first page without losing filters')
+require('fun refreshHistory(profileId: String) = ScannerRepository.refreshHistory(profileId)' in viewmodel, 'History entry view-model bridge missing')
 require('Search loaded history' in ui and 'historyQuery' in ui, 'loaded-history search control missing')
 require('historySystemRef' in models and 'historyTalkgroupRef' in models, 'active archive server-filter state missing')
 require('historyTalkgroupRefs' in models and '"talkgroups", JSONArray(selectedTalkgroups)' in protocol and

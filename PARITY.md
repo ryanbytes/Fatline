@@ -16,13 +16,13 @@ account information, or encryption keys to ThinLine-hosted services):
 | Area | FatLine code status | Remaining acceptance gate |
 | --- | --- | --- |
 | Concurrent scanner connections, open/PIN access | Implemented | Exercise two real third-party scanners over network handoffs |
-| Live audio, background media service, audio mixing | Implemented | Screen-off playback alongside music without ducking |
+| Live audio, background media service, audio mixing | Implemented, including persistent Play/Stop audio without stopping monitoring | Screen-off playback alongside music without ducking; Stop audio keeps transcript alerts active and resumes cleanly on Play |
 | Independent saved scanner output volume | Implemented | Confirm slider gain without altering other apps' media output |
 | Channel/system enablement, local favorites, system/tag/channel tree | Implemented | Mobile screen and subscription state vs. actual server |
 | Scan lists and server-backed list membership/reordering | Implemented | Synchronization and conflict/reconnect tests |
 | Hold system/talkgroup, avoid/unavoid, Pause, Skip | Implemented | Verify selection/resume behavior on a real server |
 | Recent live calls, tap to play, **Replay last** | Implemented | Correct most recent call with and without active playback |
-| Archive/history filters, replay, continue, downloads | Implemented, including multi-talkgroup server filter | Verify one/multiple TG searches, preserving filters across pages, queued playback and authenticated downloads against a real server |
+| Archive/history filters, replay, continue, downloads | Implemented, including multi-talkgroup server filter and refresh on History entry | Verify on-entry first-page refresh, preserved active filters, one/multiple TG searches, pagination, replay and downloads against a real server |
 | Queue count, preview, clear, durable recovery, de-duplication | Implemented | Android service restart and Wi-Fi/cellular handoff tests |
 | Reopen-app recovery of previously active scanner sessions | Implemented | Kill the foreground service, reopen app, and verify old connections resume without disrupting existing ones; no boot auto-start |
 | Server alert preferences, keyword/tone matching, alert listing | Implemented | Validate against authorized self-hosted server responses |
@@ -36,7 +36,7 @@ account information, or encryption keys to ThinLine-hosted services):
 
 | Area | Status | Work |
 | --- | --- | --- |
-| Compact, truthful playback and connection status | **Partially implemented** | Verify legible states and metadata on-device; simplify or remove radio-style HUD elements if they obstruct actual client use |
+| Compact, truthful playback and connection status | **Implemented; device-unverified** | Removed the large duplicate Now Playing card, retained compact HUD and moved hold/avoid/replay into Call actions; verify legibility and usability on-device |
 | Automatic server-assigned feed sync | **Not implemented** | Only explore privacy-preserving sync directly with the user's own scanner server; never call ThinLine-hosted account/telemetry endpoints |
 | Mobile app usability | **Partially improved; device-unverified** | Bottom navigation now shows Scanner, Channels, History and Alerts plus a More menu containing Weather, Transcripts and Settings; confirm narrow-screen labels, pop-up reachability, accessibility and layout on an actual phone |
 | Runtime interoperability | **Unverified** | Test phone process death, encrypted/audio relay, rapid reconnects, Android Auto, queue limits, background mixing, and resume behavior |

@@ -111,6 +111,8 @@ class ScannerService : MediaLibraryService() {
         playbackQueueStore = PlaybackQueueStore(this)
         volumeStore = PlaybackVolumeStore(this)
         _outputVolumePercent.value = volumeStore.percent()
+        _audioEnabled.value = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_AUDIO_ENABLED, true)
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
@@ -182,6 +184,9 @@ class ScannerService : MediaLibraryService() {
                 setProfilePausedInternal(profileId, intent.getBooleanExtra(EXTRA_PAUSED, false))
             }
             ACTION_FILTER_PROFILE_MEDIA -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::filterProfileMedia)
+            ACTION_SET_AUDIO_ENABLED -> setAudioEnabledInternal(
+                intent.getBooleanExtra(EXTRA_AUDIO_ENABLED, true)
+            )
             ACTION_SKIP -> {
                 skipInternal()
                 stopIfIdle()
@@ -413,7 +418,7 @@ class ScannerService : MediaLibraryService() {
             player.seekTo(0, snapshot.positionMs)
         }
         player.prepare()
-        if (snapshot.playWhenReady) player.play()
+        if (snapshot.playWhenReady && _audioEnabled.value) player.play()
         restoringQueue = false
         syncCurrentlyPlayingCall()
     }
@@ -465,6 +470,12 @@ class ScannerService : MediaLibraryService() {
         val token = intent.getStringExtra(EXTRA_CALL_TOKEN).orEmpty()
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
         val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
+        if (liveFeed && !_audioEnabled.value) {
+            // Keep live scanner and transcript monitoring connected, but never
+            // accumulate an unheard backlog during intentional audio Stop.
+            pendingCalls.remove(token)
+            return
+        }
         if (ScannerPausePolicy.suppressIncomingAudio(
                 liveFeed = liveFeed,
                 paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)
@@ -498,6 +509,8 @@ class ScannerService : MediaLibraryService() {
             dateTime = "",
             audioPath = path
         )
+        // An explicit replay selection is also an intentional request to hear audio.
+        if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)
         val mediaKind = if (liveFeed) "live" else "replay"
         val item = mediaItemFor(call, "call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:$token")
 
@@ -530,6 +543,19 @@ class ScannerService : MediaLibraryService() {
             }
         }
     }
+    private fun setAudioEnabledInternal(enabled: Boolean) {
+        _audioEnabled.value = enabled
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_AUDIO_ENABLED, enabled).apply()
+        if (enabled) {
+            if (player.mediaItemCount > 0) player.play()
+        } else {
+            player.pause()
+        }
+        syncCurrentlyPlayingCall()
+        updatePlaybackNotification()
+    }
+
     private fun setOutputVolumeInternal(percent: Int) {
         val normalized = PlaybackVolumePolicy.clamp(percent)
         volumeStore.save(normalized)
@@ -757,6 +783,8 @@ class ScannerService : MediaLibraryService() {
         .build()
 
     companion object {
+        private val _audioEnabled = MutableStateFlow(true)
+        val audioEnabled: StateFlow<Boolean> = _audioEnabled.asStateFlow()
         private val _outputVolumePercent = MutableStateFlow(PlaybackVolumePolicy.DEFAULT_PERCENT)
         val outputVolumePercent: StateFlow<Int> = _outputVolumePercent.asStateFlow()
         private val _queuedCallCount = MutableStateFlow(0)
@@ -771,6 +799,7 @@ class ScannerService : MediaLibraryService() {
         private const val NOTIFICATION_ID = 8101
         private const val PREFS = "fatline_session"
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
+        private const val KEY_AUDIO_ENABLED = "audio_enabled"
         private const val ROOT_ID = "fatline_root"
         private const val NETWORK_LOSS_GRACE_MS = 650L
 
@@ -785,6 +814,7 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_SET_OUTPUT_VOLUME = "dev.scanrelay.SET_OUTPUT_VOLUME"
         const val EXTRA_VOLUME_PERCENT = "volume_percent"
         const val ACTION_FILTER_PROFILE_MEDIA = "dev.scanrelay.FILTER_PROFILE_MEDIA"
+        const val ACTION_SET_AUDIO_ENABLED = "dev.scanrelay.SET_AUDIO_ENABLED"
         const val ACTION_SKIP = "dev.scanrelay.SKIP"
         const val ACTION_CLEAR_QUEUE = "dev.scanrelay.CLEAR_QUEUE"
         const val ACTION_STOP_AUDIO = "dev.scanrelay.STOP_AUDIO"
@@ -796,6 +826,7 @@ class ScannerService : MediaLibraryService() {
         const val EXTRA_LIVE_FEED = "live_feed"
         const val EXTRA_PLAY_IMMEDIATELY = "play_immediately"
         const val EXTRA_PAUSED = "paused"
+        const val EXTRA_AUDIO_ENABLED = "audio_enabled"
         const val EXTRA_AUDIO_PATH = "audio_path"
         const val EXTRA_TITLE = "title"
         const val EXTRA_SUBTITLE = "subtitle"
@@ -878,6 +909,14 @@ class ScannerService : MediaLibraryService() {
             val intent = Intent(context, ScannerService::class.java)
                 .setAction(ACTION_SET_OUTPUT_VOLUME)
                 .putExtra(EXTRA_VOLUME_PERCENT, PlaybackVolumePolicy.clamp(percent))
+            runCatching { context.startService(intent) }
+                .onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
+
+        fun setAudioEnabled(context: Context, enabled: Boolean) {
+            val intent = Intent(context, ScannerService::class.java)
+                .setAction(ACTION_SET_AUDIO_ENABLED)
+                .putExtra(EXTRA_AUDIO_ENABLED, enabled)
             runCatching { context.startService(intent) }
                 .onFailure { ContextCompat.startForegroundService(context, intent) }
         }
