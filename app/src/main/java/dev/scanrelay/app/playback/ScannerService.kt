@@ -65,6 +65,10 @@ class ScannerService : MediaLibraryService() {
     private lateinit var volumeStore: PlaybackVolumeStore
     private var restoringQueue = true
     private var releasingPlayer = false
+    // Repeated ACTION_ENQUEUE calls must not restart foreground notification
+    // publication. These fields are only accessed by the service main thread.
+    private var foregroundStarted = false
+    private var lastPostedNotification: PlaybackNotificationText? = null
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
@@ -164,13 +168,17 @@ class ScannerService : MediaLibraryService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val initialText = if (::player.isInitialized) currentPlaybackNotification()
-            else PlaybackNotificationText("FatLine", "Scanner service active")
-        val queued = if (::player.isInitialized) PlaybackQueuePolicy.queuedCount(
-            player.mediaItemCount, player.currentMediaItemIndex
-        ) else 0
-        val subtitle = if (queued > 0) "${initialText.subtitle} · $queued queued" else initialText.subtitle
-        startForeground(NOTIFICATION_ID, notification(initialText.title, subtitle))
+        if (!foregroundStarted) {
+            val initialText = if (::player.isInitialized) currentPlaybackNotification()
+                else PlaybackNotificationText("FatLine", "Scanner service active")
+            val queued = if (::player.isInitialized) PlaybackQueuePolicy.queuedCount(
+                player.mediaItemCount, player.currentMediaItemIndex
+            ) else 0
+            val subtitle = if (queued > 0) "${initialText.subtitle} · $queued queued" else initialText.subtitle
+            startForeground(NOTIFICATION_ID, notification(initialText.title, subtitle))
+            foregroundStarted = true
+            lastPostedNotification = PlaybackNotificationText(initialText.title, subtitle)
+        }
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
             ACTION_RESUME_CONNECTIONS -> restoreConnections()
@@ -347,6 +355,8 @@ class ScannerService : MediaLibraryService() {
     private fun stopIfIdle() {
         if (activeProfileIds().isNotEmpty() || player.mediaItemCount > 0) return
         stopForeground(STOP_FOREGROUND_REMOVE)
+        foregroundStarted = false
+        lastPostedNotification = null
         stopSelf()
     }
 
@@ -712,7 +722,10 @@ class ScannerService : MediaLibraryService() {
         )
         _queuedCallCount.value = queuedCount
         val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
+        val current = PlaybackNotificationText(title, queueText)
+        if (!foregroundStarted || !PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)) return
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))
+        lastPostedNotification = current
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
