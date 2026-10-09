@@ -47,6 +47,37 @@ class PlaybackQueueStoreTest {
     }
 
     @Test
+    fun cachePruningHappensImmediatelyThenEverySixteenWritesPerScanner() {
+        val schedule = PlaybackCachePruneSchedule()
+        assertTrue(schedule.afterWrite("one")) // startup safety sweep
+        repeat(15) { assertFalse(schedule.afterWrite("one")) }
+        assertTrue(schedule.afterWrite("one")) // 17th write
+        repeat(15) { assertFalse(schedule.afterWrite("one")) }
+        assertTrue(schedule.afterWrite("one")) // 33rd write
+        assertTrue(schedule.afterWrite("two")) // independent profile baseline
+    }
+
+    @Test
+    fun batchedPruningStillProtectsQueuedCallsWhenSweepOccurs() {
+        val schedule = PlaybackCachePruneSchedule(interval = 3)
+        val files = (1..200).map { "/cache/$it.mp3" }
+        val queued = setOf(files[199], files[190], files[0])
+        assertTrue(schedule.afterWrite("one"))
+        assertFalse(schedule.afterWrite("one"))
+        assertFalse(schedule.afterWrite("one"))
+        assertTrue(schedule.afterWrite("one"))
+        val evict = PlaybackCachePolicy.evictablePaths(files, queued)
+        assertEquals(47, evict.size)
+        assertTrue(evict.none { it in queued })
+        assertTrue(evict.contains(files[197]))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun pruningScheduleRejectsZeroInterval() {
+        PlaybackCachePruneSchedule(interval = 0)
+    }
+
+    @Test
     fun savedPausedPlaybackDoesNotAutoResume() {
         val saved = SavedPlaybackQueue(
             calls = listOf(SavedPlaybackCall("call:one:replay:1:4:120:a", call(1), false)),
