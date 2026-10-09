@@ -64,6 +64,8 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - Compact scanner HUD with actual live, scan, RX/playback, hold, pause indicators and optional tag-color backlight; no fabricated signal readings
 - Pausing a scanner suppresses only live traffic, preserving user-requested replay audio
 - Android Auto browse tree: profiles → favorited talkgroups; server items are browsable/playable, selecting a favorite sets a talkgroup hold, and subscribed browsers are refreshed when favorite-channel metadata changes
+- Efficiency: Android Auto favorites are cached across unrelated call, alert, transcript and queue state changes; changing favorites, system configuration, or hidden systems still refreshes subscribers
+- Efficiency: playback audio cache cleanup runs on the first write and then every 16 writes per scanner rather than sorting the directory after every call; all persisted queued/playing audio remains protected at every cleanup
 - Foreground-service restore cleanup for deleted/stale profiles and bounded playback queue handling
 
 ## Connection-loss and network-switch recovery

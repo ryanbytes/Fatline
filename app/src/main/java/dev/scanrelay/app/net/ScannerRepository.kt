@@ -33,6 +33,7 @@ import dev.scanrelay.app.model.SystemConfig
 import dev.scanrelay.app.model.SystemHealthAlert
 import dev.scanrelay.app.model.TranscriptRecord
 import dev.scanrelay.app.playback.PlaybackCachePolicy
+import dev.scanrelay.app.playback.PlaybackCachePruneSchedule
 import dev.scanrelay.app.playback.PlaybackQueueStore
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.CancellationException
@@ -105,6 +106,7 @@ object ScannerRepository {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessions = ConcurrentHashMap<String, Session>()
+    private val cachePruneSchedule = PlaybackCachePruneSchedule()
     private val keyHttpClient = OkHttpClient.Builder()
         .followRedirects(false)
         .followSslRedirects(false)
@@ -3373,7 +3375,9 @@ object ScannerRepository {
         val dir = File(context.cacheDir, "fatline_audio/$safeProfile").apply { mkdirs() }
         val file = File(dir, "$callId-${System.nanoTime()}.$extension")
         file.writeBytes(bytes)
-        pruneCache(dir, context)
+        // Scanning/sorting the cache and reading the persistent queue after
+        // every call is wasteful. Sweep immediately once, then every 16 files.
+        if (cachePruneSchedule.afterWrite(profileId)) pruneCache(dir, context)
         return file.absolutePath
     }
 

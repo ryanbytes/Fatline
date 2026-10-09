@@ -290,9 +290,28 @@ require('queuedMediaIds' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playbac
 
 queue_store = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueueStore.kt').read_text()
 queue_store_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueueStoreTest.kt').read_text()
+auto_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/AndroidAutoLibraryPolicy.kt').read_text()
+auto_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/AndroidAutoLibraryPolicyTest.kt').read_text()
+require('AndroidAutoFavoritesCache' in auto_policy
+        and 'previous.systems === server.systems' in auto_policy
+        and 'previous.hiddenSystems === server.hiddenSystemRefs' in auto_policy
+        and 'private val favoriteLibraryCache = AndroidAutoFavoritesCache()' in service
+        and 'favoriteLibraryCache.refresh(profileId, state)' in service,
+        'Android Auto favorites must reuse unchanged config when only audio/alerts update')
+require('skipsRebuildOnLiveCallAndAlertStateChanges' in auto_tests
+        and 'changedFavoritesAndHiddenSystemsRefreshAutoLibrary' in auto_tests
+        and 'removedServerClearsCachedFavoritesAndDoesNotLeakStaleEntries' in auto_tests,
+        'Android Auto favorites cache must refresh on changes and remove disconnected profiles')
 require('PlaybackQueueStore(this)' in service and 'restoreSavedPlaybackQueue()' in service and 'persistPlaybackQueue()' in service, 'buffered playback must restore and persist across service restart')
 require('recoveryStartIndex(' in service and 'recoveryStartIndex(' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text(), 'playback restore must not replay completed calls')
 require('PlaybackQueueStore(context).protectedAudioPaths()' in repo and 'PlaybackCachePolicy.evictablePaths(' in repo, 'audio cache cleanup must not delete queued audio')
+require('PlaybackCachePruneSchedule' in queue_store
+        and 'private val cachePruneSchedule = PlaybackCachePruneSchedule()' in repo
+        and 'if (cachePruneSchedule.afterWrite(profileId)) pruneCache(dir, context)' in repo,
+        'cache cleanup should be batched per scanner without changing queued-file protection')
+require('cachePruningHappensImmediatelyThenEverySixteenWritesPerScanner' in queue_store_tests
+        and 'batchedPruningStillProtectsQueuedCallsWhenSweepOccurs' in queue_store_tests,
+        'batched cache cleanup must be covered by queue recovery safety tests')
 require('!(entry.liveFeed && pauseStore.isPaused(entry.call.profileId))' in service, 'recovered queue must respect scanner pause settings')
 require('player.setMediaItems(recovered.map' in service and 'player.prepare()' in service and 'snapshot.playWhenReady' in service, 'recovered media must preserve saved playback intent')
 require('if (snapshot == null)' in service and 'File(it).isFile' in service, 'queue recovery must skip missing audio')

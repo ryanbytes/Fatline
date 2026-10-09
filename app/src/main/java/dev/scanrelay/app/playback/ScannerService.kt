@@ -72,7 +72,7 @@ class ScannerService : MediaLibraryService() {
     // Keep recent accepted live IDs through socket reconnects. Bounded in memory.
     private val recentlyAcceptedLiveCalls = LinkedHashSet<CallKey>()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val libraryChildren = mutableMapOf<String, List<AndroidAutoFavorite>>()
+    private val favoriteLibraryCache = AndroidAutoFavoritesCache()
 
     private val networkLossCheck = Runnable {
         val active = connectivityManager.activeNetwork
@@ -351,12 +351,13 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun refreshFavoriteLibraryChildren(state: ScannerState) {
-        val profileIds = state.servers.keys + libraryChildren.keys
+        // Most state emissions are audio, transcript or queue changes. Rebuild the
+        // Auto library only when its systems or hidden-system inputs change.
+        val profileIds = state.servers.keys + favoriteLibraryCache.profileIds
         profileIds.forEach { profileId ->
-            val current = AndroidAutoLibraryPolicy.favoriteChannels(profileId, state)
-            val previous = libraryChildren.put(profileId, current)
-            if (AndroidAutoLibraryPolicy.childrenChanged(previous, current)) {
-                session.notifyChildrenChanged("profile:$profileId", current.size, null)
+            val update = favoriteLibraryCache.refresh(profileId, state)
+            if (update.changed) {
+                session.notifyChildrenChanged("profile:$profileId", update.favorites.size, null)
             }
         }
     }
