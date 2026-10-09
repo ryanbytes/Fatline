@@ -66,6 +66,21 @@ import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.absoluteValue
 
+/**
+ * StateFlow updates for connection status, queue, transcripts, and monitoring
+ * should not re-sort archive or alert histories that have not changed. Model
+ * updates use immutable list replacement, so reference identity is sufficient.
+ */
+internal object ScannerStateAggregationPolicy {
+    fun reuseHistory(previous: ScannerState, current: Map<String, ServerScannerState>): Boolean =
+        previous.servers.keys == current.keys &&
+            current.all { (id, server) -> previous.servers[id]?.history === server.history }
+
+    fun reuseAlerts(previous: ScannerState, current: Map<String, ServerScannerState>): Boolean =
+        previous.servers.keys == current.keys &&
+            current.all { (id, server) -> previous.servers[id]?.alerts === server.alerts }
+}
+
 object ScannerRepository {
     private class Session(profile: ServerProfile) {
         @Volatile var profile: ServerProfile = profile
@@ -3494,8 +3509,19 @@ object ScannerRepository {
 
     private fun publish() {
         val serverMap = sessions.values.associate { it.profile.id to it.state }
-        val history = serverMap.values.flatMap { it.history }.sortedByDescending(::callSortKey).take(500)
-        val alerts = serverMap.values.flatMap { it.alerts }.sortedByDescending { it.createdAt ?: 0L }.take(500)
+        val previous = _state.value
+        // Most updates change status, queue, configuration or transcripts, not
+        // archived calls or alerts. Preserve aggregated list instances then.
+        val history = if (ScannerStateAggregationPolicy.reuseHistory(previous, serverMap)) {
+            previous.history
+        } else {
+            serverMap.values.flatMap { it.history }.sortedByDescending(::callSortKey).take(500)
+        }
+        val alerts = if (ScannerStateAggregationPolicy.reuseAlerts(previous, serverMap)) {
+            previous.alerts
+        } else {
+            serverMap.values.flatMap { it.alerts }.sortedByDescending { it.createdAt ?: 0L }.take(500)
+        }
         _state.value = ScannerState(serverMap, history, alerts)
     }
 }
