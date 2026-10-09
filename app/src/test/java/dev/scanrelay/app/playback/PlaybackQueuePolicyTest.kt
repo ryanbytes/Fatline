@@ -233,6 +233,129 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun singlePassProjectionExactlyMatchesPreviousPlaybackAndQueueSemantics() {
+        val ids = listOf(
+            id("live", 1), id("replay", 2), id("live", 3),
+            "not-a-call", id("replay", 5), id("live", 6)
+        )
+        val calls = mapOf(
+            ids[0] to liveCall(1),
+            ids[1] to liveCall(2),
+            ids[2] to liveCall(3),
+            ids[4] to liveCall(5),
+            ids[5] to liveCall(6),
+            "orphan" to liveCall(100)
+        )
+        for (size in 0..ids.size) {
+            val media = ids.take(size)
+            for (index in listOf(-1, 0, size - 1, size, size + 3)) {
+                for (isPlaying in listOf(true, false)) {
+                    val visited = mutableListOf<Int>()
+                    val projection = PlaybackQueueProjectionPolicy.project(
+                        media.size, index, isPlaying,
+                        { i -> visited.add(i); media[i] }, calls
+                    )
+                    val expectedCurrent = PlaybackQueuePolicy.playingMediaId(media, index, isPlaying)
+                        ?.let(calls::get)
+                    val expectedQueue = PlaybackQueuePolicy.queuedMediaIds(media, index)
+                        .mapNotNull { mediaId ->
+                            calls[mediaId]?.let { QueuedCall(it, PlaybackQueuePolicy.mediaKind(mediaId) == "live") }
+                        }
+                    assertEquals(media.toSet(), projection.activeMediaIds)
+                    assertEquals(expectedCurrent, projection.playingCall)
+                    assertEquals(expectedQueue, projection.queuedCalls)
+                    // A true single-pass implementation reads each player item once.
+                    assertEquals(media.indices.toList(), visited)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun lazyQueueTrimMatchesIndependentLegacyOverflowReference() {
+        val candidates = listOf(
+            emptyList(),
+            listOf(id("live", 1), id("replay", 2), "bad-token"),
+            List(PlaybackQueuePolicy.LIVE_LIMIT - 1) { id("live", it + 1) },
+            List(PlaybackQueuePolicy.LIVE_LIMIT) { id("live", it + 1) },
+            listOf(id("replay", 1)) +
+                List(PlaybackQueuePolicy.LIVE_LIMIT + 2) { id("live", it + 2) },
+            List(PlaybackQueuePolicy.REPLAY_LIMIT - 1) { id("replay", it + 1) },
+            List(PlaybackQueuePolicy.REPLAY_LIMIT) { id("replay", it + 1) },
+            List(PlaybackQueuePolicy.REPLAY_LIMIT + 3) { i ->
+                if (i % 3 == 0) id("live", i + 1) else id("replay", i + 1)
+            },
+            listOf("call:p1:live:", "call:p1:replay", "call:p1:unknown:x")
+        )
+        for (media in candidates) {
+            for (current in listOf(-1, 0, 1, media.lastIndex, media.size + 1)) {
+                for (liveFeed in listOf(true, false)) {
+                    val kind = if (liveFeed) "live" else "replay"
+                    val limit = if (liveFeed) PlaybackQueuePolicy.LIVE_LIMIT else PlaybackQueuePolicy.REPLAY_LIMIT
+                    val matching = media.indices.filter { i ->
+                        val fields = media[i].split(':')
+                        fields.size >= 3 && fields[0] == "call" && fields[2] == kind
+                    }
+                    val expected = if (matching.size >= limit) {
+                        matching.firstOrNull { it != current } ?: -1
+                    } else -1
+                    val visited = mutableListOf<Int>()
+                    val actual = PlaybackQueuePolicy.removalIndex(
+                        media.size, current, liveFeed
+                    ) { i -> visited.add(i); media[i] }
+                    assertEquals("media=${media.size}, current=$current, live=$liveFeed", expected, actual)
+                    assertEquals(media.indices.toList(), visited)
+                    assertEquals(expected, PlaybackQueuePolicy.removalIndex(media, current, liveFeed))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun lazyDuplicateCheckMatchesPreviousLookupAndAvoidsListConstruction() {
+        val candidates = listOf(
+            emptyList(),
+            listOf(id("live", 2), id("replay", 2)),
+            listOf("bad-id", "call:p1:live:2", id("live", 3)),
+            List(250) { id("replay", it + 10) } + id("live", 99)
+        )
+        for (media in candidates) {
+            for (callId in listOf(0L, 1L, 2L, 3L, 99L, 999L)) {
+                for (recentlyAccepted in listOf(emptySet(), setOf(CallKey("p1", 99L)))) {
+                    val legacy = if (callId <= 0L) true else {
+                        val key = CallKey("p1", callId)
+                        key !in recentlyAccepted && media.none { PlaybackQueuePolicy.liveCallKey(it) == key }
+                    }
+                    var visits = 0
+                    val actual = PlaybackQueuePolicy.shouldEnqueueLiveCall(
+                        "p1", callId, recentlyAccepted, media.size
+                    ) { i -> visits++; media[i] }
+                    assertEquals(legacy, actual)
+                    assertTrue(visits <= media.size)
+                    assertEquals(legacy, PlaybackQueuePolicy.shouldEnqueueLiveCall("p1", callId, recentlyAccepted, media))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun allocationFreeMediaKindParsingKeepsOldParsingSemantics() {
+        val examples = listOf(
+            "", "call", "call:", "call:a", "call:a:", "call:a:live",
+            "call:a:replay:", "call::live:12", "call:a:live:12:1:2:x",
+            "call:a:replay:12:1:2:x", "CALL:a:live:12",
+            "call:a:liveextra:12", "call:a:relive:12", "no:a:live:12",
+            "call:a:unknown", "call:a:live:trailing"
+        )
+        for (mediaId in examples) {
+            val parts = mediaId.split(':')
+            val old = if (parts.size < 3 || parts[0] != "call") null else
+                parts[2].takeIf { it == "live" || it == "replay" }
+            assertEquals(mediaId, old, PlaybackQueuePolicy.mediaKind(mediaId))
+        }
+    }
+
+    @Test
     fun liveOverflowRemovesOnlyLiveItems() {
         val media = buildList {
             add(id("replay", 1))
