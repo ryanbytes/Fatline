@@ -116,7 +116,7 @@ require('system.talkgroups.forEach' in protocol and 'talkgroup.enabled' in proto
 require('callId.toString()' in protocol, 'CAL call id must use ThinLine string wire type')
 require('downloadCall' in repo and '/api/calls/$callId/audio' in repo and 'Authorization", "Bearer $pin' in repo, 'authenticated call audio download missing')
 require('MediaStore.Downloads.EXTERNAL_CONTENT_URI' in repo and 'Downloads/FatLine' in repo, 'call audio must save to Downloads on modern Android')
-require('downloadCall' in viewmodel and 'onDownload' in ui and 'Text("Download")' in ui, 'call download UI bridge missing')
+require('downloadCall' in viewmodel and 'onDownload' in ui and 'label = "Download archived call audio"' in ui, 'call download UI bridge missing')
 require('stopLivefeed()' in socket and 'command(ThinLineProtocol.LIVEFEED_MAP)' in socket, 'bare LFM pause command missing')
 require('ExplicitBooleans' in protocol_tests and 'callIdMatchesThinLineStringWireType' in protocol_tests, 'protocol parity regression tests missing')
 require('bareLivefeedCommandMatchesThinLinePauseWireType' in protocol_tests, 'bare LFM pause regression test missing')
@@ -433,6 +433,44 @@ require('Current TG' in ui and 'Current SYS' in ui and 'All archive' in ui, 'cur
 require('talkgroupRef: Long? = null' in viewmodel and 'ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)' in viewmodel, 'archive filter bridge missing from view model')
 require('call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery)' in ui, 'history search must include unit/talker display')
 require('call.transcript?.lowercase()?.contains(normalizedHistoryQuery)' in ui, 'history search must include transcripts')
+history_screen = ui.split('private fun HistoryScreen(', 1)[1].split('private fun TranscriptsScreen(', 1)[0]
+archive_menus = ui.split('private fun ArchiveMenuButton(', 1)[1].split('private fun HistoryIconAction(', 1)[0]
+history_actions = ui.split('private fun HistoryIconAction(', 1)[1].split('private fun HistoryScreen(', 1)[0]
+history_call_row = ui.split('private fun CallRow(', 1)[1].split('private fun AlertCard(', 1)[0]
+require('OutlinedIconButton(' in archive_menus and 'OutlinedButton(' not in archive_menus
+        and 'contentDescription = "$title: $selectedLabel"' in archive_menus
+        and 'BadgedBox(' in archive_menus
+        and all('icon = R.drawable.ic_fatline_' + name in history_screen
+                for name in ('group', 'tag', 'system', 'favorite', 'sort', 'talkgroup')),
+        'History filter selectors must be compact icon-only buttons with visible selection badges')
+require('"Talkgroups: All"' in history_screen
+        and 'talkgroups selected' in history_screen
+        and 'archiveTalkgroupMenuExpanded = true' in history_screen
+        and 'Badge { Text(archiveTalkgroupRefs.size.toString()) }' in history_screen,
+        'talkgroup multiselect must remain reachable with an icon and readable selection count')
+require('FilledIconButton(' in history_actions and 'OutlinedIconButton(' in history_actions
+        and 'contentDescription = label' in history_actions
+        and 'Text(' not in history_actions,
+        'History action controls must use icons only with accessible descriptions')
+require('LazyRow(' not in history_screen.split('archiveFilterLabel?.let { label ->', 1)[0]
+        and all('R.drawable.ic_fatline_' + name in history_screen
+                for name in ('refresh', 'talkgroup', 'system', 'more_calls', 'search', 'clear'))
+        and 'requestHistory(server.profile.id, false)' in history_screen
+        and 'requestHistoryFiltered(' in history_screen
+        and 'onClick = { historyQuery = "" }' in history_screen,
+        'archive toolbar, search and pagination must stay functional as compact icon actions')
+require('OutlinedButton(' not in history_call_row
+        and all('R.drawable.ic_fatline_' + name in history_call_row
+                for name in ('continue', 'replay', 'download'))
+        and 'onClick = onDownload' in history_call_row
+        and 'onClick = onReplay' in history_call_row
+        and 'onClick = it' in history_call_row
+        and 'Modifier.fillMaxWidth()' in history_call_row,
+        'History call rows must use right-aligned, icon-only Continue/Replay/Download actions')
+require(all((ROOT / ('app/src/main/res/drawable/ic_fatline_' + name + '.xml')).exists()
+            for name in ('refresh', 'talkgroup', 'system', 'more_calls', 'search', 'continue',
+                         'download', 'group', 'tag', 'favorite', 'sort')),
+        'new History icon vector resources are missing')
 require('recentCalls' in models and 'session.state.recentCalls' in repo, 'dedicated live recent-call state missing')
 require('server.recentCalls' in ui and 'server.history.take(10)' not in ui, 'scanner recent list must not reuse archive history')
 channels_tree = ui.split('private fun ChannelsScreen(', 1)[1].split('private data class ArchiveMenuChoice(', 1)[0]
@@ -516,7 +554,7 @@ require('liveOverflowRemovesOnlyLiveItems' in (ROOT / 'app/src/test/java/dev/sca
 require('replayOverflowDoesNotDiscardQueuedLiveTraffic' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'replay queue isolation regression test missing')
 require('liveOverflowKeepsCurrentPlayingCallSelected' in (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text(), 'live queue overflow must preserve current playback regression missing')
 require('continuationCallIds' in repo and 'historyContinueStartsAtSelectedAndMovesTowardNewest' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive Continue ordering regression missing')
-require('continueHistory' in viewmodel and 'Text("Continue")' in ui, 'History Continue UI/view-model bridge missing')
+require('continueHistory' in viewmodel and 'label = "Continue history playback from this call"' in ui, 'History Continue UI/view-model bridge missing')
 require('AlertToneSet' in models and 'toneDetectionEnabled' in models and 'toneSets' in models, 'talkgroup tone-set metadata missing')
 require('parseToneSets' in protocol and 'toneDetectionEnabled = node.optBoolean' in protocol, 'tone-set config parsing missing')
 require('setAlertToneSets' in repo and 'normalizeAlertToneSetIds' in repo, 'per-talkgroup tone-set persistence missing')
