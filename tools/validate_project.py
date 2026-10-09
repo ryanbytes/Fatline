@@ -276,7 +276,7 @@ require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(ca
 
 scanner_status_controls = scanner_card.split('// Fixed-width playback controls:', 1)[1].split('if (!audioEnabled)', 1)[0]
 require('LazyRow(' not in scanner_status_controls and scanner_status_controls.count('modifier = Modifier.fillMaxWidth()') == 2
-        and scanner_status_controls.count('modifier = Modifier.weight(1f)') == 4
+        and scanner_status_controls.count('modifier = Modifier.weight(1f)') == 5
         and 'modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" }' in scanner_status_controls,
         'scanner playback controls must fit in two non-scrolling weighted rows')
 require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
