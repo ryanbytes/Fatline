@@ -549,7 +549,7 @@ private fun ScannerStatusCard(
 
             if (!audioEnabled) {
                 Text(
-                    "Audio stopped · Connections and alerts remain active",
+                    "Audio stopped · Alerts monitor while connected",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -634,7 +634,7 @@ private fun ScannerHudPanel(server: ServerScannerState, currentlyPlayingCall: Ra
                 )
                 call.sourceDisplay?.takeIf(String::isNotBlank)?.let { source ->
                     Text(
-                        "UNIT $source",
+                        "${if (call.sources.size > 1) "UNITS" else "UNIT"} $source",
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
