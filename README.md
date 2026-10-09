@@ -49,6 +49,8 @@ See [PARITY.md](PARITY.md) for a feature-by-feature Android parity matrix, outst
 - Local scanner-alert notifications and transcript display when supplied by the server
 - Opt-in per-scanner background transcript monitor: checks the scanner's authenticated transcript API every 30 seconds while the foreground scanner service is active, including when playback is paused; matches whole words or phrases locally and sends device notifications without server-originated alerts, relay telemetry, or push registrations
 - Efficiency: compiled local keyword/phrase normalization is cached per scanner until the configured rules change; live transcripts and delayed API results share matching semantics without rebuilding the same rules for every record
+- Efficiency: identical buffered playback queue snapshots skip redundant JSON serialization and SharedPreferences writes, but queue changes, resume intent, playback position, and queue clearing still journal immediately
+- Efficiency: incoming scanner calls determine subscription by directly walking configured talkgroups rather than allocating a flattened all-talkgroup list per call
 - Local transcript alerts keep a 500-call deduplication window and 100 saved alerts per scanner; the first fetch establishes a baseline so older transcripts do not generate a flood of notifications
 - Interactive NWS radar centered on the saved ZIP location, plus Severe and extreme NWS warning notifications, with a separate per-server sound preference, while the scanner foreground service is active
 - Per-scanner Android notification sounds, including system-default, installed custom sounds, and silent alerts

@@ -81,6 +81,23 @@ internal object ScannerStateAggregationPolicy {
             current.all { (id, server) -> previous.servers[id]?.alerts === server.alerts }
 }
 
+/**
+ * Hot-path scan-list membership lookup without allocating a flattened
+ * talkgroup list for each received call. Preserve first-key-match semantics.
+ */
+internal object ScannerCallRoutingPolicy {
+    fun channelEnabled(systems: List<SystemConfig>, key: ChannelKey): Boolean {
+        for (system in systems) {
+            for (talkgroup in system.talkgroups) {
+                if (talkgroup.systemRef == key.systemRef && talkgroup.talkgroupRef == key.talkgroupRef) {
+                    return talkgroup.enabled
+                }
+            }
+        }
+        return false
+    }
+}
+
 object ScannerRepository {
     private class Session(profile: ServerProfile) {
         @Volatile var profile: ServerProfile = profile
@@ -3191,7 +3208,7 @@ object ScannerRepository {
             val locallyRequestedReplay = session.pendingReplay.remove(id)
             playImmediately = session.pendingImmediateReplay.remove(id)
             replayRequested = callFlag == ThinLineProtocol.PLAY_FLAG || locallyRequestedReplay
-            val enabled = session.state.systems.flatMap { it.talkgroups }.firstOrNull { it.key == key }?.enabled == true
+            val enabled = ScannerCallRoutingPolicy.channelEnabled(session.state.systems, key)
             val talkgroupHoldAllows = session.state.hold?.let { it == key } ?: true
             val systemHoldAllows = session.state.holdSystemRef?.let { it == systemRef } ?: true
             val avoided = key in session.state.avoided

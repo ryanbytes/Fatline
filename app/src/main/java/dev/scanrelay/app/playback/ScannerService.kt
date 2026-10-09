@@ -62,6 +62,7 @@ class ScannerService : MediaLibraryService() {
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var pauseStore: ScannerPauseStore
     private lateinit var playbackQueueStore: PlaybackQueueStore
+    private var lastSavedPlaybackQueue: SavedPlaybackQueue? = null
     private lateinit var volumeStore: PlaybackVolumeStore
     private var restoringQueue = true
     private var releasingPlayer = false
@@ -397,6 +398,7 @@ class ScannerService : MediaLibraryService() {
 
     private fun restoreSavedPlaybackQueue() {
         val snapshot = playbackQueueStore.load()
+        lastSavedPlaybackQueue = snapshot
         if (snapshot == null) {
             restoringQueue = false
             return
@@ -413,7 +415,7 @@ class ScannerService : MediaLibraryService() {
                 entry.call.audioPath?.let { File(it).isFile } == true
         }
         if (recovered.isEmpty()) {
-            playbackQueueStore.save(null)
+            saveQueueSnapshot(null)
             restoringQueue = false
             return
         }
@@ -434,10 +436,18 @@ class ScannerService : MediaLibraryService() {
         syncCurrentlyPlayingCall()
     }
 
+    private fun saveQueueSnapshot(snapshot: SavedPlaybackQueue?) {
+        // Never debounce a changed queue, playback intent or recovery position.
+        // Only repeated, byte-equivalent logical snapshots can skip disk writes.
+        if (!PlaybackQueueJournalPolicy.shouldWrite(lastSavedPlaybackQueue, snapshot)) return
+        playbackQueueStore.save(snapshot)
+        lastSavedPlaybackQueue = snapshot
+    }
+
     private fun persistPlaybackQueue() {
         if (restoringQueue || releasingPlayer || !::playbackQueueStore.isInitialized) return
         if (player.playbackState == Player.STATE_ENDED) {
-            playbackQueueStore.save(null)
+            saveQueueSnapshot(null)
             return
         }
         val start = PlaybackQueuePolicy.recoveryStartIndex(
@@ -453,7 +463,7 @@ class ScannerService : MediaLibraryService() {
                 )
             }
         }
-        playbackQueueStore.save(
+        saveQueueSnapshot(
             if (entries.isEmpty()) null else SavedPlaybackQueue(
                 calls = entries,
                 positionMs = player.currentPosition.coerceAtLeast(0L),

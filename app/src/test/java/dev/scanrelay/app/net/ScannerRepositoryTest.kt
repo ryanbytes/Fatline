@@ -58,6 +58,33 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun hotPathChannelLookupAvoidsFlatteningWithoutChangingRouting() {
+        val scannerSystems = listOf(
+            SystemConfig(1, "First", listOf(
+                TalkgroupConfig(1, 100, "Law Dispatch", enabled = true),
+                TalkgroupConfig(1, 101, "Fire", enabled = false)
+            )),
+            SystemConfig(2, "Second", listOf(TalkgroupConfig(2, 100, "EMS", enabled = true))),
+            SystemConfig(1, "Duplicate system ref", listOf(TalkgroupConfig(1, 102, "Mutual Aid", enabled = true)))
+        )
+        assertTrue(ScannerCallRoutingPolicy.channelEnabled(scannerSystems, ChannelKey(1, 100)))
+        assertFalse(ScannerCallRoutingPolicy.channelEnabled(scannerSystems, ChannelKey(1, 101)))
+        assertTrue(ScannerCallRoutingPolicy.channelEnabled(scannerSystems, ChannelKey(2, 100)))
+        assertTrue(ScannerCallRoutingPolicy.channelEnabled(scannerSystems, ChannelKey(1, 102)))
+        assertFalse(ScannerCallRoutingPolicy.channelEnabled(scannerSystems, ChannelKey(2, 101)))
+        assertFalse(ScannerCallRoutingPolicy.channelEnabled(emptyList(), ChannelKey(1, 100)))
+    }
+
+    @Test
+    fun duplicateTalkgroupKeyKeepsFirstMatchingEntrySemantics() {
+        val scannerSystems = listOf(
+            SystemConfig(1, "A", listOf(TalkgroupConfig(1, 42, "Disabled first", enabled = false))),
+            SystemConfig(1, "B", listOf(TalkgroupConfig(1, 42, "Enabled duplicate", enabled = true)))
+        )
+        assertFalse(ScannerCallRoutingPolicy.channelEnabled(scannerSystems, ChannelKey(1, 42)))
+    }
+
+    @Test
     fun historyContinueStartsAtSelectedAndMovesTowardNewest() {
         assertEquals(
             listOf(30L, 40L, 50L),

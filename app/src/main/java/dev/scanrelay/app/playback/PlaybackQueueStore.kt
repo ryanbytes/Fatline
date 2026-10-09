@@ -21,6 +21,17 @@ internal data class SavedPlaybackQueue(
     val playWhenReady: Boolean = true
 )
 
+/**
+ * Media3 may report play-state, timeline, and current-media changes for a
+ * single queue operation. Every *different* recovery snapshot is written
+ * immediately; identical snapshots do not need another JSON serialization
+ * or SharedPreferences write. Position and playWhenReady are significant.
+ */
+internal object PlaybackQueueJournalPolicy {
+    fun shouldWrite(previous: SavedPlaybackQueue?, current: SavedPlaybackQueue?): Boolean =
+        previous != current
+}
+
 internal object PlaybackQueueCodec {
     fun encode(snapshot: SavedPlaybackQueue): String {
         val calls = JSONArray()
