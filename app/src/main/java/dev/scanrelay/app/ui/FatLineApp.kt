@@ -387,25 +387,18 @@ private fun ScannerScreen(
                 }
             }
 
-            item {
-                Text(
-                    "Recent live calls",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
+            // Incoming or queued traffic is not Recent until playback has ended.
+            // Hide the whole section until there is a completed live call.
             val recent = server.recentCalls
-            if (recent.isEmpty()) {
+            if (recent.isNotEmpty()) {
                 item {
                     Text(
-                        "No live calls received yet.",
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.bodyMedium
+                        "Recent live calls",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
-            } else {
                 items(recent, key = { call -> "recent-" + call.profileId + "-" + call.id }) { call ->
                     RecentLiveCallRow(
                         call = call,
@@ -655,7 +648,7 @@ private fun ScannerStatusCard(
                 OutlinedIconButton(
                     modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" },
                     onClick = { viewModel.replayLast(server.profile.id) },
-                    enabled = server.recentCalls.isNotEmpty() || server.lastCall != null
+                    enabled = server.recentCalls.isNotEmpty()
                 ) {
                     Icon(painterResource(R.drawable.ic_fatline_replay), null, Modifier.size(20.dp))
                 }
