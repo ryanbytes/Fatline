@@ -52,6 +52,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -540,7 +542,7 @@ private fun ScannerStatusCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).semantics { contentDescription = "Replay last call" },
                         onClick = { viewModel.replayLast(server.profile.id) },
                         enabled = server.recentCalls.isNotEmpty() || server.lastCall != null
                     ) { Text("Replay", maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) }
