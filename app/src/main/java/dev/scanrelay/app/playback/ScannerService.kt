@@ -75,6 +75,29 @@ class ScannerService : MediaLibraryService() {
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
     private val playedLiveCallTracker = PlayedLiveCallTracker()
+    // A short-lived check runs only until the current audio item has shown
+    // real position movement; it does not poll while idle or already verified.
+    private val playbackProgressHandler = Handler(Looper.getMainLooper())
+    private val playbackProgressCheck = object : Runnable {
+        override fun run() {
+            if (!::player.isInitialized || !player.isPlaying) return
+            val id = player.currentMediaItem?.mediaId
+            playedLiveCallTracker.observedProgress(id, player.currentPosition)
+            if (playedLiveCallTracker.awaitingProgress(id)) {
+                playbackProgressHandler.postDelayed(this, 75L)
+            }
+        }
+    }
+
+    private fun checkPlaybackProgress() {
+        playbackProgressHandler.removeCallbacks(playbackProgressCheck)
+        if (!::player.isInitialized || !player.isPlaying) return
+        val id = player.currentMediaItem?.mediaId
+        playedLiveCallTracker.observedProgress(id, player.currentPosition)
+        if (playedLiveCallTracker.awaitingProgress(id)) {
+            playbackProgressHandler.postDelayed(playbackProgressCheck, 75L)
+        }
+    }
     // Keep recent accepted live IDs through socket reconnects. Bounded in memory.
     private val recentlyAcceptedLiveCalls = LinkedHashSet<CallKey>()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -144,7 +167,11 @@ class ScannerService : MediaLibraryService() {
                     // The last call has no next-item transition; terminal END
                     // is its natural playback-completion signal.
                     if (playbackState == Player.STATE_ENDED) {
+                        playedLiveCallTracker.observedProgress(
+                            player.currentMediaItem?.mediaId, player.currentPosition
+                        )
                         playedLiveCallTracker.ended()?.let(ScannerRepository::recordCompletedLiveCall)
+                        playbackProgressHandler.removeCallbacks(playbackProgressCheck)
                     }
                     persistPlaybackQueue()
                 }
@@ -152,8 +179,11 @@ class ScannerService : MediaLibraryService() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (isPlaying) {
                         val id = player.currentMediaItem?.mediaId
-                        playedLiveCallTracker.started(id, id?.let(callByMediaId::get))
+                        playedLiveCallTracker.started(
+                            id, id?.let(callByMediaId::get), player.currentPosition
+                        )
                     }
+                    checkPlaybackProgress()
                     syncCurrentlyPlayingCall()
                     updatePlaybackNotification()
                 }
@@ -164,11 +194,27 @@ class ScannerService : MediaLibraryService() {
                         automatic = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO,
                         nextMediaId = nextId,
                         nextCall = nextId?.let(callByMediaId::get),
-                        nextPlaying = player.isPlaying
+                        nextPlaying = player.isPlaying,
+                        nextPositionMs = player.currentPosition
                     )
                     completed?.let(ScannerRepository::recordCompletedLiveCall)
+                    checkPlaybackProgress()
                     syncCurrentlyPlayingCall()
                     updatePlaybackNotification()
+                }
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int
+                ) {
+                    // On a gapless automatic transition, the old item may have
+                    // ended between progress checks. Use its final Media3 position.
+                    if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
+                        playedLiveCallTracker.observedProgress(
+                            oldPosition.mediaItem?.mediaId, oldPosition.positionMs
+                        )
+                    }
                 }
 
                 override fun onTimelineChanged(timeline: Timeline, reason: Int) {
@@ -239,6 +285,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onDestroy() {
+        playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         playedLiveCallTracker.cancel()
         persistPlaybackQueue()
         releasingPlayer = true
@@ -666,6 +713,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun stopAudioInternal() {
+        playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         playedLiveCallTracker.cancel()
         player.stop()
         player.clearMediaItems()
