@@ -1,6 +1,7 @@
 package dev.scanrelay.app.playback
 
 import dev.scanrelay.app.model.CallKey
+import dev.scanrelay.app.model.RadioCall
 
 internal object PlaybackQueuePolicy {
     const val RECENT_LIVE_ID_LIMIT = 512
@@ -82,5 +83,47 @@ internal object PlaybackQueuePolicy {
         val parts = mediaId.split(':')
         if (parts.size < 3 || parts[0] != "call") return null
         return parts[2].takeIf { it == "live" || it == "replay" }
+    }
+}
+
+/**
+ * Receipts and queued items must never populate Recent. Track an item only
+ * after Media3 reports actual playback, and publish it only after the player
+ * naturally completes the item (automatic transition or final STATE_ENDED).
+ * Manual Skip/Stop/playlist removal cancels the pending completion.
+ */
+internal class PlayedLiveCallTracker {
+    private var startedMediaId: String? = null
+    private var startedCall: RadioCall? = null
+
+    fun started(mediaId: String?, call: RadioCall?) {
+        if (mediaId != null && PlaybackQueuePolicy.mediaKind(mediaId) == "live" && call != null) {
+            startedMediaId = mediaId
+            startedCall = call
+        } else {
+            cancel()
+        }
+    }
+
+    fun transitioned(automatic: Boolean, nextMediaId: String?, nextCall: RadioCall?, nextPlaying: Boolean): RadioCall? {
+        val completed = if (automatic) startedCall else null
+        cancel()
+        if (nextPlaying) started(nextMediaId, nextCall)
+        return completed
+    }
+
+    fun ended(): RadioCall? {
+        val completed = startedCall
+        cancel()
+        return completed
+    }
+
+    fun cancel() {
+        startedMediaId = null
+        startedCall = null
+    }
+
+    fun cancelIf(mediaId: String) {
+        if (startedMediaId == mediaId) cancel()
     }
 }
