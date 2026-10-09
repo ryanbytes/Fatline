@@ -303,6 +303,22 @@ require('skipsRebuildOnLiveCallAndAlertStateChanges' in auto_tests
         and 'removedServerClearsCachedFavoritesAndDoesNotLeakStaleEntries' in auto_tests,
         'Android Auto favorites cache must refresh on changes and remove disconnected profiles')
 require('PlaybackQueueStore(this)' in service and 'restoreSavedPlaybackQueue()' in service and 'persistPlaybackQueue()' in service, 'buffered playback must restore and persist across service restart')
+require('PlaybackQueueJournalPolicy.shouldWrite(lastSavedPlaybackQueue, snapshot)' in service
+        and 'lastSavedPlaybackQueue = playbackQueueStore.load()' not in service
+        and 'lastSavedPlaybackQueue = snapshot' in service
+        and 'saveQueueSnapshot(null)' in service
+        and 'playbackQueueStore.save(snapshot)' in service
+        and 'fun shouldWrite(previous: SavedPlaybackQueue?, current: SavedPlaybackQueue?)' in queue_store
+        and 'identicalQueueSnapshotsDoNotNeedRepeatedDiskWrites' in queue_store_tests
+        and 'queueEditsAndRecoveryPositionStillJournalImmediately' in queue_store_tests,
+        'queue recovery must skip only identical journal writes without delaying new calls, position or stop state')
+require('ScannerCallRoutingPolicy.channelEnabled(session.state.systems, key)' in repo
+        and 'systems.flatMap { it.talkgroups }.firstOrNull { it.key == key }' not in repo
+        and 'hotPathChannelLookupAvoidsFlatteningWithoutChangingRouting' in
+            (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text()
+        and 'duplicateTalkgroupKeyKeepsFirstMatchingEntrySemantics' in
+            (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(),
+        'call membership lookup must avoid allocating a flat talkgroup list and preserve first-match behavior')
 require('recoveryStartIndex(' in service and 'recoveryStartIndex(' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text(), 'playback restore must not replay completed calls')
 require('PlaybackQueueStore(context).protectedAudioPaths()' in repo and 'PlaybackCachePolicy.evictablePaths(' in repo, 'audio cache cleanup must not delete queued audio')
 require('PlaybackCachePruneSchedule' in queue_store
