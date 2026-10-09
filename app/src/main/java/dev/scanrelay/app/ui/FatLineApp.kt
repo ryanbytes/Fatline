@@ -1355,6 +1355,7 @@ private data class ArchiveMenuChoice(
 @Composable
 private fun ArchiveMenuButton(
     title: String,
+    icon: Int,
     selectedKey: String,
     choices: List<ArchiveMenuChoice>,
     enabled: Boolean = true,
@@ -1366,11 +1367,18 @@ private fun ArchiveMenuButton(
         ?: "All"
 
     Column {
-        OutlinedButton(
+        OutlinedIconButton(
             onClick = { expanded = true },
-            enabled = enabled && choices.isNotEmpty()
+            enabled = enabled && choices.isNotEmpty(),
+            modifier = Modifier.semantics { contentDescription = "$title: $selectedLabel" }
         ) {
-            Text("$title: $selectedLabel")
+            if (selectedKey.isNotBlank() && !(title == "Sort" && selectedKey == "-1")) {
+                BadgedBox(badge = { Badge() }) {
+                    Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+                }
+            } else {
+                Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
+            }
         }
         DropdownMenu(
             expanded = expanded,
@@ -1652,6 +1660,7 @@ private fun HistoryScreen(
                             item {
                                 ArchiveMenuButton(
                                     title = "Group",
+                                    icon = R.drawable.ic_fatline_group,
                                     selectedKey = archiveGroup.orEmpty(),
                                     choices = listOf(ArchiveMenuChoice("", "All groups")) +
                                         archiveGroups.map { ArchiveMenuChoice(it, it) },
@@ -1665,6 +1674,7 @@ private fun HistoryScreen(
                             item {
                                 ArchiveMenuButton(
                                     title = "Tag",
+                                    icon = R.drawable.ic_fatline_tag,
                                     selectedKey = archiveTag.orEmpty(),
                                     choices = listOf(ArchiveMenuChoice("", "All tags")) +
                                         archiveTags.map { ArchiveMenuChoice(it, it) },
@@ -1678,6 +1688,7 @@ private fun HistoryScreen(
                             item {
                                 ArchiveMenuButton(
                                     title = "System",
+                                    icon = R.drawable.ic_fatline_system,
                                     selectedKey = archiveSystemRef?.toString().orEmpty(),
                                     choices = listOf(ArchiveMenuChoice("", "All systems")) +
                                         filteredSystems.map {
@@ -1691,14 +1702,34 @@ private fun HistoryScreen(
                             }
                             item {
                                 Column {
-                                    OutlinedButton(
+                                    OutlinedIconButton(
                                         onClick = { archiveTalkgroupMenuExpanded = true },
-                                        enabled = archiveSystemRef != null
+                                        enabled = archiveSystemRef != null,
+                                        modifier = Modifier.semantics {
+                                            contentDescription = if (archiveTalkgroupRefs.isEmpty()) {
+                                                "Talkgroups: All"
+                                            } else {
+                                                "${archiveTalkgroupRefs.size} talkgroups selected"
+                                            }
+                                        }
                                     ) {
-                                        Text(
-                                            if (archiveTalkgroupRefs.isEmpty()) "All talkgroups"
-                                            else "${archiveTalkgroupRefs.size} talkgroups"
-                                        )
+                                        if (archiveTalkgroupRefs.isNotEmpty()) {
+                                            BadgedBox(badge = {
+                                                Badge { Text(archiveTalkgroupRefs.size.toString()) }
+                                            }) {
+                                                Icon(
+                                                    painterResource(R.drawable.ic_fatline_talkgroup),
+                                                    null,
+                                                    Modifier.size(20.dp)
+                                                )
+                                            }
+                                        } else {
+                                            Icon(
+                                                painterResource(R.drawable.ic_fatline_talkgroup),
+                                                null,
+                                                Modifier.size(20.dp)
+                                            )
+                                        }
                                     }
                                     DropdownMenu(
                                         expanded = archiveTalkgroupMenuExpanded,
@@ -1740,6 +1771,7 @@ private fun HistoryScreen(
                                 item {
                                     ArchiveMenuButton(
                                         title = "Favorite",
+                                    icon = R.drawable.ic_fatline_favorite,
                                         selectedKey = "",
                                         choices = listOf(ArchiveMenuChoice("", "Choose favorite")) +
                                             favoriteArchiveChannels.map { (system, talkgroup) ->
@@ -1762,6 +1794,7 @@ private fun HistoryScreen(
                             item {
                                 ArchiveMenuButton(
                                     title = "Sort",
+                                    icon = R.drawable.ic_fatline_sort,
                                     selectedKey = archiveSort.toString(),
                                     choices = listOf(
                                         ArchiveMenuChoice("-1", "Newest"),
