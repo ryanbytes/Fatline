@@ -850,6 +850,24 @@ require('AudioCacheNamePolicy.extension(audioName, mime)' in repo
         and 'audioCacheFilenamesPreserveOldAsciiSanitizingRules' in aggregation_tests
         and 'audioCacheExtensionsPreserveOldFilenameAndMimeFallbacks' in aggregation_tests,
         'per-call audio cache filenames must stay safe without compiling regular expressions')
+# CPU-only changes on repeat metadata frames and per-call History/alias paths.
+# Never change archive acceptance, playback, alert semantics, or source labels.
+require('internal object ScannerPassiveEventPolicy' in repo
+        and 'ScannerPassiveEventPolicy.versionUpdate(session.state, version)' in repo
+        and 'ScannerPassiveEventPolicy.listenerCountUpdate(session.state, count)' in repo
+        and 'if (changed) publish()' in repo
+        and 'passiveStatusEventsSkipIdenticalValuesWithoutReallocatingState' in aggregation_tests,
+        'duplicate listener/version messages must not rebuild global scanner state')
+require('if (group != null || tag != null)' in repo
+        and 'if (state.historySystemRef?.let { call.systemRef != it } == true) return false' in repo
+        and 'incomingCallHistoryFilterMatchesIndependentLegacyPolicy' in aggregation_tests,
+        'live call History filtering must skip lookup with no group/tag filters')
+require('val alias = dynamicAlias ?: systems' in repo
+        and 'explicitSourceTagsOverrideConfiguredUnitAliases' in aggregation_tests
+        and 'singleSourceDisplaySkipsListAllocationsWithoutChangingFallbacks' in aggregation_tests
+        and 'if (sources.isEmpty()) return sourceLabel' in models
+        and 'if (sources.size == 1)' in models,
+        'source names must avoid source-list allocation when zero or one source is present')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
