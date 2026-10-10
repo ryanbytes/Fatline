@@ -110,15 +110,43 @@ internal object ScannerForegroundNotificationPolicy {
 
 
 /**
- * Intentionally safe for anyone who can see a locked phone. Keep server names,
- * channel/talkgroup labels, transcripts, queue contents and metadata out of
- * the public notification even when the private media notification changes.
+ * FatLine-specific public lock-screen preview. The user wants radio call
+ * details visible without changing the phone-wide sensitive-content setting.
+ * Only FatLine's own public version includes these details.
+ *
+ * Null activeCall is the strict idle case: never expose a previously played
+ * call or a queued call as though it is receiving right now.
  */
+internal data class ScannerPublicNotification(
+    val title: String,
+    val summary: String,
+    val expanded: String
+)
+
 internal object ScannerPublicLockScreenPolicy {
-    fun display(hasMonitoredProfiles: Boolean, isPlaying: Boolean): PlaybackNotificationText =
-        when {
-            hasMonitoredProfiles -> PlaybackNotificationText("FatLine", "Scanner active")
-            isPlaying -> PlaybackNotificationText("FatLine", "Audio playback active")
-            else -> PlaybackNotificationText("FatLine", "Scanner service active")
-        }
+    fun display(
+        current: PlaybackNotificationText,
+        activeCall: dev.scanrelay.app.model.RadioCall?,
+        queuedCount: Int
+    ): ScannerPublicNotification {
+        if (activeCall == null) return ScannerPublicNotification(
+            current.title,
+            current.subtitle,
+            current.subtitle
+        )
+        val title = activeCall.talkgroupLabel.ifBlank { "Radio traffic" }
+        val location = listOfNotNull(
+            activeCall.serverName.takeIf(String::isNotBlank),
+            activeCall.systemLabel.takeIf(String::isNotBlank),
+            "TG ${activeCall.talkgroupRef}",
+            if (queuedCount > 0) "$queuedCount queued" else null
+        ).joinToString(" · ")
+        val transcript = activeCall.transcript?.trim()?.takeIf(String::isNotBlank)
+            ?.take(180)
+        return ScannerPublicNotification(
+            title = title,
+            summary = location,
+            expanded = if (transcript != null) "$location\n$transcript" else location
+        )
+    }
 }
