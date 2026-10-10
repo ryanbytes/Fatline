@@ -76,6 +76,7 @@ class ScannerService : MediaLibraryService() {
     private var foregroundStarted = false
     private var lastPostedNotification: PlaybackNotificationText? = null
     private var lastPostedNotificationColor: Int? = null
+    private var lastPostedNotificationMediaStyle: Boolean? = null
     // Only changed on the service main thread. Avoid reading SharedPreferences
     // whenever Media3 or scanner state emits a background update.
     private var monitoredProfileIds: Set<String> = emptySet()
@@ -286,6 +287,19 @@ class ScannerService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession = session
 
+    /**
+     * Media3's default notification manager can retract the foreground media
+     * notification when its player is idle. That's the normal case for a live
+     * scanner between calls. Own the notification throughout monitoring:
+     * the scanner service, not the Media3 player, controls its lifecycle.
+     *
+     * Do not delegate to super (which uses the player-state-driven default)
+     * and do not synthesize playback just to keep a card on the lock screen.
+     */
+    override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
+        if (foregroundStarted && ::player.isInitialized) updatePlaybackNotification()
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!foregroundStarted) {
             val initialText = if (::player.isInitialized) currentPlaybackNotification()
@@ -299,6 +313,7 @@ class ScannerService : MediaLibraryService() {
             foregroundStarted = true
             lastPostedNotification = PlaybackNotificationText(initialText.title, subtitle)
             lastPostedNotificationColor = initialColor
+            lastPostedNotificationMediaStyle = ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)
         }
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
@@ -482,6 +497,7 @@ class ScannerService : MediaLibraryService() {
         foregroundStarted = false
         lastPostedNotification = null
         lastPostedNotificationColor = null
+        lastPostedNotificationMediaStyle = null
         stopSelf()
     }
 
@@ -835,17 +851,32 @@ class ScannerService : MediaLibraryService() {
             .setContentText(text)
             .setContentIntent(open)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setCategory(
+                if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) NotificationCompat.CATEGORY_TRANSPORT
+                else NotificationCompat.CATEGORY_SERVICE
+            )
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .addAction(R.drawable.ic_fatline_skip, "Skip call", skip)
-            .addAction(R.drawable.ic_fatline_clear, "Clear queue", clearQueue)
-            .addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
-            // Previously our plain foreground-service notification did not
-            // advertise its existing Media3 session to Android SystemUI.
-            .setStyle(MediaStyleNotificationHelper.MediaStyle(session)
-                .setShowActionsInCompactView(0, 1))
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+
+        if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) {
+            // Real playback: let SystemUI render its media surface and buttons.
+            builder.addAction(R.drawable.ic_fatline_skip, "Skip call", skip)
+                .addAction(R.drawable.ic_fatline_clear, "Clear queue", clearQueue)
+                .addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
+                .setStyle(
+                    MediaStyleNotificationHelper.MediaStyle(session)
+                        .setShowActionsInCompactView(0, 1)
+                )
+        } else {
+            // Idle scanning, paused audio and reconnecting are NOT playback.
+            // MediaStyle can vanish because Media3 has no active media item.
+            // Show an ordinary ongoing high-visibility service notification,
+            // with no media session token for SystemUI to suppress.
+            builder.addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+        }
         // Android owns the final lock-screen card rendering and may restrict
         // background tint. Colorized foreground service notifications request
         // the tag color wherever the system supports it.
@@ -891,13 +922,18 @@ class ScannerService : MediaLibraryService() {
         val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
         val current = PlaybackNotificationText(title, queueText)
         val color = currentPlayingTagColor()
+        val mediaStyle = ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)
         if (!foregroundStarted ||
-            (!PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current) &&
-                lastPostedNotificationColor == color)
+            !ScannerForegroundNotificationPolicy.needsUpdate(
+                lastPostedNotification, lastPostedNotificationColor, lastPostedNotificationMediaStyle,
+                current, color, mediaStyle
+            )
         ) return
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText, color))
+        getSystemService(NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, notification(title, queueText, color))
         lastPostedNotification = current
         lastPostedNotificationColor = color
+        lastPostedNotificationMediaStyle = mediaStyle
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {

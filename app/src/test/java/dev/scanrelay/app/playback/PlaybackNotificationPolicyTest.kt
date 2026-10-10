@@ -159,6 +159,58 @@ class PlaybackNotificationPolicyTest {
     }
 
     @Test
+    fun idleScannerUsesPersistentStatusCardInsteadOfMediaStyle() {
+        // Idle, stopped, reconnecting and deliberately muted do not have
+        // actual Media3 playback, even if an old queued item still exists.
+        assertEquals(false, ScannerForegroundNotificationPolicy.usesMediaStyle(false))
+        assertEquals(true, ScannerForegroundNotificationPolicy.usesMediaStyle(true))
+    }
+
+    @Test
+    fun notificationRepostsWhenSwitchingBetweenIdleAndMediaWithoutTextChanges() {
+        val same = PlaybackNotificationText("FatLine · Scanning", "1 scanner connected")
+        assertEquals(
+            false,
+            ScannerForegroundNotificationPolicy.needsUpdate(same, null, false, same.copy(), null, false)
+        )
+        assertEquals(
+            true,
+            ScannerForegroundNotificationPolicy.needsUpdate(same, null, false, same, null, true)
+        )
+        assertEquals(
+            true,
+            ScannerForegroundNotificationPolicy.needsUpdate(same, null, true, same, null, false)
+        )
+        assertEquals(
+            true,
+            ScannerForegroundNotificationPolicy.needsUpdate(same, null, null, same, null, false)
+        )
+    }
+
+    @Test
+    fun liveTagColorAndChangedScannerStatusStillPublishWithoutSpuriousRefresh() {
+        val idle = PlaybackNotificationText("FatLine · Scanning", "1 scanner connected")
+        assertEquals(
+            true,
+            ScannerForegroundNotificationPolicy.needsUpdate(idle, null, false, idle, 0xFF2979FF.toInt(), false)
+        )
+        assertEquals(
+            true,
+            ScannerForegroundNotificationPolicy.needsUpdate(
+                idle, null, false,
+                PlaybackNotificationText("FatLine · Connecting", "Waiting for scanner connection"),
+                null, false
+            )
+        )
+        assertEquals(
+            false,
+            ScannerForegroundNotificationPolicy.needsUpdate(
+                idle, 0xFF2979FF.toInt(), false, idle.copy(), 0xFF2979FF.toInt(), false
+            )
+        )
+    }
+
+    @Test
     fun missingActiveCallMetadataGetsNeutralFallbacks() {
         assertEquals(
             PlaybackNotificationText("Radio traffic", "Listening"),
