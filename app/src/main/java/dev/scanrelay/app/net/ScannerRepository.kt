@@ -3675,6 +3675,32 @@ object ScannerRepository {
         payload: JSONObject
     ): List<CallSource> {
         val rawSources = payload.optJSONArray("sources")
+        // Most radio calls have zero or one source. Avoid allocating an
+        // ordered JSON list, duplicate-ID set, parsed list and fallback-tag
+        // list for these common cases. Keep the multi-source path unchanged.
+        if (rawSources == null || rawSources.length() <= 1) {
+            val item = rawSources?.optJSONObject(0)
+            if (item != null) {
+                val position = item.optInt("pos", 0)
+                val source = item.optLong("src").takeIf { it > 0 }
+                val tag = item.optString("tag").trim().takeIf { it.isNotBlank() }
+                if (source != null) {
+                    return listOf(CallSource(
+                        position = position,
+                        sourceRef = source,
+                        tag = tag,
+                        display = formatUnitDisplay(systems, systemRef, source, tag)
+                    ))
+                }
+                if (tag != null) {
+                    return listOf(CallSource(position = position, tag = tag, display = tag))
+                }
+            }
+            val legacy = payload.optLong("source").takeIf { it > 0 } ?: return emptyList()
+            return listOf(CallSource(
+                sourceRef = legacy, display = formatUnitDisplay(systems, systemRef, legacy)
+            ))
+        }
         val parsed = mutableListOf<CallSource>()
         val seen = mutableSetOf<Long>()
         val fallbackTags = mutableListOf<Pair<Int, String>>()
