@@ -709,6 +709,15 @@ require('ScannerStateAggregationPolicy.aggregateHistory(serverMap)' in repo
         and 'singleServerLargeArchiveKeepsNewest500AndDoesNotMutateOriginal' in aggregation_tests
         and 'ascendingAndMultiServerArchivesRetainGlobalDescendingSortAndStableTies' in aggregation_tests,
         'single-server History aggregation must bypass redundant parsing while retaining multi-server sorting')
+require('internal object HistoryTimestampSortPolicy' in repo
+        and 'val dated = calls.map { DatedCall(it, timestamp(it)) }' in repo
+        and 'dated.sortedWith(comparator).map { it.call }' in repo
+        and 'HistoryTimestampSortPolicy.sort(' in repo.split('internal object ScannerStateAggregationPolicy', 1)[1]
+        and 'val merged = HistoryTimestampSortPolicy.sort(' in repo
+        and 'historyTimestampSortMatchesLegacyStableOrderForLargeArchives' in aggregation_tests
+        and 'archiveSortCalculatesTimestampOncePerCallNotPerComparator' in aggregation_tests
+        and 'archiveStableTiesAndInvalidDatesPreserveInsertionOrder' in aggregation_tests,
+        'paged and multi-server archive sorting must parse each timestamp once and preserve stable behavior')
 require('liveCallsRespectActiveHistoryFilter' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive-filter live-call regression test missing')
 require('Current TG' in ui and 'Current SYS' in ui and 'All archive' in ui, 'current-channel/system archive filter controls missing')
 require('talkgroupRef: Long? = null' in viewmodel and 'ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)' in viewmodel, 'archive filter bridge missing from view model')
@@ -1004,6 +1013,8 @@ require('weatherBaselineChanged(knownIds, activeIds)' in weather
 
 
 require('fun hasChanges(previous: ScannerState, current: Map<String, ServerScannerState>)' in repo
+        and 'if (previous.servers.size == sessions.size &' in repo
+        and 'sessions.values.all { session -> previous.servers[session.profile.id] === session.state }' in repo
         and 'if (!ScannerStateAggregationPolicy.hasChanges(previous, serverMap)) return' in repo
         and 'identicalPublishedServerReferencesNeedNoNewStateEmission' in aggregation_tests
         and 'anyChangedServerOrProfileMembershipForcesPublication' in aggregation_tests,
