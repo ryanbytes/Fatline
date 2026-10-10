@@ -1090,6 +1090,16 @@ require('class RecentTranscriptPollCache' in transcript_cache
         and 'boundedCacheEvictsOldestAndRechecksItWhenItReturns' in transcript_cache_tests
         and 'blankAndFailedTranscriptsMayBeRetried' in transcript_cache_tests,
         'transcript polling must avoid repeat rule matching without missing reviewed edits')
+require('fun unchangedCompletedPage(body: String): Boolean' in transcript_cache
+        and 'fun rememberCompletedPage(body: String)' in transcript_cache
+        and 'maxPageCharacters: Int = 131_072' in transcript_cache
+        and 'val body = executeJsonArrayBody(request)' in repo
+        and 'if (recentPollCache.unchangedCompletedPage(body)) return' in repo
+        and 'parseTranscripts(session.profile, parseJsonArrayBody(body))' in repo
+        and 'recentPollCache.rememberCompletedPage(body)' in repo
+        and 'fullPageCanBeSkippedOnlyAfterItWasCompletelyProcessed' in transcript_cache_tests
+        and 'unchangedPageCacheIsBoundedAndLargePagesNeverSuppressProcessing' in transcript_cache_tests,
+        'unchanged HTTP transcript pages must skip decode only after a successfully processed bounded snapshot')
 require('weatherBaselineChanged(knownIds, activeIds)' in weather
         and 'if (weatherBaselineChanged(knownIds, activeIds))' in weather
         and 'return current.filterNot { it.id in knownIds }' in weather
