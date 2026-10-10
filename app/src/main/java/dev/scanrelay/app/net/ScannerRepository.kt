@@ -80,6 +80,28 @@ internal object ScannerStateAggregationPolicy {
     fun reuseAlerts(previous: ScannerState, current: Map<String, ServerScannerState>): Boolean =
         previous.servers.keys == current.keys &&
             current.all { (id, server) -> previous.servers[id]?.alerts === server.alerts }
+
+    /**
+     * The single-server default History is already sorted newest first by
+     * handleHistory() and LiveHistoryMergePolicy.insert(). Re-sorting it on
+     * every live call parses up to hundreds of timestamps unnecessarily.
+     * Reuse the immutable list itself when it is at most the aggregate limit.
+     *
+     * Ascending archives and multi-server views still require global sorting.
+     */
+    fun aggregateHistory(current: Map<String, ServerScannerState>): List<RadioCall> {
+        if (current.isEmpty()) return emptyList()
+        if (current.size == 1) {
+            val server = current.values.first()
+            if (server.historySort < 0) {
+                return if (server.history.size <= 500) server.history else server.history.take(500)
+            }
+        }
+        return current.values.flatMap { it.history }
+            .sortedByDescending { call ->
+                runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
+            }.take(500)
+    }
 }
 
 /**
@@ -3649,7 +3671,7 @@ object ScannerRepository {
         val history = if (ScannerStateAggregationPolicy.reuseHistory(previous, serverMap)) {
             previous.history
         } else {
-            serverMap.values.flatMap { it.history }.sortedByDescending(::callSortKey).take(500)
+            ScannerStateAggregationPolicy.aggregateHistory(serverMap)
         }
         val alerts = if (ScannerStateAggregationPolicy.reuseAlerts(previous, serverMap)) {
             previous.alerts

@@ -592,6 +592,14 @@ require('internal fun insertionIndex(' in repo
         and 'binaryHistoryInsertionScalesLogarithmicallyWithLoadedArchiveSize' in aggregation_tests
         and 'binaryHistoryInsertionKeepsEqualTimestampOrderWhenReplacingAnyPosition' in aggregation_tests,
         'live History lookup must be logarithmic without changing equal-timestamp or replacement order')
+require('ScannerStateAggregationPolicy.aggregateHistory(serverMap)' in repo
+        and 'if (current.size == 1)' in repo
+        and 'if (server.historySort < 0)' in repo
+        and 'server.history.size <= 500' in repo
+        and 'singleServerNewestFirstAggregateReusesHistoryListWithoutSorting' in aggregation_tests
+        and 'singleServerLargeArchiveKeepsNewest500AndDoesNotMutateOriginal' in aggregation_tests
+        and 'ascendingAndMultiServerArchivesRetainGlobalDescendingSortAndStableTies' in aggregation_tests,
+        'single-server History aggregation must bypass redundant parsing while retaining multi-server sorting')
 require('liveCallsRespectActiveHistoryFilter' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive-filter live-call regression test missing')
 require('Current TG' in ui and 'Current SYS' in ui and 'All archive' in ui, 'current-channel/system archive filter controls missing')
 require('talkgroupRef: Long? = null' in viewmodel and 'ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)' in viewmodel, 'archive filter bridge missing from view model')
