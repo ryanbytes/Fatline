@@ -410,39 +410,35 @@ require('internal object ScannerLockScreenPolicy' in notification_policy
         and 'lockScreenDoesNotShowScanningAfterLastScannerDisconnects' in notification_tests,
         'single foreground notification must show accurate public lock-screen scanner status')
 
-require('MediaStyleNotificationHelper.MediaStyle(session)' in service
-        and '.setShowActionsInCompactView(0, 1)' in service
-        and '.setSessionActivity(' in service
-        and 'R.drawable.ic_fatline_talkgroup' in service
+require('import androidx.media3.session.MediaStyleNotificationHelper' not in service
+        and '.setStyle(MediaStyleNotificationHelper.MediaStyle(' not in service
+        and 'ScannerForegroundNotificationPolicy.usesMediaStyle' not in service
+        and 'NotificationCompat.CATEGORY_SERVICE' in service
+        and 'NotificationCompat.CATEGORY_TRANSPORT' not in service
+        and 'NotificationCompat.BigTextStyle().bigText(details.expanded)' in service
+        and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
+        and '.setOnlyAlertOnce(true)' in service
         and 'NotificationManager.IMPORTANCE_DEFAULT' in service
         and 'channel.setSound(null, null)' in service
         and 'channel.enableVibration(false)' in service
-        and 'channel.enableLights(false)' in service
-        and '.setOnlyAlertOnce(true)' in service
+        and 'channel.setShowBadge(false)' in service
         and 'private const val NOTIFICATION_ID = 8101' in service
         and 'startForeground(NOTIFICATION_ID, notification(' in service
         and '.notify(NOTIFICATION_ID, notification(' in service
         and 'player.playWhenReady = true' not in service.split('private fun notification(', 1)[1].split('private fun currentPlayingTagColor()', 1)[0],
-        'lock-screen media card must use the existing Media3 session, a silent visible channel, and unchanged single foreground ID')
-
+        'scanner foreground notification must stay a visible service notification throughout playback and silence')
 require('override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean)' in service
         and 'if (foregroundStarted && ::player.isInitialized) updatePlaybackNotification()' in service
         and 'super.onUpdateNotification(' not in service
-        and 'ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)' in service
-        and 'if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) {' in service
-        and 'MediaStyleNotificationHelper.MediaStyle(session)' in service
-        and 'NotificationCompat.BigTextStyle().bigText(text)' in service
-        and 'NotificationCompat.CATEGORY_SERVICE' in service
-        and 'NotificationCompat.CATEGORY_TRANSPORT' in service
         and '.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)' in service
-        and 'lastPostedNotificationMediaStyle = null' in service
-        and 'lastPostedNotificationMediaStyle = mediaStyle' in service
+        and 'private var lastPostedPlayingMediaId: String? = null' in service
+        and 'lastPostedPlayingMediaId = null' in service
+        and 'lastPostedPlayingMediaId = playingMediaId' in service
         and 'internal object ScannerForegroundNotificationPolicy' in notification_policy
-        and 'idleScannerUsesPersistentStatusCardInsteadOfMediaStyle' in notification_tests
-        and 'notificationRepostsWhenSwitchingBetweenIdleAndMediaWithoutTextChanges' in notification_tests
-        and 'liveTagColorAndChangedScannerStatusStillPublishWithoutSpuriousRefresh' in notification_tests,
-        'persistent idle scanner foreground notification must resist Media3 idle cleanup and switch correctly to media playback')
-
+        and 'previousPlayingMediaId != playingMediaId' in notification_policy
+        and 'sameTalkgroupNewTransmissionRepostsNotificationEvenWithIdenticalText' in notification_tests
+        and 'scannerNotificationUpdatesOnStartStopColorAndConnectionChanges' in notification_tests,
+        'FGS notification must preserve call identity and survive idle/playback transitions without MediaStyle')
 require('internal object ScannerPublicLockScreenPolicy' in notification_policy
         and 'internal data class ScannerPublicNotification(' in notification_policy
         and 'activeCall.talkgroupLabel.ifBlank { "Radio traffic" }' in notification_policy
@@ -451,22 +447,24 @@ require('internal object ScannerPublicLockScreenPolicy' in notification_policy
         and 'activeCall.transcript?.trim()?.takeIf(String::isNotBlank)' in notification_policy
         and '?.take(180)' in notification_policy
         and 'if (activeCall == null)' in notification_policy
-        and '.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)' in service
-        and '.setPublicVersion(publicLockScreenNotification(open, title, text))' in service
-        and 'private fun publicLockScreenNotification(' in service
+        and 'private fun currentScannerNotificationDetails(' in service
         and 'ScannerPublicLockScreenPolicy.display(' in service
+        and '.setContentTitle(details.title)' in service
+        and '.setContentText(details.summary)' in service
+        and '.setStyle(NotificationCompat.BigTextStyle().bigText(details.expanded))' in service
         and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
+        and '.setPublicVersion(' not in service
         and 'publicLockScreenCopyShowsCurrentTalkgroupSystemServerAndQueue' in notification_tests
         and 'publicLockScreenCopyIncludesAvailableTranscriptOnlyForLivePlayback' in notification_tests
         and 'publicLockScreenCopyLimitsTranscriptPreviewLengthAndUsesFallbacks' in notification_tests,
-        'only FatLine public lock-screen copy must expose requested call details without changing other apps')
-public_notification = service.split('private fun publicLockScreenNotification(', 1)[1].split('private fun currentPlayingTagColor()', 1)[0]
-require('MediaStyleNotificationHelper' not in public_notification
-        and '.setColorized(' not in public_notification
-        and 'player.isPlaying' in public_notification
-        and 'activeCall = call' in public_notification
-        and 'NotificationCompat.BigTextStyle().bigText(details.expanded)' in public_notification,
-        'public lock-screen preview must retain idle scanner status without fake playback or extra channel')
+        'only FatLine notification publicly shows requested call details without changing other apps')
+notification_body = service.split('private fun notification(', 1)[1].split('private fun currentPlayingTagColor()', 1)[0]
+require('MediaStyleNotificationHelper' not in notification_body
+        and 'ScannerForegroundNotificationPolicy.usesMediaStyle' not in notification_body
+        and 'player.isPlaying' in notification_body
+        and 'activeCall = call' in notification_body
+        and 'NotificationCompat.BigTextStyle().bigText(details.expanded)' in notification_body,
+        'notification must include real call metadata but never publish media style that disappears on playback')
 
 tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
 tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
@@ -477,7 +475,7 @@ require('fun playingCallColor(' in tag_colors_policy
         and 'TagColors.playingCallColor(call, server)' in ui
         and 'TagColors.playingCallColor(call, server)' in service
         and 'if (!::player.isInitialized || !player.isPlaying) return null' in service
-        and 'lastPostedNotificationColor, lastPostedNotificationMediaStyle,' in service
+        and 'lastPostedNotificationColor, lastPostedPlayingMediaId,' in service
         and 'lastPostedNotificationColor = color' in service
         and 'builder.setColor(tagColor).setColorized(true)' in service
         and 'activeCallTagColorUsesConfiguredOverridesAndSemanticDefaults' in tag_colors_tests,
