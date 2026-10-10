@@ -42,6 +42,71 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun historyTimestampSortMatchesLegacyStableOrderForLargeArchives() {
+        val base = Instant.parse("2026-10-09T09:00:00Z").toEpochMilli()
+        val calls = (0 until 600).map { index ->
+            val time = when (index % 13) {
+                0 -> "invalid-date"
+                1 -> ""
+                else -> Instant.ofEpochMilli(base + (index % 41) * 1_000L).toString()
+            }
+            historyCall(index.toLong(), time)
+        }.reversed()
+        val referenceKey: (RadioCall) -> Long = {
+            runCatching { Instant.parse(it.dateTime).toEpochMilli() }.getOrDefault(0L)
+        }
+        for (newestFirst in listOf(true, false)) {
+            val legacy = if (newestFirst) calls.sortedByDescending(referenceKey)
+                else calls.sortedBy(referenceKey)
+            assertEquals(
+                "newestFirst=$newestFirst",
+                legacy,
+                HistoryTimestampSortPolicy.sort(calls, newestFirst)
+            )
+        }
+        assertEquals(emptyList<RadioCall>(), HistoryTimestampSortPolicy.sort(emptyList(), true))
+        assertEquals(calls.take(1), HistoryTimestampSortPolicy.sort(calls.take(1), false))
+    }
+
+    @Test
+    fun archiveSortCalculatesTimestampOncePerCallNotPerComparator() {
+        val base = Instant.parse("2026-10-09T09:00:00Z").toEpochMilli()
+        val calls = (0 until 420).map { index ->
+            historyCall(index.toLong(), Instant.ofEpochMilli(base + (index % 31) * 1_000L).toString())
+        }.reversed()
+        for (descending in listOf(true, false)) {
+            var parsedCount = 0
+            val sorted = HistoryTimestampSortPolicy.sort(calls, newestFirst = descending) {
+                parsedCount++
+                Instant.parse(it.dateTime).toEpochMilli()
+            }
+            assertEquals("parse count", calls.size, parsedCount)
+            val expected = if (descending) calls.sortedByDescending { Instant.parse(it.dateTime) }
+                else calls.sortedBy { Instant.parse(it.dateTime) }
+            assertEquals(expected, sorted)
+        }
+    }
+
+    @Test
+    fun archiveStableTiesAndInvalidDatesPreserveInsertionOrder() {
+        val calls = listOf(
+            historyCall(1, "bad"),
+            historyCall(2, "2026-10-09T09:00:00Z"),
+            historyCall(3, ""),
+            historyCall(4, "2026-10-09T09:00:00Z"),
+            historyCall(5, "bad")
+        )
+        assertEquals(
+            listOf(2L, 4L, 1L, 3L, 5L),
+            HistoryTimestampSortPolicy.sort(calls, true).map { it.id }
+        )
+        assertEquals(
+            listOf(1L, 3L, 5L, 2L, 4L),
+            HistoryTimestampSortPolicy.sort(calls, false).map { it.id }
+        )
+    }
+
+    @Test
     fun audioCacheFilenamesPreserveOldAsciiSanitizingRules() {
         val profiles = listOf(
             "", "p1", "0d5421bc-935e-4ca9-bd7f-20aa3f1937ca",
