@@ -51,6 +51,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -112,6 +113,7 @@ class ScannerService : MediaLibraryService() {
     private val recentlyAcceptedLiveCalls = LinkedHashSet<CallKey>()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val favoriteLibraryCache = AndroidAutoFavoritesCache()
+    private val idleNotificationGate = ScannerIdleNotificationGate()
     private var performanceProbe: PerformanceProbe? = null
     private var performanceJob: Job? = null
 
@@ -127,9 +129,14 @@ class ScannerService : MediaLibraryService() {
         performanceJob = serviceScope.launch {
             while (true) {
                 delay(10_000L)
-                // Collect snapshots on the service main thread; only emit the
-                // completed report, avoiding periodic UI recompositions.
-                performanceProbe?.sample(PerformanceReader.read(this@ScannerService))
+                // Debug.getPss() and the battery sticky-broadcast query can
+                // block. Read counters off the UI thread, but return to the
+                // main thread to update the probe. Cancellation of a stopped
+                // or restarted capture prevents late samples from leaking in.
+                val reading = withContext(Dispatchers.Default) {
+                    PerformanceReader.read(applicationContext)
+                }
+                performanceProbe?.sample(reading)
             }
         }
     }
@@ -278,9 +285,16 @@ class ScannerService : MediaLibraryService() {
         serviceScope.launch {
             ScannerRepository.state.collect { state ->
                 refreshFavoriteLibraryChildren(state)
-                // Show live scanning/connection status even while silent. The
-                // duplicate-text guard avoids reposting on every new call.
-                if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()
+                // Most history/transcript/listener updates do not change the
+                // idle notification's connection counts. Skip reconstructing
+                // it for those events. During active playback keep the full
+                // update path so tag changes, new calls and queue details
+                // still reach the full-color lock-screen notification.
+                if (monitoredProfileIds.isNotEmpty() &&
+                    (player.isPlaying || idleNotificationGate.shouldRefresh(
+                        monitoredProfileIds, pausedProfiles, state
+                    ))
+                ) updatePlaybackNotification()
             }
         }
     }

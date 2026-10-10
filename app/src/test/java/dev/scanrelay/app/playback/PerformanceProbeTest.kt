@@ -46,6 +46,23 @@ class PerformanceProbeTest {
     }
 
     @Test
+    fun nullablePssPeakTrackingPreservesPeakAcrossMissingSamples() {
+        val probe = PerformanceProbe(
+            "Sparse PSS", reading(elapsed = 0L, cpu = 0L, pss = null)
+        )
+        probe.sample(reading(elapsed = 10_000L, cpu = 50L, pss = null))
+        probe.sample(reading(elapsed = 20_000L, cpu = 100L, pss = 32_768L))
+        probe.sample(reading(elapsed = 30_000L, cpu = 150L, pss = null))
+        probe.sample(reading(elapsed = 40_000L, cpu = 200L, pss = 16_384L))
+        probe.sample(reading(elapsed = 50_000L, cpu = 250L, pss = 40_960L))
+        val report = probe.report()
+        assertTrue(report.contains(
+            "PSS memory start / end / peak: unavailable / 40.0 MiB / 40.0 MiB"
+        ))
+        assertTrue(report.contains("Avg app CPU: 0.5% of one core"))
+    }
+
+    @Test
     fun reportsDelayedBackgroundSamplingWithoutAffectingCpuMath() {
         val probe = PerformanceProbe("Idle monitoring", reading(elapsed = 0L, cpu = 0L))
         probe.sample(reading(elapsed = 10_000L, cpu = 300L))
