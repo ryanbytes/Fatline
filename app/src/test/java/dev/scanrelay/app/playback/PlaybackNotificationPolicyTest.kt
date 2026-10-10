@@ -75,6 +75,53 @@ class PlaybackNotificationPolicyTest {
     }
 
     @Test
+    fun idleGateSkipsUnchangedHistoryListenerAndTranscriptEvents() {
+        val gate = ScannerIdleNotificationGate()
+        val profile = ServerProfile(id = "one", name = "County", baseUrl = "https://scanner.invalid")
+        val base = ServerScannerState(profile = profile, status = ConnectionStatus.CONNECTED)
+        val active = setOf("one")
+        assertEquals(true, gate.shouldRefresh(active, emptySet(), ScannerState(servers = mapOf("one" to base))))
+        repeat(400) { i ->
+            val unrelated = base.copy(statusText = "Receiving $i", listenerCount = i)
+            assertEquals(false, gate.shouldRefresh(
+                active, emptySet(), ScannerState(servers = mapOf("one" to unrelated))
+            ))
+        }
+        assertEquals(true, gate.shouldRefresh(
+            active, setOf("one"), ScannerState(servers = mapOf("one" to base))
+        ))
+        assertEquals(false, gate.shouldRefresh(
+            active, setOf("one"), ScannerState(servers = mapOf("one" to base.copy(statusText = "Paused")))
+        ))
+        assertEquals(true, gate.shouldRefresh(
+            active, emptySet(), ScannerState(servers = mapOf("one" to base))
+        ))
+    }
+
+    @Test
+    fun idleGateRefreshesOnConnectionAndMembershipTransitions() {
+        val gate = ScannerIdleNotificationGate()
+        val one = scanner("one", ConnectionStatus.CONNECTING)
+        val two = scanner("two", ConnectionStatus.CONNECTED)
+        val active = setOf("one", "two")
+        fun state(first: ConnectionStatus, second: ConnectionStatus): ScannerState =
+            ScannerState(servers = mapOf(
+                "one" to one.copy(status = first),
+                "two" to two.copy(status = second)
+            ))
+        assertEquals(true, gate.shouldRefresh(active, emptySet(), state(ConnectionStatus.CONNECTING, ConnectionStatus.CONNECTED)))
+        assertEquals(false, gate.shouldRefresh(active, emptySet(), state(ConnectionStatus.DISCONNECTED, ConnectionStatus.CONNECTED)))
+        assertEquals(true, gate.shouldRefresh(active, emptySet(), state(ConnectionStatus.CONNECTED, ConnectionStatus.CONNECTED)))
+        assertEquals(true, gate.shouldRefresh(active, setOf("one"), state(ConnectionStatus.CONNECTED, ConnectionStatus.CONNECTED)))
+        assertEquals(false, gate.shouldRefresh(active, setOf("two"), state(ConnectionStatus.CONNECTED, ConnectionStatus.CONNECTED)))
+        assertEquals(true, gate.shouldRefresh(setOf("one"), setOf("one"), state(ConnectionStatus.CONNECTED, ConnectionStatus.CONNECTED)))
+        assertEquals(true, gate.shouldRefresh(emptySet(), emptySet(), state(ConnectionStatus.CONNECTED, ConnectionStatus.CONNECTED)))
+        assertEquals(false, gate.shouldRefresh(emptySet(), emptySet(), ScannerState()))
+        assertEquals(true, gate.shouldRefresh(setOf("two"), emptySet(), state(ConnectionStatus.CONNECTED, ConnectionStatus.CONNECTED)))
+        assertEquals(true, gate.shouldRefresh(setOf("two"), emptySet(), ScannerState()))
+    }
+
+    @Test
     fun activePlaybackShowsCurrentCall() {
         assertEquals(
             PlaybackNotificationText("Dispatch", "Server · County"),
