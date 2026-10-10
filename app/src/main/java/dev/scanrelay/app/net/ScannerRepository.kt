@@ -188,6 +188,40 @@ internal object LiveHistoryMergePolicy {
 }
 
 /**
+ * Call audio is written to a private per-scanner cache directory. Avoid
+ * compiling two regular expressions and allocating matchers for every call.
+ * Keep the former ASCII-only file name and extension validation exactly.
+ */
+internal object AudioCacheNamePolicy {
+    private fun asciiAlphaNumeric(c: Char): Boolean =
+        c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9'
+
+    fun safeProfile(id: String): String {
+        if (id.all { asciiAlphaNumeric(it) || it == '.' || it == '_' || it == '-' }) return id
+        return buildString(id.length) {
+            id.forEach { c ->
+                append(if (asciiAlphaNumeric(c) || c == '.' || c == '_' || c == '-') c else '_')
+            }
+        }
+    }
+
+    fun extension(audioName: String?, mime: String?): String {
+        val candidate = audioName?.substringAfterLast('.', "")
+        if (candidate != null && candidate.length in 1..8 && candidate.all(::asciiAlphaNumeric)) {
+            return candidate
+        }
+        return when (mime?.lowercase()) {
+            "audio/mpeg", "audio/mp3" -> "mp3"
+            "audio/mp4", "audio/m4a" -> "m4a"
+            "audio/aac" -> "aac"
+            "audio/wav", "audio/x-wav" -> "wav"
+            "audio/ogg" -> "ogg"
+            else -> "bin"
+        }
+    }
+}
+
+/**
  * Recent is a list of completed live playback, not incoming or pending calls.
  * Keep the newest completed call first and avoid duplicate rows by server ID.
  */
@@ -3533,16 +3567,8 @@ object ScannerRepository {
     }
 
     private fun writeAudio(context: Context, profileId: String, callId: Long, audioName: String?, mime: String?, bytes: ByteArray): String {
-        val extension = audioName?.substringAfterLast('.', "")?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) }
-            ?: when (mime?.lowercase()) {
-                "audio/mpeg", "audio/mp3" -> "mp3"
-                "audio/mp4", "audio/m4a" -> "m4a"
-                "audio/aac" -> "aac"
-                "audio/wav", "audio/x-wav" -> "wav"
-                "audio/ogg" -> "ogg"
-                else -> "bin"
-            }
-        val safeProfile = profileId.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val extension = AudioCacheNamePolicy.extension(audioName, mime)
+        val safeProfile = AudioCacheNamePolicy.safeProfile(profileId)
         val dir = File(context.cacheDir, "fatline_audio/$safeProfile").apply { mkdirs() }
         val file = File(dir, "$callId-${System.nanoTime()}.$extension")
         file.writeBytes(bytes)

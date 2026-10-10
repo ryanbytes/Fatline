@@ -821,6 +821,36 @@ require('reportSeparatesCpuPssNetworkAndWholePhoneBattery' in probe_tests
         and 'zeroDurationDoesNotDivideByZero' in probe_tests,
         'performance counters require accuracy, unsupported and charging regression coverage')
 
+# Alert badge snapshot reuse and bounded references during normal playback.
+require('class AlertKeySnapshotCache' in dot_policy
+        and 'cached[profileId]?.alerts === server.alerts' in dot_policy
+        and 'cached.clear()' in dot_policy
+        and 'val alertKeysCache = remember { AlertKeySnapshotCache() }' in ui
+        and 'val currentAlertKeys = alertKeysCache.snapshot(scanner.servers)' in ui
+        and 'alertKeysAreReusedAcrossUnrelatedScannerStateUpdates' in dot_tests
+        and 'changedAlertListsInvalidateOnlyTheirProfile' in dot_tests
+        and 'disconnectedServersReleaseAlertSnapshotsAndCanReconnectCleanly' in dot_tests,
+        'alert badge keys should reuse unchanged alert snapshots and release disconnected servers')
+
+# Pending-call records must not survive when Android rejects both ways of
+# launching the playback service. Working delivery paths remain unchanged.
+require('internal object PendingAudioDispatchPolicy' in queue_policy
+        and 'tryForegroundStart' in queue_policy
+        and 'onUnrecoverableFailure()' in queue_policy
+        and 'PendingAudioDispatchPolicy.dispatch(' in service
+        and 'onUnrecoverableFailure = { pendingCalls.remove(token) }' in service
+        and 'pendingAudioLaunchKeepsCallWhenNormalServiceStartWorks' in queue_tests
+        and 'pendingAudioLaunchKeepsCallWhenForegroundFallbackWorks' in queue_tests
+        and 'failedServiceAndFallbackCannotLeaveOrphanedPendingCall' in queue_tests,
+        'failed Android service launches must not retain pending call metadata indefinitely')
+
+require('AudioCacheNamePolicy.extension(audioName, mime)' in repo
+        and 'AudioCacheNamePolicy.safeProfile(profileId)' in repo
+        and 'internal object AudioCacheNamePolicy' in repo
+        and 'audioCacheFilenamesPreserveOldAsciiSanitizingRules' in aggregation_tests
+        and 'audioCacheExtensionsPreserveOldFilenameAndMimeFallbacks' in aggregation_tests,
+        'per-call audio cache filenames must stay safe without compiling regular expressions')
+
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
     stripped = re.sub(r'""".*?"""', '', text, flags=re.S)

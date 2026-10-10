@@ -17,6 +17,53 @@ class PlaybackQueuePolicyTest {
     )
 
     @Test
+    fun pendingAudioLaunchKeepsCallWhenNormalServiceStartWorks() {
+        val pending = mutableMapOf("token" to liveCall(1))
+        var normal = 0
+        var fallback = 0
+        val succeeded = PendingAudioDispatchPolicy.dispatch(
+            tryStart = { normal++ },
+            tryForegroundStart = { fallback++ },
+            onUnrecoverableFailure = { pending.remove("token") }
+        )
+        assertTrue(succeeded)
+        assertEquals(1, normal)
+        assertEquals(0, fallback)
+        assertTrue(pending.containsKey("token"))
+    }
+
+    @Test
+    fun pendingAudioLaunchKeepsCallWhenForegroundFallbackWorks() {
+        val pending = mutableMapOf("token" to liveCall(1))
+        var fallback = 0
+        val succeeded = PendingAudioDispatchPolicy.dispatch(
+            tryStart = { error("Background service restricted") },
+            tryForegroundStart = { fallback++ },
+            onUnrecoverableFailure = { pending.remove("token") }
+        )
+        assertTrue(succeeded)
+        assertEquals(1, fallback)
+        assertTrue(pending.containsKey("token"))
+    }
+
+    @Test
+    fun failedServiceAndFallbackCannotLeaveOrphanedPendingCall() {
+        val pending = mutableMapOf("token" to liveCall(1))
+        var cleanup = 0
+        val succeeded = PendingAudioDispatchPolicy.dispatch(
+            tryStart = { error("Service rejected") },
+            tryForegroundStart = { error("Foreground start rejected") },
+            onUnrecoverableFailure = {
+                pending.remove("token")
+                cleanup++
+            }
+        )
+        assertFalse(succeeded)
+        assertEquals(1, cleanup)
+        assertEquals(emptyMap<String, RadioCall>(), pending)
+    }
+
+    @Test
     fun queuedAndStartedCallsAreNotRecentUntilNaturalCompletion() {
         val tracker = PlayedLiveCallTracker()
         val call = liveCall(11)
