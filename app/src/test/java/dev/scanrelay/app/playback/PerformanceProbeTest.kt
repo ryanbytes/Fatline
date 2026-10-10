@@ -46,6 +46,28 @@ class PerformanceProbeTest {
     }
 
     @Test
+    fun reportsDelayedBackgroundSamplingWithoutAffectingCpuMath() {
+        val probe = PerformanceProbe("Idle monitoring", reading(elapsed = 0L, cpu = 0L))
+        probe.sample(reading(elapsed = 10_000L, cpu = 300L))
+        probe.sample(reading(elapsed = 5_000L, cpu = 999L)) // stale reading ignored
+        probe.sample(reading(elapsed = 35_001L, cpu = 1_000L))
+        probe.sample(reading(elapsed = 45_001L, cpu = 1_350L))
+        val report = probe.report()
+        assertTrue(report.contains("Duration: 0.8 min; samples: 4"))
+        assertTrue(report.contains("Sampling interval mean / longest: 15.0 s / 25.0 s; gaps >20s: 1"))
+        assertTrue(report.contains("App CPU time: 1350 ms"))
+        assertTrue(report.contains("Avg app CPU: 3.0% of one core"))
+    }
+
+    @Test
+    fun samplingGapReportHandlesOnlyInitialReading() {
+        val probe = PerformanceProbe("Brief", reading(elapsed = 0L, cpu = 0L))
+        val report = probe.report()
+        assertTrue(report.contains("Sampling interval mean / longest: unavailable s / 0.0 s; gaps >20s: 0"))
+        assertTrue(report.contains("Avg app CPU: unavailable"))
+    }
+
+    @Test
     fun unsupportedCountersAndResetNetworkCountersStayUnavailable() {
         val probe = PerformanceProbe(
             "Idle monitoring", reading(
