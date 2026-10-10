@@ -52,7 +52,7 @@ internal class AlertKeySnapshotCache {
         val entries = HashMap<String, Entry>(servers.size)
         servers.forEach { (profileId, server) ->
             val old = cached[profileId]
-            val entry = if (old?.alerts === server.alerts) old else Entry(
+            val entry = if (old != null && old.alerts === server.alerts) old else Entry(
                 server.alerts, server.alerts.mapTo(LinkedHashSet()) { it.stableKey }
             )
             next[profileId] = entry.keys
