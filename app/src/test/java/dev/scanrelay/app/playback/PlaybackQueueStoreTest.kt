@@ -76,6 +76,51 @@ class PlaybackQueueStoreTest {
     }
 
     @Test
+    fun cacheSortReadsEachFileMtimeOnceAndPreservesStableNewestFirstOrder() {
+        val files = (0 until 415).map { java.io.File("/cache/scanner/${it}.mp3") }
+        val timestamps = files.withIndex().associate { (index, file) ->
+            file to ((index * 17L) % 43L)
+        }
+        var mtimeReads = 0
+        val actual = PlaybackCachePolicy.newestFirst(files.toTypedArray()) { file ->
+            mtimeReads++
+            timestamps.getValue(file)
+        }
+        val previous = files.sortedByDescending { timestamps.getValue(it) }
+        assertEquals(previous, actual)
+        assertEquals(files.size, mtimeReads)
+        assertEquals(emptyList<java.io.File>(), PlaybackCachePolicy.newestFirst(emptyArray()))
+        assertEquals(files.take(1), PlaybackCachePolicy.newestFirst(files.take(1).toTypedArray()))
+    }
+
+    @Test
+    fun cacheOnePassEvictionMatchesOriginalPolicyAcrossRetentionAndPinnedFiles() {
+        val newest = (0 until 450).map { java.io.File("/cache/scanner/${it}.mp3") }
+        val paths = newest.map { it.absolutePath }
+        val protectedSets = listOf(
+            emptySet(),
+            setOf(paths[0], paths[1], paths[200], paths[445], paths[449]),
+            paths.toSet()
+        )
+        for (protected in protectedSets) {
+            for (keep in listOf(0, 1, 50, 150, 449, 500)) {
+                val evicted = mutableListOf<String>()
+                PlaybackCachePolicy.forEachEvictableFile(newest, protected, keep) {
+                    evicted += it.absolutePath
+                }
+                val expected = PlaybackCachePolicy.evictablePaths(paths, protected, keep)
+                assertEquals("retention=$keep, protected=${protected.size}", expected, evicted)
+                assertTrue(evicted.none { it in protected })
+            }
+        }
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun cacheEvictionRejectsNegativeRetention() {
+        PlaybackCachePolicy.forEachEvictableFile(emptyList(), emptySet(), -1) { error("Unexpected delete") }
+    }
+
+    @Test
     fun cachePruningHappensImmediatelyThenEverySixteenWritesPerScanner() {
         val schedule = PlaybackCachePruneSchedule()
         assertTrue(schedule.afterWrite("one")) // startup safety sweep

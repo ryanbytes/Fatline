@@ -99,6 +99,37 @@ internal object PlaybackQueueCodec {
 
 /** Keep buffered audio even when newer traffic pushes cache beyond its normal limit. */
 internal object PlaybackCachePolicy {
+    private data class DatedFile(val file: java.io.File, val lastModifiedMs: Long)
+
+    /**
+     * Calling File.lastModified() inside a sort comparator causes many stat()
+     * calls for the same audio file. Read it once, then use a stable sort.
+     * The original newest-first order for equal timestamps is preserved.
+     */
+    fun newestFirst(
+        files: Array<java.io.File>,
+        lastModified: (java.io.File) -> Long = { it.lastModified() }
+    ): List<java.io.File> = files
+        .map { DatedFile(it, lastModified(it)) }
+        .sortedByDescending { it.lastModifiedMs }
+        .map { it.file }
+
+    /** No intermediate path list, filtered list, dropped list, set or file list. */
+    fun forEachEvictableFile(
+        newestFirst: List<java.io.File>,
+        protectedPaths: Set<String>,
+        retainUnprotected: Int = 150,
+        evict: (java.io.File) -> Unit
+    ) {
+        require(retainUnprotected >= 0)
+        var unprotectedSeen = 0
+        for (file in newestFirst) {
+            if (file.absolutePath in protectedPaths) continue
+            if (unprotectedSeen++ >= retainUnprotected) evict(file)
+        }
+    }
+
+    // Kept as a pure reference policy for cache safety regression tests.
     fun evictablePaths(
         newestFirst: List<String>,
         protectedPaths: Set<String>,

@@ -320,7 +320,17 @@ require('ScannerCallRoutingPolicy.channelEnabled(session.state.systems, key)' in
             (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(),
         'call membership lookup must avoid allocating a flat talkgroup list and preserve first-match behavior')
 require('recoveryStartIndex(' in service and 'recoveryStartIndex(' in (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQueuePolicy.kt').read_text(), 'playback restore must not replay completed calls')
-require('PlaybackQueueStore(context).protectedAudioPaths()' in repo and 'PlaybackCachePolicy.evictablePaths(' in repo, 'audio cache cleanup must not delete queued audio')
+require('PlaybackQueueStore(context).protectedAudioPaths()' in repo
+        and 'PlaybackCachePolicy.newestFirst(files)' in repo
+        and 'PlaybackCachePolicy.forEachEvictableFile(newestFirst, protectedPaths)' in repo
+        and 'fun newestFirst(' in queue_store
+        and 'val newestFirst = PlaybackCachePolicy.newestFirst(files)' in repo
+        and 'forEachEvictableFile(' in queue_store
+        and 'if (file.absolutePath in protectedPaths) continue' in queue_store
+        and 'cacheSortReadsEachFileMtimeOnceAndPreservesStableNewestFirstOrder' in queue_store_tests
+        and 'cacheOnePassEvictionMatchesOriginalPolicyAcrossRetentionAndPinnedFiles' in queue_store_tests
+        and 'cacheEvictionRejectsNegativeRetention' in queue_store_tests,
+        'audio cache cleanup must retain identical protected-file eviction semantics without repeated filesystem stats')
 require('PlaybackCachePruneSchedule' in queue_store
         and 'private val cachePruneSchedule = PlaybackCachePruneSchedule()' in repo
         and 'if (cachePruneSchedule.afterWrite(profileId)) pruneCache(dir, context)' in repo,
