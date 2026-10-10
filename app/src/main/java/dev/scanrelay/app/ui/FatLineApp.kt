@@ -111,6 +111,13 @@ private enum class AppTab(val label: String, val glyph: String) {
     Settings("Settings", "S")
 }
 
+// Navigation never changes at runtime. Keep its immutable collections shared
+// rather than rebuilding both lists on each scanner-state recomposition.
+private val PRIMARY_NAVIGATION_TABS = listOf(
+    AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Transcripts
+)
+private val MORE_NAVIGATION_TABS = AppTab.entries.filterNot { it in PRIMARY_NAVIGATION_TABS }
+
 private const val COMPACT_UI_DENSITY_SCALE = 0.90f
 
 @Composable
@@ -123,7 +130,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     var selectedProfileId by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableStateOf(AppTab.Scanner) }
     var moreMenuExpanded by remember { mutableStateOf(false) }
-    val primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Transcripts)
+    val primaryNavigationTabs = PRIMARY_NAVIGATION_TABS
     // More contains Alerts. Surface a visible dot for alerts received since the
     // current app session first loaded them or the user last opened Alerts.
     var seenAlertKeys by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
@@ -136,7 +143,7 @@ fun FatLineApp(viewModel: ScannerViewModel) {
         if (next != seenAlertKeys) seenAlertKeys = next
     }
     val hasNewAlerts = AlertDotPolicy.hasNewAlerts(seenAlertKeys, currentAlertKeys)
-    val moreNavigationTabs = AppTab.entries.filterNot { it in primaryNavigationTabs }
+    val moreNavigationTabs = MORE_NAVIGATION_TABS
     val systemDensity = LocalDensity.current
     val compactDensity = remember(systemDensity) {
         Density(
@@ -156,15 +163,22 @@ fun FatLineApp(viewModel: ScannerViewModel) {
         }
     }
 
-    val accent = selectedProfileId
-        ?.let { scanner.servers[it] }
-        ?.let { server -> resolvedUiAccentColor(server.uiAccentColor, server.userUiAccentColor) }
-        ?.let(::uiAccentRgb)
-    val colorScheme = if (accent != null) {
-        val color = Color(accent.red, accent.green, accent.blue)
-        darkColorScheme(primary = color, secondary = color, tertiary = color)
-    } else {
-        darkColorScheme()
+    val selectedServer = selectedProfileId?.let { scanner.servers[it] }
+    // Live call/history/listener changes replace ServerScannerState frequently,
+    // but should not reparse an unchanged UI accent or allocate ColorScheme.
+    // Only the actual accent inputs (and resolved color) invalidate these values.
+    val accent = remember(selectedServer?.uiAccentColor, selectedServer?.userUiAccentColor) {
+        selectedServer
+            ?.let { server -> resolvedUiAccentColor(server.uiAccentColor, server.userUiAccentColor) }
+            ?.let(::uiAccentRgb)
+    }
+    val colorScheme = remember(accent) {
+        if (accent != null) {
+            val color = Color(accent.red, accent.green, accent.blue)
+            darkColorScheme(primary = color, secondary = color, tertiary = color)
+        } else {
+            darkColorScheme()
+        }
     }
 
     CompositionLocalProvider(LocalDensity provides compactDensity) {
