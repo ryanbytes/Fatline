@@ -382,12 +382,12 @@ require('override fun onIsPlayingChanged(isPlaying: Boolean)' in service
         )[1].split('override fun onMediaItemTransition(', 1)[0],
         'playback state changes must refresh notification')
 require('stoppedOrPausedPlaybackDoesNotShowStaleCallMetadata' in notification_tests, 'stale playback notification regression test missing')
-require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)' in service
+require('ScannerForegroundNotificationPolicy.needsUpdate(' in service
         and 'private var foregroundStarted = false' in service
         and 'if (!foregroundStarted) {' in service
         and 'foregroundStarted = false' in service
         and 'lastPostedNotification = null' in service
-        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText, color))' in service
+        and '.notify(NOTIFICATION_ID, notification(title, queueText, color))' in service
         and 'identicalNotificationTextAndQueueCountDoNotRepublish' in notification_tests,
         'notification posting must skip duplicates without omitting queue/status changes')
 require('internal object ScannerLockScreenPolicy' in notification_policy
@@ -401,7 +401,7 @@ require('internal object ScannerLockScreenPolicy' in notification_policy
         and 'ScannerRepository.state.collect { state ->' in service
         and 'if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()' in service
         and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
-        and '.setCategory(NotificationCompat.CATEGORY_TRANSPORT)' in service
+        and 'NotificationCompat.CATEGORY_TRANSPORT' in service and 'NotificationCompat.CATEGORY_SERVICE' in service
         and 'channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC' in service
         and 'private const val NOTIFICATION_ID = 8101' in service
         and 'lockScreenShowsScanningBetweenCallsWhenConnected' in notification_tests
@@ -421,9 +421,27 @@ require('MediaStyleNotificationHelper.MediaStyle(session)' in service
         and '.setOnlyAlertOnce(true)' in service
         and 'private const val NOTIFICATION_ID = 8101' in service
         and 'startForeground(NOTIFICATION_ID, notification(' in service
-        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(' in service
+        and '.notify(NOTIFICATION_ID, notification(' in service
         and 'player.playWhenReady = true' not in service.split('private fun notification(', 1)[1].split('private fun currentPlayingTagColor()', 1)[0],
         'lock-screen media card must use the existing Media3 session, a silent visible channel, and unchanged single foreground ID')
+
+require('override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean)' in service
+        and 'if (foregroundStarted && ::player.isInitialized) updatePlaybackNotification()' in service
+        and 'super.onUpdateNotification(' not in service
+        and 'ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)' in service
+        and 'if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) {' in service
+        and 'MediaStyleNotificationHelper.MediaStyle(session)' in service
+        and 'NotificationCompat.BigTextStyle().bigText(text)' in service
+        and 'NotificationCompat.CATEGORY_SERVICE' in service
+        and 'NotificationCompat.CATEGORY_TRANSPORT' in service
+        and '.setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)' in service
+        and 'lastPostedNotificationMediaStyle = null' in service
+        and 'lastPostedNotificationMediaStyle = mediaStyle' in service
+        and 'internal object ScannerForegroundNotificationPolicy' in notification_policy
+        and 'idleScannerUsesPersistentStatusCardInsteadOfMediaStyle' in notification_tests
+        and 'notificationRepostsWhenSwitchingBetweenIdleAndMediaWithoutTextChanges' in notification_tests
+        and 'liveTagColorAndChangedScannerStatusStillPublishWithoutSpuriousRefresh' in notification_tests,
+        'persistent idle scanner foreground notification must resist Media3 idle cleanup and switch correctly to media playback')
 
 tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
 tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
@@ -434,7 +452,7 @@ require('fun playingCallColor(' in tag_colors_policy
         and 'TagColors.playingCallColor(call, server)' in ui
         and 'TagColors.playingCallColor(call, server)' in service
         and 'if (!::player.isInitialized || !player.isPlaying) return null' in service
-        and 'lastPostedNotificationColor == color' in service
+        and 'lastPostedNotificationColor, lastPostedNotificationMediaStyle,' in service
         and 'lastPostedNotificationColor = color' in service
         and 'builder.setColor(tagColor).setColorized(true)' in service
         and 'activeCallTagColorUsesConfiguredOverridesAndSemanticDefaults' in tag_colors_tests,
