@@ -23,11 +23,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.common.util.UnstableApi
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import dev.scanrelay.app.MainActivity
+import dev.scanrelay.app.R
 import dev.scanrelay.app.alerts.NwsSevereWeatherMonitor
 import dev.scanrelay.app.data.ProfileStore
 import dev.scanrelay.app.data.ScannerPausePolicy
@@ -261,7 +263,16 @@ class ScannerService : MediaLibraryService() {
                 }
             })
         }
-        session = MediaLibrarySession.Builder(this, player, LibraryCallback()).build()
+        // Android 13+ media controls open the activity from the MediaSession,
+        // not the NotificationCompat content intent alone.
+        session = MediaLibrarySession.Builder(this, player, LibraryCallback())
+            .setSessionActivity(
+                PendingIntent.getActivity(
+                    this, 0, Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            )
+            .build()
         restoreSavedPlaybackQueue()
         serviceScope.launch {
             ScannerRepository.state.collect { state ->
@@ -778,7 +789,13 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun createChannel() {
-        val channel = NotificationChannel(CHANNEL_ID, "Scanner playback", NotificationManager.IMPORTANCE_LOW)
+        // Low-importance service notifications can collapse to a tiny icon on
+        // Pixel's lock screen. A new, soundless DEFAULT channel requests a
+        // visible card without pinging or vibrating on every call.
+        val channel = NotificationChannel(CHANNEL_ID, "Scanner playback", NotificationManager.IMPORTANCE_DEFAULT)
+        channel.setSound(null, null)
+        channel.enableVibration(false)
+        channel.enableLights(false)
         // Background playback is ongoing, not an unread alert: it must not
         // produce a permanent home-screen launcher notification dot.
         channel.setShowBadge(false)
@@ -813,18 +830,22 @@ class ScannerService : MediaLibraryService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_headset)
+            .setSmallIcon(R.drawable.ic_fatline_talkgroup)
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(open)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .addAction(0, "Skip", skip)
-            .addAction(0, "Clear queue", clearQueue)
-            .addAction(0, "Disconnect all", stop)
+            .addAction(R.drawable.ic_fatline_skip, "Skip call", skip)
+            .addAction(R.drawable.ic_fatline_clear, "Clear queue", clearQueue)
+            .addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
+            // Previously our plain foreground-service notification did not
+            // advertise its existing Media3 session to Android SystemUI.
+            .setStyle(MediaStyleNotificationHelper.MediaStyle(session)
+                .setShowActionsInCompactView(0, 1))
         // Android owns the final lock-screen card rendering and may restrict
         // background tint. Colorized foreground service notifications request
         // the tag color wherever the system supports it.
@@ -966,7 +987,7 @@ class ScannerService : MediaLibraryService() {
 
         // Channel configuration is immutable after Android creates it. Use a new ID
         // so existing installations inherit showBadge=false on the media channel.
-        private const val CHANNEL_ID = "fatline_playback_no_badge_v2"
+        private const val CHANNEL_ID = "fatline_scanner_media_card_no_badge_v3"
         private const val NOTIFICATION_ID = 8101
         private const val PREFS = "fatline_session"
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
