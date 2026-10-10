@@ -59,6 +59,38 @@ internal class AndroidAutoFavoritesCache {
 
     val profileIds: Set<String> get() = snapshots.keys.toSet()
 
+    /**
+     * ScannerService receives every repository StateFlow emission. Most change
+     * audio, History or alerts, not channel configuration. Only touch the
+     * favorites cache when a profile's immutable configuration inputs change.
+     *
+     * Iterate the live profiles and stale cache entries directly; don't create
+     * a union Set of profile IDs or allocate "unchanged" result objects on
+     * every received scanner call.
+     */
+    fun forEachChanged(state: ScannerState, onChanged: (String, Int) -> Unit) {
+        for ((profileId, server) in state.servers) {
+            val previous = snapshots[profileId]
+            if (previous != null &&
+                previous.systems === server.systems &&
+                previous.hiddenSystems === server.hiddenSystemRefs
+            ) continue
+            val update = refresh(profileId, state)
+            if (update.changed) onChanged(profileId, update.favorites.size)
+        }
+
+        // Removing/replacing a scanner can leave an entry even when the number
+        // of active profiles stays constant. Prune those entries as well.
+        val stale = snapshots.entries.iterator()
+        while (stale.hasNext()) {
+            val entry = stale.next()
+            if (entry.key !in state.servers) {
+                if (entry.value.favorites.isNotEmpty()) onChanged(entry.key, 0)
+                stale.remove()
+            }
+        }
+    }
+
     fun refresh(profileId: String, state: ScannerState): AndroidAutoFavoritesUpdate {
         val server = state.servers[profileId]
         val previous = snapshots[profileId]
