@@ -12,7 +12,8 @@ package dev.scanrelay.app.alerts
 internal class RecentTranscriptPollCache(
     private val maxEntries: Int = 128,
     private val maxTotalCharacters: Int = 65_536,
-    private val maxTextCharacters: Int = 4_096
+    private val maxTextCharacters: Int = 4_096,
+    private val maxPageCharacters: Int = 131_072
 ) {
     private data class Snapshot(
         val text: String,
@@ -22,10 +23,24 @@ internal class RecentTranscriptPollCache(
 
     private val seen = LinkedHashMap<Long, Snapshot>()
     private var retainedCharacters = 0
+    // Keep the exact HTTP response only after the complete page has been
+    // processed. An identical next poll can skip JSONArray construction,
+    // TranscriptRecord allocation and timestamp sorting. No hash collisions.
+    // The independent page cap prevents unusually large responses being held.
+    private var lastCompletedPage: String? = null
 
     init {
-        require(maxEntries > 0 && maxTotalCharacters > 0 && maxTextCharacters > 0)
+        require(maxEntries > 0 && maxTotalCharacters > 0 && maxTextCharacters > 0 && maxPageCharacters > 0)
     }
+
+    fun unchangedCompletedPage(body: String): Boolean = lastCompletedPage == body
+
+    /** Must be called only after parsing and alert processing both succeed. */
+    fun rememberCompletedPage(body: String) {
+        lastCompletedPage = body.takeIf { it.length <= maxPageCharacters }
+    }
+
+    internal val cachedPageCharacters: Int get() = lastCompletedPage?.length ?: 0
 
     fun changed(callId: Long, text: String, systemLabel: String?, talkgroupLabel: String?): Boolean {
         // Never cache incomplete or exceptionally long records; exact matching

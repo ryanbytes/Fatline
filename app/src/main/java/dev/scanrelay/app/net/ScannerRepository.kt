@@ -757,7 +757,10 @@ object ScannerRepository {
             json
         }
 
-    private fun executeJsonArray(request: Request): JSONArray =
+    // Keep HTTP status/error handling identical for UI and monitor reads.
+    // The transcript monitor can compare complete response text before doing
+    // expensive JSON and TranscriptRecord decoding.
+    private fun executeJsonArrayBody(request: Request): String =
         keyHttpClient.newCall(request).execute().use { response ->
             val text = response.body.string()
             if (!response.isSuccessful) {
@@ -767,10 +770,15 @@ object ScannerRepository {
                     ?: "Request failed (HTTP ${response.code})"
                 throw IllegalStateException(message)
             }
-            runCatching { JSONArray(text) }.getOrElse {
-                throw IllegalStateException("Server returned invalid alert history")
-            }
+            text
         }
+
+    private fun parseJsonArrayBody(text: String): JSONArray =
+        runCatching { JSONArray(text) }.getOrElse {
+            throw IllegalStateException("Server returned invalid alert history")
+        }
+
+    private fun executeJsonArray(request: Request): JSONArray = parseJsonArrayBody(executeJsonArrayBody(request))
     private fun executeJsonObject(request: Request): JSONObject =
         keyHttpClient.newCall(request).execute().use { response ->
             val text = response.body.string()
@@ -1591,7 +1599,11 @@ object ScannerRepository {
             .header("Authorization", "Bearer $pin")
             .get()
             .build()
-        val records = parseTranscripts(session.profile, executeJsonArray(request))
+        val body = executeJsonArrayBody(request)
+        // Exact match, not a hash: a reviewed transcript or changed metadata
+        // always forces full parsing and matching on the next successful poll.
+        if (recentPollCache.unchangedCompletedPage(body)) return
+        val records = parseTranscripts(session.profile, parseJsonArrayBody(body))
         if (!isCurrent(session) || !store.active(profileId)) return
         val firstPoll = !store.bootstrapped(profileId)
         if (firstPoll) {
@@ -1618,6 +1630,10 @@ object ScannerRepository {
                 recentPollCache.forget(row.callId)
             }
         }
+        // Do not remember a partial/failed page: it must be retried next poll.
+        if (isCurrent(session) && store.active(profileId) &&
+            session.state.status == ConnectionStatus.CONNECTED
+        ) recentPollCache.rememberCompletedPage(body)
     }
 
     private fun processLocalTranscript(
