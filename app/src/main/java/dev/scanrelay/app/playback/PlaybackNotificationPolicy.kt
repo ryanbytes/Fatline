@@ -75,6 +75,47 @@ internal object PlaybackNotificationPolicy {
  * audio is currently playing. The scanner service owns the single foreground
  * notification; this policy only chooses its public title and summary.
  */
+/**
+ * Live/history/transcript messages can publish a new ScannerState while the
+ * scanner remains connected and not playing. The idle notification only
+ * depends on active/connected/paused-connected counts, not archive contents,
+ * alert counts, listener totals or raw session status strings. Remember those
+ * three primitives instead of allocating a map or constructing new text for
+ * every received radio call. Active playback bypasses this gate entirely.
+ *
+ * Called only by ScannerService's main-thread StateFlow collector.
+ */
+internal class ScannerIdleNotificationGate {
+    private var initialized = false
+    private var previousActive = 0
+    private var previousConnected = 0
+    private var previousPausedConnected = 0
+
+    fun shouldRefresh(
+        activeProfiles: Set<String>,
+        pausedProfiles: Set<String>,
+        state: dev.scanrelay.app.model.ScannerState
+    ): Boolean {
+        var connected = 0
+        var pausedConnected = 0
+        for (profileId in activeProfiles) {
+            if (state.servers[profileId]?.status == dev.scanrelay.app.model.ConnectionStatus.CONNECTED) {
+                connected++
+                if (profileId in pausedProfiles) pausedConnected++
+            }
+        }
+        val changed = !initialized ||
+            previousActive != activeProfiles.size ||
+            previousConnected != connected ||
+            previousPausedConnected != pausedConnected
+        initialized = true
+        previousActive = activeProfiles.size
+        previousConnected = connected
+        previousPausedConnected = pausedConnected
+        return changed
+    }
+}
+
 internal object ScannerLockScreenPolicy {
     fun display(
         activeProfiles: Set<String>,
