@@ -40,7 +40,6 @@ import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.net.NetworkHandoffPolicy
 import dev.scanrelay.app.net.NetworkHandoffTransition
 import dev.scanrelay.app.net.ScannerRepository
-import dev.scanrelay.app.ui.TagColors
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -76,6 +75,8 @@ class ScannerService : MediaLibraryService() {
     private var lastPostedNotification: PlaybackNotificationText? = null
     private var lastPostedNotificationColor: Int? = null
     private var lastPostedPlayingMediaId: String? = null
+    // Do not traverse thousands of channels for each unchanged call/status frame.
+    private val playingTagColorCache = PlayingTagColorCache()
     // Only changed on the service main thread. Avoid reading SharedPreferences
     // whenever Media3 or scanner state emits a background update.
     private var monitoredProfileIds: Set<String> = emptySet()
@@ -886,10 +887,14 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun currentPlayingTagColor(): Int? {
-        if (!::player.isInitialized || !player.isPlaying) return null
-        val call = player.currentMediaItem?.mediaId?.let(callByMediaId::get) ?: return null
-        val server = ScannerRepository.state.value.servers[call.profileId]
-        val rgb = TagColors.playingCallColor(call, server) ?: return null
+        if (!::player.isInitialized || !player.isPlaying) {
+            playingTagColorCache.clear()
+            return null
+        }
+        val mediaId = currentPlayingMediaId()
+        val call = mediaId?.let(callByMediaId::get)
+        val server = call?.let { ScannerRepository.state.value.servers[it.profileId] }
+        val rgb = playingTagColorCache.colorFor(mediaId, call, server) ?: return null
         return android.graphics.Color.rgb(rgb.red, rgb.green, rgb.blue)
     }
 
