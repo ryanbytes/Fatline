@@ -12,6 +12,7 @@ import dev.scanrelay.app.alerts.AlertNotifier
 import dev.scanrelay.app.alerts.AlertDismissalStore
 import dev.scanrelay.app.alerts.LocalTranscriptAlertPolicy
 import dev.scanrelay.app.alerts.LocalTranscriptAlertStore
+import dev.scanrelay.app.alerts.RecentTranscriptPollCache
 import dev.scanrelay.app.alerts.localTranscriptAlert
 import dev.scanrelay.app.data.ChannelStore
 import dev.scanrelay.app.data.MonitoringOverrides
@@ -1491,6 +1492,9 @@ object ScannerRepository {
             return
         }
         session.transcriptMonitorJob = scope.launch {
+            // New monitor => fresh content cache. Changing rules or reconnecting
+            // never inherits previously skipped transcript IDs.
+            val recentPollCache = RecentTranscriptPollCache()
             // Reuse the foreground scanner service. No additional WebSocket is opened.
             // Pausing live audio never interrupts transcript polling.
             while (isCurrent(session) && store.active(profileId)) {
@@ -1501,7 +1505,7 @@ object ScannerRepository {
                         updateTranscriptMonitorStatus(session, "Live transcripts only · PIN required to poll")
                     else -> {
                         try {
-                            pollRecentTranscripts(session, store)
+                            pollRecentTranscripts(session, store, recentPollCache)
                             val cadence = if (store.batterySaver(profileId)) "1 minute" else "30 seconds"
                             updateTranscriptMonitorStatus(session, "Monitoring · checking every $cadence")
                         } catch (error: Throwable) {
@@ -1515,7 +1519,9 @@ object ScannerRepository {
         }
     }
 
-    private fun pollRecentTranscripts(session: Session, store: LocalTranscriptAlertStore) {
+    private fun pollRecentTranscripts(
+        session: Session, store: LocalTranscriptAlertStore, recentPollCache: RecentTranscriptPollCache
+    ) {
         val profileId = session.profile.id
         val pin = session.profile.pin.trim()
         if (pin.isBlank()) return
@@ -1537,8 +1543,19 @@ object ScannerRepository {
             val text = row.reviewedTranscript?.takeIf(String::isNotBlank)
                 ?: row.transcript
             if (text.isNotBlank()) {
-                processLocalTranscript(session, row.callId, text,
-                    row.systemLabel, row.talkgroupLabel ?: row.talkgroupName)
+                val talkgroup = row.talkgroupLabel ?: row.talkgroupName
+                if (recentPollCache.changed(row.callId, text, row.systemLabel, talkgroup)) {
+                    try {
+                        processLocalTranscript(session, row.callId, text, row.systemLabel, talkgroup)
+                    } catch (error: Throwable) {
+                        // Preserve the prior retry-on-error behavior: failed
+                        // processing must not mark a transcript as handled.
+                        recentPollCache.forget(row.callId)
+                        throw error
+                    }
+                }
+            } else {
+                recentPollCache.forget(row.callId)
             }
         }
     }
