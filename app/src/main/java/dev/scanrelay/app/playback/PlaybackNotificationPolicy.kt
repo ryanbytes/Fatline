@@ -86,3 +86,24 @@ internal object ScannerLockScreenAvailability {
         else -> "Scanner playback notifications are allowed. Android may still hide silent notifications on the lock screen."
     }
 }
+
+
+/**
+ * An always-on radio scanner is unlike a music player: it often has no
+ * playable item between transmissions, while its monitoring service and
+ * transcript alerts must stay active.
+ */
+internal object ScannerForegroundNotificationPolicy {
+    fun usesMediaStyle(isPlaying: Boolean): Boolean = isPlaying
+
+    /** A style transition is meaningful even if text and accent did not change. */
+    fun needsUpdate(
+        previous: PlaybackNotificationText?,
+        previousColor: Int?,
+        previousMediaStyle: Boolean?,
+        current: PlaybackNotificationText,
+        color: Int?,
+        mediaStyle: Boolean
+    ): Boolean = PlaybackNotificationPolicy.needsUpdate(previous, current) ||
+        previousColor != color || previousMediaStyle != mediaStyle
+}
