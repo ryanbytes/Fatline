@@ -774,6 +774,64 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun emptyAndSingleSourcePayloadsMatchLegacyParsingAndFallbacks() {
+        // Independent expected values from the previous general-purpose
+        // sorted/deduplicated parser, with no unit aliases configured.
+        fun src(ref: Long, pos: Int = 0, tag: String? = null): List<CallSource> =
+            listOf(CallSource(
+                position = pos, sourceRef = ref, tag = tag,
+                display = if (tag != null && tag != ref.toString()) "$tag | $ref" else ref.toString()
+            ))
+        fun tag(value: String, pos: Int = 0): List<CallSource> =
+            listOf(CallSource(position = pos, tag = value, display = value))
+        val cases = listOf(
+            """{}""" to emptyList(),
+            """{"sources":[]}""" to emptyList(),
+            """{"sources":[null]}""" to emptyList(),
+            """{"sources":[3]}""" to emptyList(),
+            """{"source":0}""" to emptyList(),
+            """{"source":21}""" to src(21L),
+            """{"source":21,"sources":[]}""" to src(21L),
+            """{"source":21,"sources":[null]}""" to src(21L),
+            """{"source":21,"sources":[{}]}""" to src(21L),
+            """{"source":21,"sources":[{"src":0}]}""" to src(21L),
+            """{"source":21,"sources":[{"src":42}]}""" to src(42L),
+            """{"source":21,"sources":[{"pos":8,"src":42,"tag":"Truck"}]}""" to src(42L, 8, "Truck"),
+            """{"sources":[{"src":42,"tag":"42"}]}""" to src(42L, 0, "42"),
+            """{"sources":[{"src":42,"tag":"  "}]}""" to src(42L),
+            """{"sources":[{"pos":6,"src":-10,"tag":"Medic"}]}""" to tag("Medic", 6),
+            """{"sources":[{"tag":"  Medic  "}]}""" to tag("Medic"),
+            """{"source":33,"sources":[{"src":0,"tag":"Medic"}]}""" to tag("Medic"),
+            """{"sources":[{"src":33,"tag":"33"}]}""" to src(33L, 0, "33")
+        )
+        for ((json, expected) in cases) {
+            assertEquals(json, expected, ScannerRepository.resolveCallSources(
+                emptyList(), 1, JSONObject(json)
+            ))
+        }
+    }
+
+    @Test
+    fun singleSourceFastPathStillRespectsConfiguredAliasesAndTags() {
+        val configured = listOf(SystemConfig(
+            systemRef = 1, label = "Law", talkgroups = emptyList(),
+            units = listOf(UnitAlias(label = "Truck 5", unitRef = 420))
+        ))
+        val examples = listOf(
+            """{"sources":[{"pos":3,"src":420}]}""" to "Truck 5 | 420",
+            """{"sources":[{"src":420,"tag":"Portable 7"}]}""" to "Portable 7 | 420",
+            """{"sources":[{"src":420,"tag":"420"}]}""" to "Truck 5 | 420",
+            """{"source":420,"sources":[]}""" to "Truck 5 | 420",
+            """{"source":420,"sources":[{"tag":"only tag"}]}""" to "only tag"
+        )
+        for ((json, expected) in examples) {
+            assertEquals(json, expected, ScannerRepository.resolveCallSources(
+                configured, 1, JSONObject(json)
+            ).single().display)
+        }
+    }
+
+    @Test
     fun callSourcesFallBackToLegacySingleSource() {
         val payload = JSONObject("""{"source":12345}""")
         val sources = ScannerRepository.resolveCallSources(emptyList(), 1, payload)
