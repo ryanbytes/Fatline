@@ -186,6 +186,70 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun singleServerNewestFirstAggregateReusesHistoryListWithoutSorting() {
+        val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val calls = (1..100).map { index ->
+            historyCall(
+                index.toLong(),
+                Instant.ofEpochMilli((1_000 - index).toLong() * 1_000L).toString()
+            )
+        }
+        val server = ServerScannerState(profile = profile, history = calls, historySort = -1)
+        val result = ScannerStateAggregationPolicy.aggregateHistory(mapOf(profile.id to server))
+        assertSame(calls, result)
+        assertEquals(calls, result)
+    }
+
+    @Test
+    fun singleServerLargeArchiveKeepsNewest500AndDoesNotMutateOriginal() {
+        val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val calls = (0..1_000).map { index ->
+            historyCall(
+                index.toLong(),
+                Instant.ofEpochMilli((1_000 - index).toLong() * 1_000L).toString()
+            )
+        }
+        val server = ServerScannerState(profile = profile, history = calls, historySort = -1)
+        val result = ScannerStateAggregationPolicy.aggregateHistory(mapOf("one" to server))
+        assertEquals(calls.take(500), result)
+        assertEquals(1_001, calls.size)
+    }
+
+    @Test
+    fun ascendingAndMultiServerArchivesRetainGlobalDescendingSortAndStableTies() {
+        val one = ServerProfile(id = "one", name = "One", baseUrl = "https://one.invalid")
+        val two = ServerProfile(id = "two", name = "Two", baseUrl = "https://two.invalid")
+        val a = listOf(
+            historyCall(1, "2026-10-09T10:00:00Z"),
+            historyCall(2, "2026-10-09T10:01:00Z"),
+            historyCall(3, "not-an-instant")
+        )
+        val b = listOf(
+            historyCall(4, "2026-10-09T10:01:00Z"),
+            historyCall(5, "2026-10-09T10:05:00Z")
+        )
+        val scenarios = listOf(
+            mapOf("one" to ServerScannerState(profile = one, history = a, historySort = 1)),
+            linkedMapOf(
+                "one" to ServerScannerState(profile = one, history = a, historySort = 1),
+                "two" to ServerScannerState(profile = two, history = b, historySort = -1)
+            ),
+            linkedMapOf(
+                "one" to ServerScannerState(profile = one, history = a.asReversed(), historySort = -1),
+                "two" to ServerScannerState(profile = two, history = b.asReversed(), historySort = -1)
+            )
+        )
+        for (servers in scenarios) {
+            val expected = servers.values.flatMap { it.history }
+                .sortedByDescending {
+                    runCatching { Instant.parse(it.dateTime).toEpochMilli() }.getOrDefault(0L)
+                }.take(500)
+            assertEquals(expected, ScannerStateAggregationPolicy.aggregateHistory(servers))
+        }
+        assertEquals(emptyList<RadioCall>(), ScannerStateAggregationPolicy.aggregateHistory(emptyMap()))
+    }
+
+    @Test
     fun changedArchiveOrAlertsInvalidateOnlyTheirOwnAggregatedCache() {
         val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
         val call = RadioCall(profileId = "one", serverName = "One", id = 1,
