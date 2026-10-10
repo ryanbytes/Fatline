@@ -1022,7 +1022,11 @@ class ScannerService : MediaLibraryService() {
                 .putExtra(EXTRA_AUDIO_PATH, path)
                 .putExtra(EXTRA_TITLE, call.talkgroupLabel)
                 .putExtra(EXTRA_SUBTITLE, "${call.serverName} · ${call.systemLabel}")
-            runCatching { context.startService(intent) }.onFailure { ContextCompat.startForegroundService(context, intent) }
+            PendingAudioDispatchPolicy.dispatch(
+                tryStart = { context.startService(intent) },
+                tryForegroundStart = { ContextCompat.startForegroundService(context, intent) },
+                onUnrecoverableFailure = { pendingCalls.remove(token) }
+            )
         }
 
         fun filterProfileMedia(context: Context, profileId: String) {
