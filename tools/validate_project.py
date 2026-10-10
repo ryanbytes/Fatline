@@ -477,10 +477,10 @@ require('fun playingCallColor(' in tag_colors_policy
         and 'if (!::player.isInitialized || !player.isPlaying) return null' in service
         and 'lastPostedNotificationColor, lastPostedPlayingMediaId,' in service
         and 'lastPostedNotificationColor = color' in service
-        and 'builder.setColor(tagColor).setColorized(false)' in service
-        and 'builder.setColor(tagColor).setColorized(true)' not in service
+        and 'builder.setColor(tagColor).setColorized(true)' in service
+        and 'builder.setColor(tagColor).setColorized(false)' not in service
         and 'activeCallTagColorUsesConfiguredOverridesAndSemanticDefaults' in tag_colors_tests,
-        'lock-screen notification must retain the active talkgroup accent without filling the card background or keeping stale colors')
+        'lock-screen notification must use active talkgroup full-background tint, with no stale color when idle')
 
 require('Box(Modifier.fillMaxWidth().height(48.dp))' in scanner_card
         and 'heightIn(min = 76.dp)' in ui

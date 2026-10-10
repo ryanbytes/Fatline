@@ -866,11 +866,10 @@ class ScannerService : MediaLibraryService() {
             .addAction(R.drawable.ic_fatline_skip, "Skip call", skip)
             .addAction(R.drawable.ic_fatline_clear, "Clear queue", clearQueue)
             .addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
-        // Preserve the system's neutral notification surface and readable
-        // text. The current talkgroup color is an accent only; colorizing the
-        // entire FGS card produced an excessively bright solid background.
-        // Never carry a previous call's accent into idle monitoring.
-        if (tagColor != null) builder.setColor(tagColor).setColorized(false)
+        // The active talkgroup color fills the scanner notification.
+        // The color source is current playback only, so idle monitoring
+        // returns to the normal system surface without stale tag colors.
+        if (tagColor != null) builder.setColor(tagColor).setColorized(true)
         return builder.build()
     }
 
