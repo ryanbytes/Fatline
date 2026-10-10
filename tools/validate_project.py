@@ -497,13 +497,24 @@ require('MediaStyleNotificationHelper' not in notification_body
 
 tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
 tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
+require('internal class PlayingTagColorCache' in notification_policy
+        and 'lastSystems === server.systems' in notification_policy
+        and 'lastTagColors === server.tagColors' in notification_policy
+        and 'lastCall === call' in notification_policy
+        and 'lastMediaId == mediaId' in notification_policy
+        and 'lastMediaId = null' in notification_policy
+        and 'private val playingTagColorCache = PlayingTagColorCache()' in service
+        and 'activeTalkgroupColorReusesResolutionAcrossUnchangedScannerUpdates' in notification_tests,
+        'notification tag color must be cached only for matching active media and immutable tag config')
 require('fun playingCallColor(' in tag_colors_policy
         and 'return rgb(tag, server.tagColors)' in tag_colors_policy
         and 'val tagRgb = TagColors.playingCallColor(currentlyPlayingCall, server)' in ui
         and 'CardDefaults.cardColors(containerColor = cardColor)' in ui
         and 'TagColors.playingCallColor(call, server)' in ui
-        and 'TagColors.playingCallColor(call, server)' in service
-        and 'if (!::player.isInitialized || !player.isPlaying) return null' in service
+        and 'TagColors::playingCallColor' in notification_policy
+        and 'playingTagColorCache.colorFor(mediaId, call, server)' in service
+        and 'if (!::player.isInitialized || !player.isPlaying)' in service
+        and 'playingTagColorCache.clear()' in service
         and 'lastPostedNotificationColor, lastPostedPlayingMediaId,' in service
         and 'lastPostedNotificationColor = color' in service
         and 'builder.setColor(tagColor).setColorized(true)' in service
