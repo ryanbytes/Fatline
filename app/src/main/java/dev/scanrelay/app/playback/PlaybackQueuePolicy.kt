@@ -156,6 +156,28 @@ internal object PlaybackQueueProjectionPolicy {
     }
 }
 
+
+/**
+ * Android may reject both the ordinary and foreground service-start attempts
+ * (notably if an app is background-restricted). An accepted call is cached in a
+ * process-wide map while its intent is delivered. If *both* attempts fail,
+ * release that unconsumed call immediately instead of leaking it indefinitely.
+ *
+ * Keep normal and foreground fallback paths exactly as before.
+ */
+internal object PendingAudioDispatchPolicy {
+    fun dispatch(
+        tryStart: () -> Unit,
+        tryForegroundStart: () -> Unit,
+        onUnrecoverableFailure: () -> Unit
+    ): Boolean {
+        if (runCatching(tryStart).isSuccess) return true
+        if (runCatching(tryForegroundStart).isSuccess) return true
+        onUnrecoverableFailure()
+        return false
+    }
+}
+
 /**
  * Recent means a completed, actually progressed live recording, never merely
  * an arrived/queued media item or a transient Media3 ready/playing callback.
