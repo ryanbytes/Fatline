@@ -428,7 +428,10 @@ require('internal object ScannerLockScreenPolicy' in notification_policy
         and 'monitoredProfileIds = activeProfileIds()' in service
         and 'monitoredProfileIds = active.toSet()' in service
         and 'ScannerRepository.state.collect { state ->' in service
-        and 'if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()' in service
+        and 'idleNotificationGate.shouldRefresh(' in service
+        and 'player.isPlaying || idleNotificationGate.shouldRefresh(' in service
+        and 'idleGateSkipsUnchangedHistoryListenerAndTranscriptEvents' in notification_tests
+        and 'idleGateRefreshesOnConnectionAndMembershipTransitions' in notification_tests
         and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
         and 'NotificationCompat.CATEGORY_TRANSPORT' not in service and 'NotificationCompat.CATEGORY_SERVICE' in service
         and 'channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC' in service
@@ -973,6 +976,20 @@ require('getSharedPreferences("fatline_dismissed_alerts"' in alert_dismissal
 
 probe = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PerformanceProbe.kt').read_text()
 probe_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PerformanceProbeTest.kt').read_text()
+require('internal class ScannerIdleNotificationGate' in notification_policy
+        and 'previousActive != activeProfiles.size' in notification_policy
+        and 'previousConnected != connected' in notification_policy
+        and 'previousPausedConnected != pausedConnected' in notification_policy
+        and 'player.isPlaying || idleNotificationGate.shouldRefresh(' in service
+        and 'idleGateSkipsUnchangedHistoryListenerAndTranscriptEvents' in notification_tests
+        and 'idleGateRefreshesOnConnectionAndMembershipTransitions' in notification_tests,
+        'unchanged idle scanner state must avoid notification work without hiding playback updates')
+require('val reading = withContext(Dispatchers.Default)' in service
+        and 'PerformanceReader.read(applicationContext)' in service
+        and 'performanceProbe?.sample(reading)' in service
+        and 'next.pssKb?.let { pss -> peakPssKb = maxOf(peakPssKb ?: pss, pss) }' in probe
+        and 'nullablePssPeakTrackingPreservesPeakAcrossMissingSamples' in probe_tests,
+        'opt-in performance sampling must not block the UI thread or allocate peak PSS lists')
 require('object PerformanceReader' in probe
         and 'Process.getElapsedCpuTime()' in probe
         and 'Debug.getPss()' in probe
