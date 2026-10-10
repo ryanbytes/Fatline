@@ -296,7 +296,7 @@ require('AndroidAutoFavoritesCache' in auto_policy
         and 'previous.systems === server.systems' in auto_policy
         and 'previous.hiddenSystems === server.hiddenSystemRefs' in auto_policy
         and 'private val favoriteLibraryCache = AndroidAutoFavoritesCache()' in service
-        and 'favoriteLibraryCache.refresh(profileId, state)' in service,
+        and 'favoriteLibraryCache.forEachChanged(state)' in service,
         'Android Auto favorites must reuse unchanged config when only audio/alerts update')
 require('skipsRebuildOnLiveCallAndAlertStateChanges' in auto_tests
         and 'changedFavoritesAndHiddenSystemsRefreshAutoLibrary' in auto_tests
@@ -892,6 +892,20 @@ require('weatherBaselineChanged(knownIds, activeIds)' in weather
         and 'return current.filterNot { it.id in knownIds }' in weather
         and 'unchangedWeatherAlertsSkipDiskWritesButStillAllowNewWarnings' in weather_tests,
         'NWS polling must preserve alerts while avoiding unchanged baseline writes')
+
+
+require('fun hasChanges(previous: ScannerState, current: Map<String, ServerScannerState>)' in repo
+        and 'if (!ScannerStateAggregationPolicy.hasChanges(previous, serverMap)) return' in repo
+        and 'identicalPublishedServerReferencesNeedNoNewStateEmission' in aggregation_tests
+        and 'anyChangedServerOrProfileMembershipForcesPublication' in aggregation_tests,
+        'unchanged per-server snapshot references must bypass unnecessary state publication')
+require('fun forEachChanged(state: ScannerState, onChanged: (String, Int) -> Unit)' in auto_policy
+        and 'val stale = snapshots.entries.iterator()' in auto_policy
+        and 'favoriteLibraryCache.forEachChanged(state)' in service
+        and 'autoLibraryBulkRefreshDoesNotNotifyOnPlaybackAndStatusChanges' in auto_tests
+        and 'autoLibraryBulkRefreshNotifiesOnlyActualFavoriteChanges' in auto_tests
+        and 'autoLibraryBulkRefreshPrunesProfilesOnRemovalAndEqualSizeReplacement' in auto_tests,
+        'Android Auto favorites must skip unchanged scanner events and prune obsolete profile snapshots')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()
