@@ -50,6 +50,26 @@ internal object TagColors {
         }
     }
 
+    /**
+     * One source of truth for the playing-card tint and the lock-screen
+     * notification accent. Never use a previously received or queued call:
+     * callers pass only the call that Media3 reports as actually playing.
+     */
+    fun playingCallColor(
+        call: dev.scanrelay.app.model.RadioCall?,
+        server: dev.scanrelay.app.model.ServerScannerState?
+    ): UiAccentRgb? {
+        if (call == null || server == null || call.profileId != server.profile.id) return null
+        val tag = server.systems
+            .firstOrNull { it.systemRef == call.systemRef }
+            ?.talkgroups
+            ?.firstOrNull { it.talkgroupRef == call.talkgroupRef }
+            ?.tag
+            ?.takeIf(String::isNotBlank)
+            ?: return null
+        return rgb(tag, server.tagColors)
+    }
+
     fun rgb(tag: String, colors: Map<String, String>): UiAccentRgb {
         val value = resolvedHex(tag, colors).removePrefix("#").toInt(16)
         return UiAccentRgb(

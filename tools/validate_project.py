@@ -280,7 +280,7 @@ require('ScannerHudPanel(server, currentlyPlayingCall)' in scanner_card, 'scanne
 require('ScannerHudPolicy.flags(' in ui and '"LIVE" to flags.live' in ui and '"SCAN" to flags.scan' in ui and '"RX" to flags.rx' in ui, 'scanner HUD annunciators must derive from real state')
 require('"HOLD SYS" to flags.holdSystem' in ui and '"HOLD TG" to flags.holdTalkgroup' in ui and '"PAUSE" to flags.pause' in ui, 'scanner HUD hold/pause indicators missing')
 require('isPlaying = call != null' in ui and 'scan = live && !isPlaying' in hud_policy and 'rx = isPlaying' in hud_policy, 'HUD must not fake receiving while idle')
-require('server.tagColors::get' in ui and 'tagBacklight.copy(alpha = 0.14f)' in ui, 'HUD tag-color backlight missing')
+require('val tagRgb = TagColors.playingCallColor(call, server)' in ui and 'tagBacklight.copy(alpha = 0.14f)' in ui, 'HUD tag-color backlight missing')
 require('connectedIdleShowsScanningButNotReceiverActivity' in hud_tests and 'disconnectedBufferedPlaybackIsStillRecognizedAsAudio' in hud_tests, 'HUD truthful state regression tests missing')
 
 require('Playback queue' not in scanner_screen, 'separate playback queue card must be removed')
@@ -387,9 +387,44 @@ require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)
         and 'if (!foregroundStarted) {' in service
         and 'foregroundStarted = false' in service
         and 'lastPostedNotification = null' in service
-        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))' in service
+        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText, color))' in service
         and 'identicalNotificationTextAndQueueCountDoNotRepublish' in notification_tests,
         'notification posting must skip duplicates without omitting queue/status changes')
+require('internal object ScannerLockScreenPolicy' in notification_policy
+        and 'if (activeProfiles.isEmpty()) return playing' in notification_policy
+        and 'if (connected == 0)' in notification_policy
+        and '"FatLine · Scanning"' in notification_policy
+        and '"FatLine · Monitoring"' in notification_policy
+        and 'ScannerLockScreenPolicy.display(' in service
+        and 'monitoredProfileIds = activeProfileIds()' in service
+        and 'monitoredProfileIds = active.toSet()' in service
+        and 'ScannerRepository.state.collect { state ->' in service
+        and 'if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()' in service
+        and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
+        and '.setCategory(NotificationCompat.CATEGORY_SERVICE)' in service
+        and 'channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC' in service
+        and 'private const val NOTIFICATION_ID = 8101' in service
+        and 'lockScreenShowsScanningBetweenCallsWhenConnected' in notification_tests
+        and 'lockScreenReportsDisconnectedAndPartialConnectionsWithoutClaimingScanning' in notification_tests
+        and 'lockScreenShowsMonitoringWhenLiveAudioIsPausedButConnectionRemains' in notification_tests
+        and 'lockScreenDoesNotShowScanningAfterLastScannerDisconnects' in notification_tests,
+        'single foreground notification must show accurate public lock-screen scanner status')
+
+tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
+tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
+require('fun playingCallColor(' in tag_colors_policy
+        and 'return rgb(tag, server.tagColors)' in tag_colors_policy
+        and 'val tagRgb = TagColors.playingCallColor(currentlyPlayingCall, server)' in ui
+        and 'CardDefaults.cardColors(containerColor = cardColor)' in ui
+        and 'TagColors.playingCallColor(call, server)' in ui
+        and 'TagColors.playingCallColor(call, server)' in service
+        and 'if (!::player.isInitialized || !player.isPlaying) return null' in service
+        and 'lastPostedNotificationColor == color' in service
+        and 'lastPostedNotificationColor = color' in service
+        and 'builder.setColor(tagColor).setColorized(true)' in service
+        and 'activeCallTagColorUsesConfiguredOverridesAndSemanticDefaults' in tag_colors_tests,
+        'lock-screen notification and in-app playing card must share active talkgroup tag color with stale-color reset')
+
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
