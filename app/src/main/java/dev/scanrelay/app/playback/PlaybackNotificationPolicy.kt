@@ -107,3 +107,18 @@ internal object ScannerForegroundNotificationPolicy {
     ): Boolean = PlaybackNotificationPolicy.needsUpdate(previous, current) ||
         previousColor != color || previousMediaStyle != mediaStyle
 }
+
+
+/**
+ * Intentionally safe for anyone who can see a locked phone. Keep server names,
+ * channel/talkgroup labels, transcripts, queue contents and metadata out of
+ * the public notification even when the private media notification changes.
+ */
+internal object ScannerPublicLockScreenPolicy {
+    fun display(hasMonitoredProfiles: Boolean, isPlaying: Boolean): PlaybackNotificationText =
+        when {
+            hasMonitoredProfiles -> PlaybackNotificationText("FatLine", "Scanner active")
+            isPlaying -> PlaybackNotificationText("FatLine", "Audio playback active")
+            else -> PlaybackNotificationText("FatLine", "Scanner service active")
+        }
+}
