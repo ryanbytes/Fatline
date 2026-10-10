@@ -3653,14 +3653,14 @@ object ScannerRepository {
     }
 
     private fun pruneCache(dir: File, context: Context) {
-        val files = dir.listFiles()?.sortedByDescending { it.lastModified() }.orEmpty()
+        val files = dir.listFiles() ?: return
+        // Filesystem mtime lookups are more expensive than memory comparisons.
+        // Read each mtime once; keep the same stable newest-first order.
+        val newestFirst = PlaybackCachePolicy.newestFirst(files)
+        // Always load persisted recovery paths fresh when a sweep actually runs.
+        // No queued/currently playing recording may be evicted.
         val protectedPaths = PlaybackQueueStore(context).protectedAudioPaths()
-        // Queued and currently playing files are never candidates for eviction.
-        // Keep the newest 150 *unprotected* files to bound unrelated cache growth.
-        val evictable = PlaybackCachePolicy.evictablePaths(
-            files.map { it.absolutePath }, protectedPaths
-        ).toSet()
-        files.filter { it.absolutePath in evictable }.forEach { it.delete() }
+        PlaybackCachePolicy.forEachEvictableFile(newestFirst, protectedPaths) { it.delete() }
     }
 
     private fun labels(systems: List<SystemConfig>, systemRef: Long, talkgroupRef: Long): Pair<String, String> {
