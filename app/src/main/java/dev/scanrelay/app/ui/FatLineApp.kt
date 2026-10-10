@@ -31,6 +31,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -59,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -475,7 +477,17 @@ private fun ScannerStatusCard(
     val outputVolumePercent by ScannerService.outputVolumePercent.collectAsStateWithLifecycle()
     var pendingVolume by remember { mutableStateOf(outputVolumePercent) }
     LaunchedEffect(outputVolumePercent) { pendingVolume = outputVolumePercent }
-    Card(Modifier.padding(horizontal = 16.dp)) {
+    val tagRgb = TagColors.playingCallColor(currentlyPlayingCall, server)
+    val baseColor = MaterialTheme.colorScheme.surfaceContainerLow
+    // The entire player card follows the active talkgroup tag. Use a subtle
+    // blend to keep all labels and controls readable in the dark theme.
+    val cardColor = tagRgb?.let {
+        lerp(baseColor, Color(it.red, it.green, it.blue), 0.16f)
+    } ?: baseColor
+    Card(
+        Modifier.padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = cardColor)
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -697,8 +709,8 @@ private fun ScannerHudPanel(server: ServerScannerState, currentlyPlayingCall: Ra
             ?.talkgroups?.firstOrNull { it.talkgroupRef == current.talkgroupRef }
     }
     val tag = talkgroup?.tag?.takeIf(String::isNotBlank)
-    val tagBacklight = tag?.let(server.tagColors::get)
-        ?.let { raw -> runCatching { Color(android.graphics.Color.parseColor(raw)) }.getOrNull() }
+    val tagRgb = TagColors.playingCallColor(call, server)
+    val tagBacklight = tagRgb?.let { Color(it.red, it.green, it.blue) }
         ?: MaterialTheme.colorScheme.primary
     val flags = ScannerHudPolicy.flags(
         connection = server.status,
