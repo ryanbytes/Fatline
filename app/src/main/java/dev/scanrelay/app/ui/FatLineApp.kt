@@ -3017,6 +3017,13 @@ private fun SettingsScreen(
     val accountEmailChange by viewModel.accountEmailChange.collectAsStateWithLifecycle()
     val performanceCapture by ScannerService.performanceCapture.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    var lockScreenStatus by remember { mutableStateOf(ScannerService.lockScreenNotificationStatus(context)) }
+    val lockScreenSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        // Re-read effective app/channel access after Android Settings closes.
+        lockScreenStatus = ScannerService.lockScreenNotificationStatus(context)
+    }
     var performanceScenario by remember { mutableStateOf("Idle monitoring") }
     var performanceScenarioMenu by remember { mutableStateOf(false) }
     var editingId by remember(selectedProfileId) {
@@ -3507,6 +3514,21 @@ private fun SettingsScreen(
 
                     HorizontalDivider()
                     Text("Notifications", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Lock-screen scanning indicator", style = MaterialTheme.typography.bodyMedium)
+                    Text(lockScreenStatus, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "The foreground scanner notification needs Android notification permission. " +
+                            "In Android Settings also allow silent notifications on the lock screen; " +
+                            "FatLine cannot override a hidden or blocked notification.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            lockScreenSettingsLauncher.launch(
+                                ScannerService.lockScreenNotificationSettingsIntent(context)
+                            )
+                        }
+                    ) { Text("Lock-screen notification settings") }
                     Text("Alert sound: " + alertSoundLabel, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = {
