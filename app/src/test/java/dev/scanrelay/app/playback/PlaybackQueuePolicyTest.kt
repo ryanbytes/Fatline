@@ -58,6 +58,53 @@ class PlaybackQueuePolicyTest {
     }
 
     @Test
+    fun delimiterProfileRemovalAndChannelPruningMatchOldSplitParsers() {
+        fun previousLive(id: String, profile: String): Boolean {
+            val parts = id.split(':', limit = 4)
+            return parts.size == 4 && parts[0] == "call" &&
+                parts[1] == profile && parts[2] == "live" && parts[3].isNotBlank()
+        }
+        fun previousChannel(id: String, profile: String): dev.scanrelay.app.model.ChannelKey? {
+            val parts = id.split(':')
+            if (parts.size < 7 || parts[0] != "call" ||
+                parts[1] != profile || parts[2] != "live"
+            ) return null
+            val system = parts[4].toLongOrNull() ?: return null
+            val tg = parts[5].toLongOrNull() ?: return null
+            return dev.scanrelay.app.model.ChannelKey(system, tg)
+        }
+        val cases = listOf(
+            "", "call:", "call::live:x:1:2:t", "call:p1:live:",
+            "call:p1:live: ", "call:p1:live:  :  ", "call:p1:live:12",
+            "call:p1:live:12:1:2:token", "call:p1:live:12:1:2:",
+            "call:p1:live:12:1:2:token:extra", "call:p1:live:x:1:2:t",
+            "call:p1:live:12:+1:-2:t", "call:p1:live:12:0:0:t",
+            "call:p1:live:12::2:t", "call:p1:live:12:1::t",
+            "call:p1:replay:12:1:2:t", "call:p1:Live:12:1:2:t",
+            "CALL:p1:live:12:1:2:t", "call:p1:live:12:1:2",
+            "call:p1:live:12:1:2:t:", "call:p1:live:12:1:2:t::",
+            "call:p2:live:12:1:2:t", "call:p1:live:12:1:2:t",
+            "call:p1:live:12:1:2:\t", "call:p1:live:12:1:2:é"
+        ) + (0 until 200).map { i ->
+            "call:p${i % 5}:${if (i % 3 == 0) "replay" else "live"}:c$i:${i - 100}:${i * 3}:token:$i"
+        }
+        for (profile in listOf("", "p1", "p2", "p3", "p4", "p0", "unknown", "p:1")) {
+            for (value in cases) {
+                assertEquals(
+                    "live removal profile=$profile media=$value",
+                    previousLive(value, profile),
+                    PlaybackQueuePolicy.isLiveCallForProfile(value, profile)
+                )
+                assertEquals(
+                    "channel prune profile=$profile media=$value",
+                    previousChannel(value, profile),
+                    PlaybackQueuePolicy.liveChannelForProfile(value, profile)
+                )
+            }
+        }
+    }
+
+    @Test
     fun pendingAudioLaunchKeepsCallWhenNormalServiceStartWorks() {
         val pending = mutableMapOf("token" to liveCall(1))
         var normal = 0
