@@ -850,7 +850,10 @@ class ScannerService : MediaLibraryService() {
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(open)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // The device-wide sensitive-content switch stays OFF. FatLine's
+            // user-requested public preview exposes FatLine radio details only.
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicLockScreenNotification(open, title, text))
             .setCategory(
                 if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) NotificationCompat.CATEGORY_TRANSPORT
                 else NotificationCompat.CATEGORY_SERVICE
@@ -882,6 +885,38 @@ class ScannerService : MediaLibraryService() {
         // the tag color wherever the system supports it.
         if (tagColor != null) builder.setColor(tagColor).setColorized(true)
         return builder.build()
+    }
+
+    private fun publicLockScreenNotification(
+        open: PendingIntent,
+        title: String,
+        text: String
+    ): Notification {
+        val call = if (player.isPlaying) {
+            player.currentMediaItem?.mediaId?.let(callByMediaId::get)
+        } else null
+        val queued = PlaybackQueuePolicy.queuedCount(
+            player.mediaItemCount, player.currentMediaItemIndex
+        )
+        val details = ScannerPublicLockScreenPolicy.display(
+            current = PlaybackNotificationText(title, text),
+            activeCall = call,
+            queuedCount = queued
+        )
+        // Only this app's public notification is detailed: do not disable the
+        // global lock-screen privacy setting or create a second notification.
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_fatline_talkgroup)
+            .setContentTitle(details.title)
+            .setContentText(details.summary)
+            .setContentIntent(open)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(details.expanded))
+            .build()
     }
 
     private fun currentPlayingTagColor(): Int? {

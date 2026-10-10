@@ -1,6 +1,7 @@
 package dev.scanrelay.app.playback
 
 import dev.scanrelay.app.model.ConnectionStatus
+import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
@@ -208,6 +209,74 @@ class PlaybackNotificationPolicyTest {
                 idle, 0xFF2979FF.toInt(), false, idle.copy(), 0xFF2979FF.toInt(), false
             )
         )
+    }
+
+    private fun exampleCall(transcript: String? = null) = RadioCall(
+        profileId = "p1",
+        serverName = "Wabash",
+        id = 12,
+        systemRef = 11,
+        talkgroupRef = 341,
+        systemLabel = "SAFE-T",
+        talkgroupLabel = "Fire Dispatch",
+        dateTime = "",
+        transcript = transcript
+    )
+
+    @Test
+    fun publicLockScreenCopyShowsCurrentTalkgroupSystemServerAndQueue() {
+        assertEquals(
+            ScannerPublicNotification(
+                "Fire Dispatch",
+                "Wabash · SAFE-T · TG 341 · 2 queued",
+                "Wabash · SAFE-T · TG 341 · 2 queued"
+            ),
+            ScannerPublicLockScreenPolicy.display(
+                current = PlaybackNotificationText("FatLine · Scanning", "Playing: Fire Dispatch"),
+                activeCall = exampleCall(),
+                queuedCount = 2
+            )
+        )
+    }
+
+    @Test
+    fun publicLockScreenCopyIncludesAvailableTranscriptOnlyForLivePlayback() {
+        val call = exampleCall("Engine 3 responding to Main Street")
+        val expected = ScannerPublicLockScreenPolicy.display(
+            current = PlaybackNotificationText("FatLine", "Active"),
+            activeCall = call,
+            queuedCount = 0
+        )
+        assertEquals("Fire Dispatch", expected.title)
+        assertEquals("Wabash · SAFE-T · TG 341", expected.summary)
+        assertEquals("Wabash · SAFE-T · TG 341\nEngine 3 responding to Main Street", expected.expanded)
+
+        val idle = ScannerPublicLockScreenPolicy.display(
+            current = PlaybackNotificationText("FatLine · Scanning", "1 scanner connected"),
+            activeCall = null,
+            queuedCount = 4
+        )
+        assertEquals(
+            ScannerPublicNotification("FatLine · Scanning", "1 scanner connected", "1 scanner connected"),
+            idle
+        )
+    }
+
+    @Test
+    fun publicLockScreenCopyLimitsTranscriptPreviewLengthAndUsesFallbacks() {
+        val call = exampleCall("x".repeat(250)).copy(
+            talkgroupLabel = "",
+            serverName = "",
+            systemLabel = ""
+        )
+        val copy = ScannerPublicLockScreenPolicy.display(
+            current = PlaybackNotificationText("FatLine", "Now receiving"),
+            activeCall = call,
+            queuedCount = 0
+        )
+        assertEquals("Radio traffic", copy.title)
+        assertEquals("TG 341", copy.summary)
+        assertEquals("TG 341\n" + "x".repeat(180), copy.expanded)
     }
 
     @Test

@@ -443,6 +443,31 @@ require('override fun onUpdateNotification(session: MediaSession, startInForegro
         and 'liveTagColorAndChangedScannerStatusStillPublishWithoutSpuriousRefresh' in notification_tests,
         'persistent idle scanner foreground notification must resist Media3 idle cleanup and switch correctly to media playback')
 
+require('internal object ScannerPublicLockScreenPolicy' in notification_policy
+        and 'internal data class ScannerPublicNotification(' in notification_policy
+        and 'activeCall.talkgroupLabel.ifBlank { "Radio traffic" }' in notification_policy
+        and 'activeCall.systemLabel.takeIf(String::isNotBlank)' in notification_policy
+        and 'activeCall.serverName.takeIf(String::isNotBlank)' in notification_policy
+        and 'activeCall.transcript?.trim()?.takeIf(String::isNotBlank)' in notification_policy
+        and '?.take(180)' in notification_policy
+        and 'if (activeCall == null)' in notification_policy
+        and '.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)' in service
+        and '.setPublicVersion(publicLockScreenNotification(open, title, text))' in service
+        and 'private fun publicLockScreenNotification(' in service
+        and 'ScannerPublicLockScreenPolicy.display(' in service
+        and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
+        and 'publicLockScreenCopyShowsCurrentTalkgroupSystemServerAndQueue' in notification_tests
+        and 'publicLockScreenCopyIncludesAvailableTranscriptOnlyForLivePlayback' in notification_tests
+        and 'publicLockScreenCopyLimitsTranscriptPreviewLengthAndUsesFallbacks' in notification_tests,
+        'only FatLine public lock-screen copy must expose requested call details without changing other apps')
+public_notification = service.split('private fun publicLockScreenNotification(', 1)[1].split('private fun currentPlayingTagColor()', 1)[0]
+require('MediaStyleNotificationHelper' not in public_notification
+        and '.setColorized(' not in public_notification
+        and 'player.isPlaying' in public_notification
+        and 'activeCall = call' in public_notification
+        and 'NotificationCompat.BigTextStyle().bigText(details.expanded)' in public_notification,
+        'public lock-screen preview must retain idle scanner status without fake playback or extra channel')
+
 tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
 tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
 require('fun playingCallColor(' in tag_colors_policy

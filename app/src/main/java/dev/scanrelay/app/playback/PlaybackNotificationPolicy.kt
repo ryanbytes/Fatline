@@ -107,3 +107,46 @@ internal object ScannerForegroundNotificationPolicy {
     ): Boolean = PlaybackNotificationPolicy.needsUpdate(previous, current) ||
         previousColor != color || previousMediaStyle != mediaStyle
 }
+
+
+/**
+ * FatLine-specific public lock-screen preview. The user wants radio call
+ * details visible without changing the phone-wide sensitive-content setting.
+ * Only FatLine's own public version includes these details.
+ *
+ * Null activeCall is the strict idle case: never expose a previously played
+ * call or a queued call as though it is receiving right now.
+ */
+internal data class ScannerPublicNotification(
+    val title: String,
+    val summary: String,
+    val expanded: String
+)
+
+internal object ScannerPublicLockScreenPolicy {
+    fun display(
+        current: PlaybackNotificationText,
+        activeCall: dev.scanrelay.app.model.RadioCall?,
+        queuedCount: Int
+    ): ScannerPublicNotification {
+        if (activeCall == null) return ScannerPublicNotification(
+            current.title,
+            current.subtitle,
+            current.subtitle
+        )
+        val title = activeCall.talkgroupLabel.ifBlank { "Radio traffic" }
+        val location = listOfNotNull(
+            activeCall.serverName.takeIf(String::isNotBlank),
+            activeCall.systemLabel.takeIf(String::isNotBlank),
+            "TG ${activeCall.talkgroupRef}",
+            if (queuedCount > 0) "$queuedCount queued" else null
+        ).joinToString(" · ")
+        val transcript = activeCall.transcript?.trim()?.takeIf(String::isNotBlank)
+            ?.take(180)
+        return ScannerPublicNotification(
+            title = title,
+            summary = location,
+            expanded = if (transcript != null) "$location\n$transcript" else location
+        )
+    }
+}
