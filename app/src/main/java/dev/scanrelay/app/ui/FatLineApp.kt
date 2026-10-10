@@ -124,9 +124,8 @@ fun FatLineApp(viewModel: ScannerViewModel) {
     // More contains Alerts. Surface a visible dot for alerts received since the
     // current app session first loaded them or the user last opened Alerts.
     var seenAlertKeys by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
-    val currentAlertKeys = scanner.servers.mapValues { (_, state) ->
-        state.alerts.map { it.stableKey }.toSet()
-    }
+    val alertKeysCache = remember { AlertKeySnapshotCache() }
+    val currentAlertKeys = alertKeysCache.snapshot(scanner.servers)
     LaunchedEffect(currentAlertKeys, tab) {
         val next = AlertDotPolicy.markViewedOrBaseline(
             seenAlertKeys, currentAlertKeys, viewingAlerts = tab == AppTab.Alerts
