@@ -116,6 +116,85 @@ class AndroidAutoLibraryPolicyTest {
         assertFalse(cache.refresh(profile.id, ScannerState()).changed)
     }
 
+    @Test fun autoLibraryBulkRefreshDoesNotNotifyOnPlaybackAndStatusChanges() {
+        val profile = ServerProfile(id = "one", name = "County", baseUrl = "https://scanner.invalid")
+        val systems = listOf(SystemConfig(
+            7, "Law", listOf(TalkgroupConfig(7, 56, "Dispatch", favorite = true))
+        ))
+        val base = ServerScannerState(profile = profile, systems = systems)
+        val cache = AndroidAutoFavoritesCache()
+        val notices = mutableListOf<Pair<String, Int>>()
+        cache.forEachChanged(ScannerState(servers = mapOf("one" to base))) { id, count ->
+            notices += id to count
+        }
+        assertTrue(notices.isEmpty()) // first snapshot only baselines the library
+        repeat(50) { iteration ->
+            cache.forEachChanged(ScannerState(servers = mapOf(
+                "one" to base.copy(statusText = "Receiving $iteration", listenerCount = iteration)
+            ))) { id, count -> notices += id to count }
+        }
+        assertTrue(notices.isEmpty())
+        assertEquals(setOf("one"), cache.profileIds)
+    }
+
+    @Test fun autoLibraryBulkRefreshNotifiesOnlyActualFavoriteChanges() {
+        val profile = ServerProfile(id = "one", name = "County", baseUrl = "https://scanner.invalid")
+        val systems = listOf(SystemConfig(
+            7, "Law", listOf(TalkgroupConfig(7, 56, "Dispatch", favorite = true))
+        ))
+        val base = ServerScannerState(profile = profile, systems = systems)
+        val cache = AndroidAutoFavoritesCache()
+        val notices = mutableListOf<Pair<String, Int>>()
+        fun apply(server: ServerScannerState) {
+            cache.forEachChanged(ScannerState(servers = mapOf("one" to server))) { id, count ->
+                notices += id to count
+            }
+        }
+        apply(base)
+        assertTrue(notices.isEmpty())
+        apply(base.copy(systems = listOf(SystemConfig(
+            7, "Law", listOf(
+                TalkgroupConfig(7, 56, "Dispatch", favorite = true),
+                TalkgroupConfig(7, 57, "Fire", favorite = true)
+            )
+        ))))
+        assertEquals(listOf("one" to 2), notices)
+        notices.clear()
+        apply(base.copy(systems = systems))
+        assertEquals(listOf("one" to 1), notices)
+        notices.clear()
+        apply(base.copy(hiddenSystemRefs = setOf(7)))
+        assertEquals(listOf("one" to 0), notices)
+    }
+
+    @Test fun autoLibraryBulkRefreshPrunesProfilesOnRemovalAndEqualSizeReplacement() {
+        val one = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val two = ServerProfile(id = "two", name = "Two", baseUrl = "https://scanner.invalid")
+        val systems = listOf(SystemConfig(
+            7, "Law", listOf(TalkgroupConfig(7, 56, "Dispatch", favorite = true))
+        ))
+        val cache = AndroidAutoFavoritesCache()
+        val changes = mutableListOf<Pair<String, Int>>()
+        fun apply(servers: Map<String, ServerScannerState>) {
+            cache.forEachChanged(ScannerState(servers = servers)) { id, count ->
+                changes += id to count
+            }
+        }
+        val old = ServerScannerState(profile = one, systems = systems)
+        apply(mapOf("one" to old))
+        assertTrue(changes.isEmpty())
+        apply(mapOf("two" to ServerScannerState(profile = two, systems = systems)))
+        assertEquals(listOf("one" to 0), changes)
+        assertEquals(setOf("two"), cache.profileIds)
+        changes.clear()
+        apply(emptyMap())
+        assertEquals(listOf("two" to 0), changes)
+        assertTrue(cache.profileIds.isEmpty())
+        changes.clear()
+        apply(emptyMap())
+        assertTrue(changes.isEmpty())
+    }
+
     @Test fun detectsOnlyMeaningfulFavoriteLibraryChanges() {
         val original = listOf(AndroidAutoFavorite("channel:one:7:56", "Dispatch", "Law"))
         assertFalse(AndroidAutoLibraryPolicy.childrenChanged(null, original))
