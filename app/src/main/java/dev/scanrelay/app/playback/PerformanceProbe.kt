@@ -60,9 +60,17 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
     private var peakJavaHeapKb = first.javaHeapKb
     private var peakNativeHeapKb = first.nativeHeapKb
     private var everPlugged = first.plugged
+    private var longestSampleGapMs = 0L
+    private var gapsOver20Seconds = 0
 
     fun sample(next: PerformanceReading) {
         if (next.elapsedMs < last.elapsedMs) return
+        // A background device may defer the nominal 10-second sampling job.
+        // Keep the actual intervals so CPU differences can be interpreted in
+        // the context of Doze/main-thread scheduling, without extra polling.
+        val gapMs = next.elapsedMs - last.elapsedMs
+        longestSampleGapMs = maxOf(longestSampleGapMs, gapMs)
+        if (gapMs > 20_000L) gapsOver20Seconds++
         last = next
         samples++
         peakPssKb = listOfNotNull(peakPssKb, next.pssKb).maxOrNull()
@@ -97,6 +105,8 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
             appendLine("FatLine local performance report")
             appendLine("Scenario: $scenario")
             appendLine("Duration: ${String.format(Locale.US, "%.1f", durationMs / 60000.0)} min; samples: $samples")
+            val averageGap = if (samples > 1) durationMs / (samples - 1).toDouble() else null
+            appendLine("Sampling interval mean / longest: ${averageGap?.let { String.format(Locale.US, "%.1f", it / 1000.0) } ?: "unavailable"} s / ${String.format(Locale.US, "%.1f", longestSampleGapMs / 1000.0)} s; gaps >20s: $gapsOver20Seconds")
             appendLine("App CPU time: $cpuMs ms")
             appendLine("Avg app CPU: ${cpuPercent?.let { String.format(Locale.US, "%.1f%% of one core", it) } ?: "unavailable"}")
             appendLine("PSS memory start / end / peak: ${memoryText(first.pssKb)} / ${memoryText(last.pssKb)} / ${memoryText(peakPssKb)}")

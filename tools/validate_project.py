@@ -828,6 +828,14 @@ require('call.sourceDisplay' in ui and 'call.sources.size > 1' in ui, 'scanner m
 require('systemsParseExactAndRangeUnitAliases' in protocol_tests, 'unit alias regression test missing')
 require('callSourcesAreOrderedDeduplicatedAndAliasAware' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'multi-source parser regression test missing')
 require('alertsLoading' in models and 'alertsError' in models and 'stableKey' in models, 'persisted rich-alert state missing')
+require('internal object AlreadyOrderedNewestFirstPolicy' in repo
+        and 'if (time > previousTime) return items.sortedByDescending(timestamp)' in repo
+        and 'AlreadyOrderedNewestFirstPolicy.sortIfNeeded(records) { it.timestamp ?: 0L }' in repo
+        and 'AlreadyOrderedNewestFirstPolicy.sortIfNeeded(alerts) { it.createdAt ?: 0L }' in repo
+        and 'alreadyOrderedTranscriptPolicySkipsSortWithoutChangingStableTies' in aggregation_tests
+        and 'parsedTranscriptsRetainOrderOrSortCorrectlyIncludingMissingTimestamps' in aggregation_tests
+        and 'parsedServerAlertsRetainEqualTimeOrderAndSortUnorderedPages' in aggregation_tests,
+        'transcripts/alerts must preserve stable newest-first ordering without repeated sorting of already-ordered pages')
 require('refreshAlerts' in repo and '/api/alerts' in repo and 'parseServerAlerts' in repo, 'server alert-history loading missing')
 require('postConnectionLoss' in (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/AlertNotifier.kt').read_text(), 'connection-loss notification helper missing')
 require('RingtoneManager.ACTION_RINGTONE_PICKER' in ui and 'Choose sound' in ui and 'System default' in ui, 'per-scanner alert sound picker missing')
@@ -986,6 +994,12 @@ require('Text("Performance probe"' in ui
         and 'ClipData.newPlainText(' in ui
         and 'No data is uploaded.' in ui,
         'performance measurement needs opt-in, stop and local copy controls')
+require('private var longestSampleGapMs = 0L' in probe
+        and 'if (gapMs > 20_000L) gapsOver20Seconds++' in probe
+        and 'Sampling interval mean / longest:' in probe
+        and 'reportsDelayedBackgroundSamplingWithoutAffectingCpuMath' in probe_tests
+        and 'samplingGapReportHandlesOnlyInitialReading' in probe_tests,
+        'performance reports must reveal delayed sampling intervals without additional polling')
 require('reportSeparatesCpuPssNetworkAndWholePhoneBattery' in probe_tests
         and 'unsupportedCountersAndResetNetworkCountersStayUnavailable' in probe_tests
         and 'pluggingInDisablesBatteryDischargeClaims' in probe_tests

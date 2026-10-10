@@ -97,6 +97,25 @@ internal object HistoryTimestampSortPolicy {
 }
 
 /**
+ * JSON archive/transcript endpoints usually return records newest first.
+ * After parsing, check the existing order once and return the very same list
+ * if already sorted. Stable full sorting remains the fallback for unsorted
+ * servers, including equal timestamps and invalid/missing timestamps.
+ */
+internal object AlreadyOrderedNewestFirstPolicy {
+    fun <T> sortIfNeeded(items: List<T>, timestamp: (T) -> Long): List<T> {
+        if (items.size < 2) return items
+        var previousTime = timestamp(items[0])
+        for (index in 1 until items.size) {
+            val time = timestamp(items[index])
+            if (time > previousTime) return items.sortedByDescending(timestamp)
+            previousTime = time
+        }
+        return items
+    }
+}
+
+/**
  * StateFlow updates for connection status, queue, transcripts, and monitoring
  * should not re-sort archive or alert histories that have not changed. Model
  * updates use immutable list replacement, so reference identity is sufficient.
@@ -3562,7 +3581,9 @@ object ScannerRepository {
                     )
                 )
             }
-        }.sortedByDescending { it.timestamp ?: 0L }
+        }.let { records ->
+            AlreadyOrderedNewestFirstPolicy.sortIfNeeded(records) { it.timestamp ?: 0L }
+        }
 
     internal fun parseServerAlerts(profile: ServerProfile, raw: JSONArray): List<ScannerAlert> {
         fun stringList(value: Any?): List<String> {
@@ -3633,7 +3654,9 @@ object ScannerRepository {
                     )
                 )
             }
-        }.sortedByDescending { it.createdAt ?: 0L }
+        }.let { alerts ->
+            AlreadyOrderedNewestFirstPolicy.sortIfNeeded(alerts) { it.createdAt ?: 0L }
+        }
     }
     private fun decodeBuffer(raw: Any?): ByteArray {
         val array = raw as? JSONArray ?: return byteArrayOf()
