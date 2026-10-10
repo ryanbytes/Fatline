@@ -3769,11 +3769,16 @@ object ScannerRepository {
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     private fun publish() {
-        val serverMap = sessions.values.associate { it.profile.id to it.state }
         val previous = _state.value
-        // Passive frames, reconnect bookkeeping and duplicate callbacks can
-        // invoke publish() without replacing any server snapshot. Skip both
-        // history/alert aggregation and StateFlow's structural equality walk.
+        // Passive socket events may call publish() without changing any server.
+        // Check immutable state references BEFORE allocating a fresh HashMap
+        // and Pair objects. This is the common idle-monitoring path.
+        // Keep the existing post-snapshot check for concurrent membership/state
+        // changes that occur while collecting the server map.
+        if (previous.servers.size == sessions.size &&
+            sessions.values.all { session -> previous.servers[session.profile.id] === session.state }
+        ) return
+        val serverMap = sessions.values.associate { it.profile.id to it.state }
         if (!ScannerStateAggregationPolicy.hasChanges(previous, serverMap)) return
         // Most updates change status, queue, configuration or transcripts, not
         // archived calls or alerts. Preserve aggregated list instances then.
