@@ -69,6 +69,34 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.absoluteValue
 
 /**
+ * Archive sorts used to call Instant.parse() for each comparator invocation,
+ * i.e. O(n log n) parses per paged archive refresh. Decorate once instead:
+ * exactly one timestamp lookup per call, then a stable timestamp comparison.
+ * Equal/invalid timestamps retain the original order in both directions.
+ */
+internal object HistoryTimestampSortPolicy {
+    private data class DatedCall(val call: RadioCall, val timestampMs: Long)
+
+    fun sort(
+        calls: Collection<RadioCall>,
+        newestFirst: Boolean,
+        timestamp: (RadioCall) -> Long = { call ->
+            runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
+        }
+    ): List<RadioCall> {
+        if (calls.isEmpty()) return emptyList()
+        if (calls.size == 1) return calls.toList()
+        val dated = calls.map { DatedCall(it, timestamp(it)) }
+        val comparator = if (newestFirst) {
+            compareByDescending<DatedCall> { it.timestampMs }
+        } else {
+            compareBy<DatedCall> { it.timestampMs }
+        }
+        return dated.sortedWith(comparator).map { it.call }
+    }
+}
+
+/**
  * StateFlow updates for connection status, queue, transcripts, and monitoring
  * should not re-sort archive or alert histories that have not changed. Model
  * updates use immutable list replacement, so reference identity is sufficient.
@@ -112,10 +140,9 @@ internal object ScannerStateAggregationPolicy {
                 return if (server.history.size <= 500) server.history else server.history.take(500)
             }
         }
-        return current.values.flatMap { it.history }
-            .sortedByDescending { call ->
-                runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
-            }.take(500)
+        return HistoryTimestampSortPolicy.sort(
+            current.values.flatMap { it.history }, newestFirst = true
+        ).take(500)
     }
 }
 
@@ -3300,11 +3327,9 @@ object ScannerRepository {
         }
         synchronized(session) {
             val combined = (session.state.history + calls).associateBy { it.id }.values
-            val merged = if (session.state.historySort < 0) {
-                combined.sortedByDescending(::callSortKey)
-            } else {
-                combined.sortedBy(::callSortKey)
-            }
+            val merged = HistoryTimestampSortPolicy.sort(
+                combined, newestFirst = session.state.historySort < 0
+            )
             session.historyOffset += calls.size
             session.state = session.state.copy(
                 history = merged,
@@ -3740,7 +3765,6 @@ object ScannerRepository {
         }
         return true
     }
-    private fun callSortKey(call: RadioCall): Long = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
 
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
