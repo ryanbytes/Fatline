@@ -1524,38 +1524,51 @@ private fun HistoryScreen(
             (archiveDate.isNotBlank() && archiveDateIso != null)
 
     val allSystems = server?.systems.orEmpty()
-    val archiveGroups = allSystems
-        .flatMap { it.talkgroups }
-        .flatMap { it.groups }
-        .map(String::trim)
-        .filter(String::isNotBlank)
-        .distinctBy { it.lowercase() }
-        .sortedBy { it.lowercase() }
-    val archiveTags = allSystems
-        .flatMap { it.talkgroups }
-        .map { it.tag.trim() }
-        .filter(String::isNotBlank)
-        .distinctBy { it.lowercase() }
-        .sortedBy { it.lowercase() }
-    val filteredSystems = allSystems.filter { system ->
-        val groupMatches = archiveGroup == null ||
-            system.talkgroups.any { talkgroup ->
+    // ScannerState changes during live playback, but filter choices and channel
+    // membership only change with scanner configuration. Keep these derived
+    // collections stable across unrelated History-screen recompositions.
+    val archiveGroups = remember(allSystems) {
+        allSystems.flatMap { it.talkgroups }
+            .flatMap { it.groups }
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .distinctBy { it.lowercase() }
+            .sortedBy { it.lowercase() }
+    }
+    val archiveTags = remember(allSystems) {
+        allSystems.flatMap { it.talkgroups }
+            .map { it.tag.trim() }
+            .filter(String::isNotBlank)
+            .distinctBy { it.lowercase() }
+            .sortedBy { it.lowercase() }
+    }
+    val filteredSystems = remember(allSystems, archiveGroup, archiveTag) {
+        allSystems.filter { system ->
+            val groupMatches = archiveGroup == null ||
+                system.talkgroups.any { talkgroup ->
+                    talkgroup.groups.any { it.equals(archiveGroup, ignoreCase = true) }
+                }
+            val tagMatches = archiveTag == null ||
+                system.talkgroups.any { it.tag.equals(archiveTag, ignoreCase = true) }
+            groupMatches && tagMatches
+        }
+    }
+    val selectedArchiveSystem = remember(allSystems, archiveSystemRef) {
+        allSystems.firstOrNull { it.systemRef == archiveSystemRef }
+    }
+    val filteredTalkgroups = remember(selectedArchiveSystem, archiveGroup, archiveTag) {
+        selectedArchiveSystem?.talkgroups.orEmpty().filter { talkgroup ->
+            val groupMatches = archiveGroup == null ||
                 talkgroup.groups.any { it.equals(archiveGroup, ignoreCase = true) }
-            }
-        val tagMatches = archiveTag == null ||
-            system.talkgroups.any { it.tag.equals(archiveTag, ignoreCase = true) }
-        groupMatches && tagMatches
+            val tagMatches = archiveTag == null ||
+                talkgroup.tag.equals(archiveTag, ignoreCase = true)
+            groupMatches && tagMatches
+        }
     }
-    val selectedArchiveSystem = allSystems.firstOrNull { it.systemRef == archiveSystemRef }
-    val filteredTalkgroups = selectedArchiveSystem?.talkgroups.orEmpty().filter { talkgroup ->
-        val groupMatches = archiveGroup == null ||
-            talkgroup.groups.any { it.equals(archiveGroup, ignoreCase = true) }
-        val tagMatches = archiveTag == null ||
-            talkgroup.tag.equals(archiveTag, ignoreCase = true)
-        groupMatches && tagMatches
-    }
-    val favoriteArchiveChannels = allSystems.flatMap { system ->
-        system.talkgroups.filter { it.favorite }.map { talkgroup -> system to talkgroup }
+    val favoriteArchiveChannels = remember(allSystems) {
+        allSystems.flatMap { system ->
+            system.talkgroups.filter { it.favorite }.map { talkgroup -> system to talkgroup }
+        }
     }
 
     val normalizedHistoryQuery = historyQuery.trim().lowercase()
