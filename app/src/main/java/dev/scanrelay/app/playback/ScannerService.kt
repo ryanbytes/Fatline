@@ -39,6 +39,7 @@ import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.net.NetworkHandoffPolicy
 import dev.scanrelay.app.net.NetworkHandoffTransition
 import dev.scanrelay.app.net.ScannerRepository
+import dev.scanrelay.app.ui.TagColors
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -72,6 +73,7 @@ class ScannerService : MediaLibraryService() {
     // publication. These fields are only accessed by the service main thread.
     private var foregroundStarted = false
     private var lastPostedNotification: PlaybackNotificationText? = null
+    private var lastPostedNotificationColor: Int? = null
     // Only changed on the service main thread. Avoid reading SharedPreferences
     // whenever Media3 or scanner state emits a background update.
     private var monitoredProfileIds: Set<String> = emptySet()
@@ -281,9 +283,11 @@ class ScannerService : MediaLibraryService() {
                 player.mediaItemCount, player.currentMediaItemIndex
             ) else 0
             val subtitle = if (queued > 0) "${initialText.subtitle} · $queued queued" else initialText.subtitle
-            startForeground(NOTIFICATION_ID, notification(initialText.title, subtitle))
+            val initialColor = currentPlayingTagColor()
+            startForeground(NOTIFICATION_ID, notification(initialText.title, subtitle, initialColor))
             foregroundStarted = true
             lastPostedNotification = PlaybackNotificationText(initialText.title, subtitle)
+            lastPostedNotificationColor = initialColor
         }
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
@@ -466,6 +470,7 @@ class ScannerService : MediaLibraryService() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         foregroundStarted = false
         lastPostedNotification = null
+        lastPostedNotificationColor = null
         stopSelf()
     }
 
@@ -782,7 +787,7 @@ class ScannerService : MediaLibraryService() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun notification(title: String, text: String): Notification {
+    private fun notification(title: String, text: String, tagColor: Int? = null): Notification {
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -807,7 +812,7 @@ class ScannerService : MediaLibraryService() {
             Intent(this, ScannerService::class.java).setAction(ACTION_CLEAR_QUEUE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_headset)
             .setContentTitle(title)
             .setContentText(text)
@@ -820,7 +825,19 @@ class ScannerService : MediaLibraryService() {
             .addAction(0, "Skip", skip)
             .addAction(0, "Clear queue", clearQueue)
             .addAction(0, "Disconnect all", stop)
-            .build()
+        // Android owns the final lock-screen card rendering and may restrict
+        // background tint. Colorized foreground service notifications request
+        // the tag color wherever the system supports it.
+        if (tagColor != null) builder.setColor(tagColor).setColorized(true)
+        return builder.build()
+    }
+
+    private fun currentPlayingTagColor(): Int? {
+        if (!::player.isInitialized || !player.isPlaying) return null
+        val call = player.currentMediaItem?.mediaId?.let(callByMediaId::get) ?: return null
+        val server = ScannerRepository.state.value.servers[call.profileId]
+        val rgb = TagColors.playingCallColor(call, server) ?: return null
+        return android.graphics.Color.rgb(rgb.red, rgb.green, rgb.blue)
     }
 
     private fun currentPlaybackNotification(): PlaybackNotificationText {
@@ -852,9 +869,14 @@ class ScannerService : MediaLibraryService() {
         _queuedCallCount.value = queuedCount
         val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
         val current = PlaybackNotificationText(title, queueText)
-        if (!foregroundStarted || !PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)) return
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))
+        val color = currentPlayingTagColor()
+        if (!foregroundStarted ||
+            (!PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current) &&
+                lastPostedNotificationColor == color)
+        ) return
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText, color))
         lastPostedNotification = current
+        lastPostedNotificationColor = color
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
