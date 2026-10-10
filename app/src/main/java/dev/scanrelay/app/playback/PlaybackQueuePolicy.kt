@@ -1,6 +1,7 @@
 package dev.scanrelay.app.playback
 
 import dev.scanrelay.app.model.CallKey
+import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.RadioCall
 
 internal object PlaybackQueuePolicy {
@@ -115,10 +116,55 @@ internal object PlaybackQueuePolicy {
         return mediaIds.getOrNull(currentIndex).takeIf { isPlaying }
     }
 
+    /**
+     * Used while removing muted or disconnected scanners from a Media3 queue.
+     * The previous split(limit = 4) allocated on every queued entry.
+     * Retain its odd-but-established rule: a nonblank fourth segment may itself
+     * contain additional colons, and blank profile IDs can be compared.
+     */
     fun isLiveCallForProfile(mediaId: String, profileId: String): Boolean {
-        val parts = mediaId.split(':', limit = 4)
-        return parts.size == 4 && parts[0] == "call" &&
-            parts[1] == profileId && parts[2] == "live" && parts[3].isNotBlank()
+        if (!mediaId.startsWith("call:")) return false
+        val profileEnd = mediaId.indexOf(':', startIndex = 5)
+        if (profileEnd < 0 || profileEnd - 5 != profileId.length ||
+            !mediaId.regionMatches(5, profileId, 0, profileId.length)
+        ) return false
+        val kindStart = profileEnd + 1
+        if (mediaId.length <= kindStart + 4 ||
+            !mediaId.regionMatches(kindStart, "live", 0, 4) ||
+            mediaId[kindStart + 4] != ':'
+        ) return false
+        for (i in kindStart + 5 until mediaId.length) {
+            if (!mediaId[i].isWhitespace()) return true
+        }
+        return false
+    }
+
+    /**
+     * Unsubscribed-channel pruning needs system and TG references for live
+     * items only. Read delimiters, not a temporary seven-field list. As with
+     * the original split parser, any seventh field (including empty) and
+     * subsequent fields are allowed; call ID itself need not be numeric.
+     */
+    fun liveChannelForProfile(mediaId: String, profileId: String): ChannelKey? {
+        if (!mediaId.startsWith("call:")) return null
+        val profileEnd = mediaId.indexOf(':', startIndex = 5)
+        if (profileEnd < 0 || profileEnd - 5 != profileId.length ||
+            !mediaId.regionMatches(5, profileId, 0, profileId.length)
+        ) return null
+        val kindStart = profileEnd + 1
+        if (mediaId.length <= kindStart + 4 ||
+            !mediaId.regionMatches(kindStart, "live", 0, 4) ||
+            mediaId[kindStart + 4] != ':'
+        ) return null
+        val callEnd = mediaId.indexOf(':', startIndex = kindStart + 5)
+        if (callEnd < 0) return null
+        val systemEnd = mediaId.indexOf(':', startIndex = callEnd + 1)
+        if (systemEnd < 0) return null
+        val tgEnd = mediaId.indexOf(':', startIndex = systemEnd + 1)
+        if (tgEnd < 0) return null
+        val systemRef = mediaId.substring(callEnd + 1, systemEnd).toLongOrNull() ?: return null
+        val talkgroupRef = mediaId.substring(systemEnd + 1, tgEnd).toLongOrNull() ?: return null
+        return ChannelKey(systemRef, talkgroupRef)
     }
 
     internal fun mediaKind(mediaId: String): String? {
