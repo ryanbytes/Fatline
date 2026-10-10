@@ -74,6 +74,20 @@ import kotlin.math.absoluteValue
  * updates use immutable list replacement, so reference identity is sufficient.
  */
 internal object ScannerStateAggregationPolicy {
+    /**
+     * A server publishes immutable ScannerState copies. If none of the
+     * per-server objects changed since the last emission, recomputing the
+     * aggregate and asking StateFlow to compare deep lists is unnecessary.
+     *
+     * Compare identity (not equality) to keep even content-identical explicit
+     * updates eligible for the same downstream StateFlow behavior as before.
+     * Profile additions, removals and replacements must always publish.
+     */
+    fun hasChanges(previous: ScannerState, current: Map<String, ServerScannerState>): Boolean {
+        if (previous.servers.size != current.size) return true
+        return current.any { (id, server) -> previous.servers[id] !== server }
+    }
+
     fun reuseHistory(previous: ScannerState, current: Map<String, ServerScannerState>): Boolean =
         previous.servers.keys == current.keys &&
             current.all { (id, server) -> previous.servers[id]?.history === server.history }
@@ -3733,6 +3747,10 @@ object ScannerRepository {
     private fun publish() {
         val serverMap = sessions.values.associate { it.profile.id to it.state }
         val previous = _state.value
+        // Passive frames, reconnect bookkeeping and duplicate callbacks can
+        // invoke publish() without replacing any server snapshot. Skip both
+        // history/alert aggregation and StateFlow's structural equality walk.
+        if (!ScannerStateAggregationPolicy.hasChanges(previous, serverMap)) return
         // Most updates change status, queue, configuration or transcripts, not
         // archived calls or alerts. Preserve aggregated list instances then.
         val history = if (ScannerStateAggregationPolicy.reuseHistory(previous, serverMap)) {
