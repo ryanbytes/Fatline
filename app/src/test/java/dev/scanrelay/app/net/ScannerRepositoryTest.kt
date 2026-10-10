@@ -2,6 +2,7 @@ package dev.scanrelay.app.net
 
 import dev.scanrelay.app.model.AlertPreference
 import dev.scanrelay.app.model.ChannelKey
+import dev.scanrelay.app.model.CallSource
 import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerAlert
 import dev.scanrelay.app.model.ScannerState
@@ -309,6 +310,136 @@ class ScannerRepositoryTest {
         assertFalse(ScannerStateAggregationPolicy.reuseAlerts(old, mapOf("one" to newAlerts)))
         assertFalse(ScannerStateAggregationPolicy.reuseHistory(old, emptyMap()))
         assertFalse(ScannerStateAggregationPolicy.reuseAlerts(old, emptyMap()))
+    }
+
+    @Test
+    fun passiveStatusEventsSkipIdenticalValuesWithoutReallocatingState() {
+        val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val original = ServerScannerState(profile = profile, listenerCount = 17, serverVersion = "1.2.3")
+        assertEquals(null, ScannerPassiveEventPolicy.versionUpdate(original, "1.2.3"))
+        assertEquals(null, ScannerPassiveEventPolicy.listenerCountUpdate(original, 17))
+        val newVersion = ScannerPassiveEventPolicy.versionUpdate(original, "2.0")
+        assertEquals("2.0", newVersion?.serverVersion)
+        assertEquals(17, newVersion?.listenerCount)
+        val newCount = ScannerPassiveEventPolicy.listenerCountUpdate(original, 18)
+        assertEquals(18, newCount?.listenerCount)
+        assertEquals("1.2.3", newCount?.serverVersion)
+        assertEquals(null, ScannerPassiveEventPolicy.versionUpdate(original.copy(serverVersion = null), null))
+        assertEquals(null, ScannerPassiveEventPolicy.versionUpdate(original.copy(serverVersion = null), null))
+    }
+
+    @Test
+    fun incomingCallHistoryFilterMatchesIndependentLegacyPolicy() {
+        val sampleSystems = listOf(
+            SystemConfig(
+                systemRef = 1, label = "Dispatch",
+                talkgroups = listOf(
+                    TalkgroupConfig(1, 11, "Police", tag = "LAW", groups = listOf("North", "Primary")),
+                    TalkgroupConfig(1, 12, "Fire", tag = "FIRE", groups = listOf("South"))
+                )
+            ),
+            SystemConfig(
+                systemRef = 2, label = "Other",
+                talkgroups = listOf(TalkgroupConfig(2, 21, "EMS", tag = "EMS", groups = emptyList()))
+            )
+        )
+        val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val validTime = "2026-10-09T10:00:00Z"
+        val timestamps = listOf(validTime, "2026-10-09T09:00:00Z", "invalid")
+        val calls = listOf(
+            historyCall(1, validTime).copy(systemRef = 1, talkgroupRef = 11),
+            historyCall(2, validTime).copy(systemRef = 1, talkgroupRef = 12),
+            historyCall(3, validTime).copy(systemRef = 2, talkgroupRef = 21),
+            historyCall(4, validTime).copy(systemRef = 3, talkgroupRef = 99)
+        ).flatMap { call -> timestamps.map { call.copy(dateTime = it) } }
+        // Deliberately independent representation of the previous implementation.
+        fun oldPolicy(state: ServerScannerState, call: RadioCall): Boolean {
+            val systemMatches = state.historySystemRef?.let { call.systemRef == it } ?: true
+            val talkgroupMatches = (state.historyTalkgroupRef?.let { call.talkgroupRef == it } ?: true) &&
+                (state.historyTalkgroupRefs.isEmpty() || call.talkgroupRef in state.historyTalkgroupRefs)
+            val talkgroup = state.systems.firstOrNull { it.systemRef == call.systemRef }
+                ?.talkgroups?.firstOrNull { it.talkgroupRef == call.talkgroupRef }
+            val groupMatches = state.historyGroup?.let { selected ->
+                talkgroup?.groups?.any { it.equals(selected, ignoreCase = true) } == true
+            } ?: true
+            val tagMatches = state.historyTag?.let { selected ->
+                talkgroup?.tag?.equals(selected, ignoreCase = true) == true
+            } ?: true
+            val dateMatches = state.historyDate?.let { selected ->
+                val cutoff = runCatching { Instant.parse(selected).toEpochMilli() }.getOrNull()
+                val callTime = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrNull()
+                cutoff != null && callTime != null && callTime >= cutoff
+            } ?: true
+            return systemMatches && talkgroupMatches && groupMatches && tagMatches && dateMatches
+        }
+        var assertions = 0
+        for (systemRef in listOf<Long?>(null, 1, 2, 3)) {
+            for (talkgroupRef in listOf<Long?>(null, 11, 12, 21, 99)) {
+                for (group in listOf<String?>(null, "north", "SOUTH", "", "bogus")) {
+                    for (tag in listOf<String?>(null, "law", "FIRE", "EMS", "")) {
+                        for (date in listOf<String?>(null, validTime, "invalid")) {
+                            val state = ServerScannerState(
+                                profile = profile, systems = sampleSystems,
+                                historySystemRef = systemRef, historyTalkgroupRef = talkgroupRef,
+                                historyTalkgroupRefs = if (talkgroupRef == 11L) listOf(11, 12) else emptyList(),
+                                historyGroup = group, historyTag = tag, historyDate = date
+                            )
+                            for (call in calls) {
+                                assertEquals(
+                                    "system=$systemRef tg=$talkgroupRef group=$group tag=$tag date=$date call=${call.id}/${call.dateTime}",
+                                    oldPolicy(state, call),
+                                    ScannerRepository.matchesHistoryFilter(state, call)
+                                )
+                                assertions++
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue(assertions >= 10_000)
+    }
+
+    @Test
+    fun singleSourceDisplaySkipsListAllocationsWithoutChangingFallbacks() {
+        val original = historyCall(1L, "2026-10-09T10:00:00Z").copy(
+            sourceRef = 42L, sourceLabel = "Console"
+        )
+        val cases = listOf(
+            original,
+            original.copy(sources = listOf(CallSource(sourceRef = 42, display = "Engine 2"))),
+            original.copy(sources = listOf(CallSource(sourceRef = 42, display = ""))),
+            original.copy(sources = listOf(CallSource(sourceRef = 42, display = "   "))),
+            original.copy(sources = listOf(CallSource(sourceRef = 42, display = "Medic 3"), CallSource(sourceRef = 43, display = "Medic 3"))),
+            original.copy(sources = listOf(CallSource(sourceRef = 42, display = "Medic 3"), CallSource(sourceRef = 43, display = "Engine 2"))),
+            original.copy(sourceLabel = null, sourceRef = 99L),
+            original.copy(sourceLabel = null, sourceRef = null)
+        )
+        for (call in cases) {
+            val oldDisplay = call.sources.mapNotNull { it.display?.takeIf(String::isNotBlank) }
+                .distinct().joinToString(", ").takeIf { it.isNotBlank() }
+                ?: call.sourceLabel
+                ?: call.sourceRef?.toString()
+            assertEquals(oldDisplay, call.sourceDisplay)
+        }
+    }
+
+    @Test
+    fun explicitSourceTagsOverrideConfiguredUnitAliases() {
+        val configured = listOf(
+            SystemConfig(1, "System", emptyList(), units = listOf(
+                UnitAlias(label = "Configured alias", unitRef = 420)
+            ))
+        )
+        val cases = mapOf(
+            """{"sources":[{"pos":0,"src":420,"tag":"Portable 5"}]}""" to "Portable 5 | 420",
+            """{"sources":[{"pos":0,"src":420,"tag":"420"}]}""" to "Configured alias | 420",
+            """{"sources":[{"pos":0,"src":420,"tag":"  "}]}""" to "Configured alias | 420"
+        )
+        for ((raw, expected) in cases) {
+            val result = ScannerRepository.resolveCallSources(configured, 1, JSONObject(raw))
+            assertEquals(expected, result.single().display)
+        }
     }
 
     @Test

@@ -109,12 +109,22 @@ data class RadioCall(
 ) {
     val key: CallKey get() = CallKey(profileId, id)
     val sourceDisplay: String?
-        get() = sources.mapNotNull { it.display?.takeIf(String::isNotBlank) }
-            .distinct()
-            .joinToString(", ")
-            .takeIf { it.isNotBlank() }
-            ?: sourceLabel
-            ?: sourceRef?.toString()
+        get() {
+            // Incoming calls are usually single-source or contain no source
+            // array. Avoid creating map/distinct/join lists for these common
+            // cases; keep the multi-source deduplication behavior unchanged.
+            if (sources.isEmpty()) return sourceLabel ?: sourceRef?.toString()
+            if (sources.size == 1) {
+                return sources[0].display?.takeIf(String::isNotBlank)
+                    ?: sourceLabel ?: sourceRef?.toString()
+            }
+            return sources.mapNotNull { it.display?.takeIf(String::isNotBlank) }
+                .distinct()
+                .joinToString(", ")
+                .takeIf { it.isNotBlank() }
+                ?: sourceLabel
+                ?: sourceRef?.toString()
+        }
 }
 
 data class AlertKeywordList(
