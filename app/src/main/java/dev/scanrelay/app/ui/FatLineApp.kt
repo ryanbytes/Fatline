@@ -2019,11 +2019,15 @@ private fun TranscriptsScreen(
         }
     }
 
-    val availableSystems = server?.systems.orEmpty().filter { it.systemId != null }
-    val availableTalkgroups = availableSystems
-        .filter { systemId == null || it.systemId == systemId }
-        .flatMap { it.talkgroups }
-        .filter { it.talkgroupId != null }
+    val availableSystems = remember(server?.systems) {
+        server?.systems.orEmpty().filter { it.systemId != null }
+    }
+    val availableTalkgroups = remember(availableSystems, systemId) {
+        availableSystems
+            .filter { systemId == null || it.systemId == systemId }
+            .flatMap { it.talkgroups }
+            .filter { it.talkgroupId != null }
+    }
 
     LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -2232,8 +2236,9 @@ private fun AlertsScreen(
     var localTranscriptSaved by remember(selectedProfileId) { mutableStateOf(false) }
     val normalizedQuery = alertQuery.trim().lowercase()
     val normalizedPreferenceQuery = preferenceQuery.trim().lowercase()
-    val visibleAlerts = server?.alerts.orEmpty().filter { alert ->
-        normalizedQuery.isEmpty() ||
+    val visibleAlerts = remember(selectedProfileId, server?.alerts, normalizedQuery) {
+        val alerts = server?.alerts.orEmpty()
+        if (normalizedQuery.isEmpty()) alerts else alerts.filter { alert ->
             alert.title.lowercase().contains(normalizedQuery) ||
             alert.body.lowercase().contains(normalizedQuery) ||
             alert.systemLabel?.lowercase()?.contains(normalizedQuery) == true ||
@@ -2246,15 +2251,18 @@ private fun AlertsScreen(
             alert.summary?.lowercase()?.contains(normalizedQuery) == true ||
             alert.incidentAddress?.lowercase()?.contains(normalizedQuery) == true ||
             alert.incidentNature?.lowercase()?.contains(normalizedQuery) == true
+        }
     }
-    val visiblePreferenceChannels = server?.systems.orEmpty().flatMap { system ->
-        system.talkgroups.map { talkgroup -> system to talkgroup }
-    }.filter { (system, talkgroup) ->
-        normalizedPreferenceQuery.isEmpty() ||
+    val visiblePreferenceChannels = remember(selectedProfileId, server?.systems, normalizedPreferenceQuery) {
+        val channels = server?.systems.orEmpty().flatMap { system ->
+            system.talkgroups.map { talkgroup -> system to talkgroup }
+        }
+        if (normalizedPreferenceQuery.isEmpty()) channels else channels.filter { (system, talkgroup) ->
             system.label.lowercase().contains(normalizedPreferenceQuery) ||
             talkgroup.displayName.lowercase().contains(normalizedPreferenceQuery) ||
             talkgroup.tag.lowercase().contains(normalizedPreferenceQuery) ||
             talkgroup.talkgroupRef.toString().contains(normalizedPreferenceQuery)
+        }
     }
 
     LaunchedEffect(server?.profile?.id) {
