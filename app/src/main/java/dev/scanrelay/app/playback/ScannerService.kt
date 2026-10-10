@@ -465,14 +465,10 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun refreshFavoriteLibraryChildren(state: ScannerState) {
-        // Most state emissions are audio, transcript or queue changes. Rebuild the
-        // Auto library only when its systems or hidden-system inputs change.
-        val profileIds = state.servers.keys + favoriteLibraryCache.profileIds
-        profileIds.forEach { profileId ->
-            val update = favoriteLibraryCache.refresh(profileId, state)
-            if (update.changed) {
-                session.notifyChildrenChanged("profile:$profileId", update.favorites.size, null)
-            }
+        // The main-thread cache itself decides which favorite configuration
+        // changed. Most live call/queue/status updates require no allocations.
+        favoriteLibraryCache.forEachChanged(state) { profileId, count ->
+            session.notifyChildrenChanged("profile:$profileId", count, null)
         }
     }
 
