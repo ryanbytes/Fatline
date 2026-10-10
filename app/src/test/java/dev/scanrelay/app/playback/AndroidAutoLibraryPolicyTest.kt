@@ -22,7 +22,7 @@ class AndroidAutoLibraryPolicyTest {
                     TalkgroupConfig(
                         systemRef = system.toLong() + 1L,
                         talkgroupRef = talkgroup.toLong() + 100L,
-                        displayName = "TG $system:$talkgroup",
+                        label = "TG $system:$talkgroup",
                         favorite = (system + talkgroup) % 4 == 0
                     )
                 }
