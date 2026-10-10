@@ -109,8 +109,7 @@ class ScannerRepositoryTest {
     @Test
     fun alreadyOrderedTranscriptPolicySkipsSortWithoutChangingStableTies() {
         val ordered = (0 until 420).map { index ->
-            historyCall(index.toLong(), "").copy(id = (index / 3).toLong())
-                .let { index to (420L - index / 3L) }
+            index to (420L - (index / 3).toLong())
         }
         var keyReads = 0
         val same = AlreadyOrderedNewestFirstPolicy.sortIfNeeded(ordered) {
