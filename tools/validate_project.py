@@ -238,7 +238,7 @@ require('markViewedOrBaseline' in dot_policy and 'hasNewAlerts' in dot_policy
 require('channel.setShowBadge(true)' in alert_notifier
         and 'channel.setShowBadge(true)' in weather_notifier
         and 'channel.setShowBadge(false)' in service
-        and 'private const val CHANNEL_ID = "fatline_playback_no_badge_v2"' in service
+        and 'private const val CHANNEL_ID = "fatline_scanner_media_card_no_badge_v3"' in service
         and 'NotificationCompat.Builder(this, CHANNEL_ID)' in service,
         'alert channels must allow real alerts to badge, while playback migrates to a new non-badging channel')
 scanner_screen = ui.split('private fun ScannerScreen(', 1)[1].split('private fun ScannerStatusCard(', 1)[0]
@@ -401,7 +401,7 @@ require('internal object ScannerLockScreenPolicy' in notification_policy
         and 'ScannerRepository.state.collect { state ->' in service
         and 'if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()' in service
         and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
-        and '.setCategory(NotificationCompat.CATEGORY_SERVICE)' in service
+        and '.setCategory(NotificationCompat.CATEGORY_TRANSPORT)' in service
         and 'channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC' in service
         and 'private const val NOTIFICATION_ID = 8101' in service
         and 'lockScreenShowsScanningBetweenCallsWhenConnected' in notification_tests
@@ -409,6 +409,21 @@ require('internal object ScannerLockScreenPolicy' in notification_policy
         and 'lockScreenShowsMonitoringWhenLiveAudioIsPausedButConnectionRemains' in notification_tests
         and 'lockScreenDoesNotShowScanningAfterLastScannerDisconnects' in notification_tests,
         'single foreground notification must show accurate public lock-screen scanner status')
+
+require('MediaStyleNotificationHelper.MediaStyle(session)' in service
+        and '.setShowActionsInCompactView(0, 1)' in service
+        and '.setSessionActivity(' in service
+        and 'R.drawable.ic_fatline_talkgroup' in service
+        and 'NotificationManager.IMPORTANCE_DEFAULT' in service
+        and 'channel.setSound(null, null)' in service
+        and 'channel.enableVibration(false)' in service
+        and 'channel.enableLights(false)' in service
+        and '.setOnlyAlertOnce(true)' in service
+        and 'private const val NOTIFICATION_ID = 8101' in service
+        and 'startForeground(NOTIFICATION_ID, notification(' in service
+        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(' in service
+        and 'player.playWhenReady = true' not in service.split('private fun notification(', 1)[1].split('private fun currentPlayingTagColor()', 1)[0],
+        'lock-screen media card must use the existing Media3 session, a silent visible channel, and unchanged single foreground ID')
 
 tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
 tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
