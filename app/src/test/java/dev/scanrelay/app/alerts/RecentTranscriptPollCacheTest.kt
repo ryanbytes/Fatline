@@ -7,6 +7,42 @@ import org.junit.Test
 
 class RecentTranscriptPollCacheTest {
     @Test
+    fun fullPageCanBeSkippedOnlyAfterItWasCompletelyProcessed() {
+        val cache = RecentTranscriptPollCache()
+        val initial = """[{"callId":42,"transcript":"no fire"}]"""
+        val reviewed = """[{"callId":42,"transcript":"no fire","reviewedTranscript":"structure fire"}]"""
+        val relabeled = """[{"callId":42,"transcript":"no fire","reviewedTranscript":"structure fire","talkgroupLabel":"Dispatch"}]"""
+        assertFalse(cache.unchangedCompletedPage(initial))
+        // A parsing/processing failure never calls rememberCompletedPage,
+        // so the exact same HTTP response is retried rather than suppressed.
+        assertFalse(cache.unchangedCompletedPage(initial))
+        cache.rememberCompletedPage(initial)
+        assertTrue(cache.unchangedCompletedPage(initial))
+        assertFalse(cache.unchangedCompletedPage(reviewed))
+        cache.rememberCompletedPage(reviewed)
+        assertTrue(cache.unchangedCompletedPage(reviewed))
+        assertFalse(cache.unchangedCompletedPage(relabeled))
+        cache.rememberCompletedPage(relabeled)
+        assertTrue(cache.unchangedCompletedPage(relabeled))
+        assertFalse(RecentTranscriptPollCache().unchangedCompletedPage(relabeled))
+    }
+
+    @Test
+    fun unchangedPageCacheIsBoundedAndLargePagesNeverSuppressProcessing() {
+        val cache = RecentTranscriptPollCache(maxPageCharacters = 8)
+        assertFalse(cache.unchangedCompletedPage("123456789"))
+        cache.rememberCompletedPage("123456789")
+        assertEquals(0, cache.cachedPageCharacters)
+        assertFalse(cache.unchangedCompletedPage("123456789"))
+        cache.rememberCompletedPage("12345678")
+        assertEquals(8, cache.cachedPageCharacters)
+        assertTrue(cache.unchangedCompletedPage("12345678"))
+        cache.rememberCompletedPage("123456789")
+        assertEquals(0, cache.cachedPageCharacters)
+        assertFalse(cache.unchangedCompletedPage("12345678"))
+    }
+
+    @Test
     fun unchangedTranscriptIsMatchedOnceAcrossPollingCycles() {
         val cache = RecentTranscriptPollCache()
         assertTrue(cache.changed(101, "No reported fire", "Police", "Dispatch"))
