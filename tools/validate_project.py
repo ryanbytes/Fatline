@@ -214,8 +214,11 @@ require('trimQueueForIncomingCall' in service and 'PlaybackQueuePolicy.removalIn
 require('queuedCallCount' in ui and 'BadgedBox' in ui and 'queuedCallCount > 0' in ui, 'queued-call count must be visible off the Scanner tab')
 navigation = ui.split('NavigationBar {', 1)[1].split(') { padding ->', 1)[0]
 require(
-    'primaryNavigationTabs = listOf(AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Transcripts)' in ui
-    and 'moreNavigationTabs = AppTab.entries.filterNot { it in primaryNavigationTabs }' in ui
+    'private val PRIMARY_NAVIGATION_TABS = listOf(' in ui
+    and 'AppTab.Scanner, AppTab.Channels, AppTab.History, AppTab.Transcripts' in ui
+    and 'private val MORE_NAVIGATION_TABS = AppTab.entries.filterNot { it in PRIMARY_NAVIGATION_TABS }' in ui
+    and 'val primaryNavigationTabs = PRIMARY_NAVIGATION_TABS' in ui
+    and 'val moreNavigationTabs = MORE_NAVIGATION_TABS' in ui
     and 'Box(Modifier.weight(1f))' in navigation
     and 'moreNavigationTabs.forEach { item ->' in navigation
     and 'DropdownMenu(' in navigation
@@ -890,6 +893,11 @@ require('resolvedUiAccentColor' in ui and 'server.userUiAccentColor' in ui, 'use
 require('userAccentOverridesSiteAccent' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt').read_text(), 'user accent precedence regression test missing')
 require('blankUserAccentFallsBackToSiteAccent' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt').read_text(), 'blank user accent fallback regression test missing')
 require('uiAccentRgb' in ui and 'darkColorScheme(primary = color, secondary = color, tertiary = color)' in ui, 'server accent theme application missing')
+require('val accent = remember(selectedServer?.uiAccentColor, selectedServer?.userUiAccentColor)' in ui
+        and 'val colorScheme = remember(accent) {' in ui
+        and 'selectedProfileId?.let { scanner.servers[it] }' in ui
+        and 'MaterialTheme(colorScheme = colorScheme)' in ui,
+        'scanner state updates must reuse unchanged Compose color scheme and still react to user/site accent edits')
 require('normalizesThreeAndSixDigitHex' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt').read_text(), 'accent normalization regression test missing')
 require('invalidServerAccentFallsBackToThinLineDefault' in (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/UiAccentTest.kt').read_text(), 'accent fallback regression test missing')
 require('time12hFormat' in models and 'payload.optBoolean("time12hFormat", false)' in repo, 'server time-format configuration missing')
