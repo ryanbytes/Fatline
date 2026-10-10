@@ -313,7 +313,7 @@ class ScannerService : MediaLibraryService() {
             foregroundStarted = true
             lastPostedNotification = PlaybackNotificationText(initialText.title, subtitle)
             lastPostedNotificationColor = initialColor
-            lastPostedNotificationMediaStyle = player.isPlaying
+            lastPostedNotificationMediaStyle = ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)
         }
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
@@ -852,7 +852,7 @@ class ScannerService : MediaLibraryService() {
             .setContentIntent(open)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(
-                if (player.isPlaying) NotificationCompat.CATEGORY_TRANSPORT
+                if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) NotificationCompat.CATEGORY_TRANSPORT
                 else NotificationCompat.CATEGORY_SERVICE
             )
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -860,7 +860,7 @@ class ScannerService : MediaLibraryService() {
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
 
-        if (player.isPlaying) {
+        if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) {
             // Real playback: let SystemUI render its media surface and buttons.
             builder.addAction(R.drawable.ic_fatline_skip, "Skip call", skip)
                 .addAction(R.drawable.ic_fatline_clear, "Clear queue", clearQueue)
@@ -922,11 +922,12 @@ class ScannerService : MediaLibraryService() {
         val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
         val current = PlaybackNotificationText(title, queueText)
         val color = currentPlayingTagColor()
-        val mediaStyle = player.isPlaying
+        val mediaStyle = ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)
         if (!foregroundStarted ||
-            (!PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current) &&
-                lastPostedNotificationColor == color &&
-                lastPostedNotificationMediaStyle == mediaStyle)
+            !ScannerForegroundNotificationPolicy.needsUpdate(
+                lastPostedNotification, lastPostedNotificationColor, lastPostedNotificationMediaStyle,
+                current, color, mediaStyle
+            )
         ) return
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, notification(title, queueText, color))
