@@ -73,3 +73,16 @@ internal object ScannerLockScreenPolicy {
         )
     }
 }
+
+/**
+ * Device and channel notification choices are authoritative. Setting
+ * VISIBILITY_PUBLIC in the foreground service cannot override them.
+ */
+internal object ScannerLockScreenAvailability {
+    fun description(appNotificationsEnabled: Boolean, channelEnabled: Boolean?): String = when {
+        !appNotificationsEnabled -> "FatLine notifications are blocked by Android."
+        channelEnabled == false -> "Scanner playback notifications are turned off."
+        channelEnabled == null -> "Start scanning to create the Scanner playback notification channel."
+        else -> "Scanner playback notifications are allowed. Android may still hide silent notifications on the lock screen."
+    }
+}
