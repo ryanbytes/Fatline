@@ -89,23 +89,20 @@ internal object ScannerLockScreenAvailability {
 
 
 /**
- * An always-on radio scanner is unlike a music player: it often has no
- * playable item between transmissions, while its monitoring service and
- * transcript alerts must stay active.
+ * A scanner's short transmissions must never change the notification's
+ * Android presentation style. Only the displayed content and current call
+ * identity change. A new call on the same TG still needs a fresh notification.
  */
 internal object ScannerForegroundNotificationPolicy {
-    fun usesMediaStyle(isPlaying: Boolean): Boolean = isPlaying
-
-    /** A style transition is meaningful even if text and accent did not change. */
     fun needsUpdate(
         previous: PlaybackNotificationText?,
         previousColor: Int?,
-        previousMediaStyle: Boolean?,
+        previousPlayingMediaId: String?,
         current: PlaybackNotificationText,
         color: Int?,
-        mediaStyle: Boolean
+        playingMediaId: String?
     ): Boolean = PlaybackNotificationPolicy.needsUpdate(previous, current) ||
-        previousColor != color || previousMediaStyle != mediaStyle
+        previousColor != color || previousPlayingMediaId != playingMediaId
 }
 
 

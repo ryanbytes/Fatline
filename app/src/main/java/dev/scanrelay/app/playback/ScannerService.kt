@@ -23,7 +23,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.common.util.UnstableApi
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
@@ -76,7 +75,7 @@ class ScannerService : MediaLibraryService() {
     private var foregroundStarted = false
     private var lastPostedNotification: PlaybackNotificationText? = null
     private var lastPostedNotificationColor: Int? = null
-    private var lastPostedNotificationMediaStyle: Boolean? = null
+    private var lastPostedPlayingMediaId: String? = null
     // Only changed on the service main thread. Avoid reading SharedPreferences
     // whenever Media3 or scanner state emits a background update.
     private var monitoredProfileIds: Set<String> = emptySet()
@@ -313,7 +312,7 @@ class ScannerService : MediaLibraryService() {
             foregroundStarted = true
             lastPostedNotification = PlaybackNotificationText(initialText.title, subtitle)
             lastPostedNotificationColor = initialColor
-            lastPostedNotificationMediaStyle = ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)
+            lastPostedPlayingMediaId = currentPlayingMediaId()
         }
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
@@ -497,7 +496,7 @@ class ScannerService : MediaLibraryService() {
         foregroundStarted = false
         lastPostedNotification = null
         lastPostedNotificationColor = null
-        lastPostedNotificationMediaStyle = null
+        lastPostedPlayingMediaId = null
         stopSelf()
     }
 
@@ -845,41 +844,28 @@ class ScannerService : MediaLibraryService() {
             Intent(this, ScannerService::class.java).setAction(ACTION_CLEAR_QUEUE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        // Android SystemUI suppresses the MediaStyle notification while this
+        // scanner's short audio items start and stop. Use the exact same
+        // ordinary ongoing scanner notification during silence AND playback.
+        // It remains a single FGS notification (NOTIFICATION_ID 8101).
+        val details = currentScannerNotificationDetails(title, text)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_fatline_talkgroup)
-            .setContentTitle(title)
-            .setContentText(text)
+            .setContentTitle(details.title)
+            .setContentText(details.summary)
             .setContentIntent(open)
-            // The device-wide sensitive-content switch stays OFF. FatLine's
-            // user-requested public preview exposes FatLine radio details only.
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setPublicVersion(publicLockScreenNotification(open, title, text))
-            .setCategory(
-                if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) NotificationCompat.CATEGORY_TRANSPORT
-                else NotificationCompat.CATEGORY_SERVICE
-            )
+            // FatLine-specific radio details are intentionally public.
+            // This does not change other apps' lock-screen privacy settings.
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-
-        if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) {
-            // Real playback: let SystemUI render its media surface and buttons.
-            builder.addAction(R.drawable.ic_fatline_skip, "Skip call", skip)
-                .addAction(R.drawable.ic_fatline_clear, "Clear queue", clearQueue)
-                .addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
-                .setStyle(
-                    MediaStyleNotificationHelper.MediaStyle(session)
-                        .setShowActionsInCompactView(0, 1)
-                )
-        } else {
-            // Idle scanning, paused audio and reconnecting are NOT playback.
-            // MediaStyle can vanish because Media3 has no active media item.
-            // Show an ordinary ongoing high-visibility service notification,
-            // with no media session token for SystemUI to suppress.
-            builder.addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-        }
+            .setStyle(NotificationCompat.BigTextStyle().bigText(details.expanded))
+            .addAction(R.drawable.ic_fatline_skip, "Skip call", skip)
+            .addAction(R.drawable.ic_fatline_clear, "Clear queue", clearQueue)
+            .addAction(R.drawable.ic_fatline_stop, "Disconnect all", stop)
         // Android owns the final lock-screen card rendering and may restrict
         // background tint. Colorized foreground service notifications request
         // the tag color wherever the system supports it.
@@ -887,36 +873,17 @@ class ScannerService : MediaLibraryService() {
         return builder.build()
     }
 
-    private fun publicLockScreenNotification(
-        open: PendingIntent,
-        title: String,
-        text: String
-    ): Notification {
-        val call = if (player.isPlaying) {
-            player.currentMediaItem?.mediaId?.let(callByMediaId::get)
-        } else null
-        val queued = PlaybackQueuePolicy.queuedCount(
-            player.mediaItemCount, player.currentMediaItemIndex
-        )
-        val details = ScannerPublicLockScreenPolicy.display(
+    private fun currentPlayingMediaId(): String? =
+        if (player.isPlaying) player.currentMediaItem?.mediaId else null
+
+    private fun currentScannerNotificationDetails(title: String, text: String): ScannerPublicNotification {
+        val call = currentPlayingMediaId()?.let(callByMediaId::get)
+        val queued = PlaybackQueuePolicy.queuedCount(player.mediaItemCount, player.currentMediaItemIndex)
+        return ScannerPublicLockScreenPolicy.display(
             current = PlaybackNotificationText(title, text),
             activeCall = call,
             queuedCount = queued
         )
-        // Only this app's public notification is detailed: do not disable the
-        // global lock-screen privacy setting or create a second notification.
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_fatline_talkgroup)
-            .setContentTitle(details.title)
-            .setContentText(details.summary)
-            .setContentIntent(open)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(details.expanded))
-            .build()
     }
 
     private fun currentPlayingTagColor(): Int? {
@@ -957,18 +924,18 @@ class ScannerService : MediaLibraryService() {
         val queueText = if (queuedCount > 0) "$text · $queuedCount queued" else text
         val current = PlaybackNotificationText(title, queueText)
         val color = currentPlayingTagColor()
-        val mediaStyle = ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)
+        val playingMediaId = currentPlayingMediaId()
         if (!foregroundStarted ||
             !ScannerForegroundNotificationPolicy.needsUpdate(
-                lastPostedNotification, lastPostedNotificationColor, lastPostedNotificationMediaStyle,
-                current, color, mediaStyle
+                lastPostedNotification, lastPostedNotificationColor, lastPostedPlayingMediaId,
+                current, color, playingMediaId
             )
         ) return
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, notification(title, queueText, color))
         lastPostedNotification = current
         lastPostedNotificationColor = color
-        lastPostedNotificationMediaStyle = mediaStyle
+        lastPostedPlayingMediaId = playingMediaId
     }
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
