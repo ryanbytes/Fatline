@@ -139,6 +139,26 @@ class PlaybackNotificationPolicyTest {
     }
 
     @Test
+    fun blockedAppAndChannelNotificationsExplainInvisibleLockScreenCard() {
+        assertEquals(
+            "FatLine notifications are blocked by Android.",
+            ScannerLockScreenAvailability.description(false, true)
+        )
+        assertEquals(
+            "Scanner playback notifications are turned off.",
+            ScannerLockScreenAvailability.description(true, false)
+        )
+        assertEquals(
+            "Start scanning to create the Scanner playback notification channel.",
+            ScannerLockScreenAvailability.description(true, null)
+        )
+        assertEquals(
+            "Scanner playback notifications are allowed. Android may still hide silent notifications on the lock screen.",
+            ScannerLockScreenAvailability.description(true, true)
+        )
+    }
+
+    @Test
     fun missingActiveCallMetadataGetsNeutralFallbacks() {
         assertEquals(
             PlaybackNotificationText("Radio traffic", "Listening"),
