@@ -107,6 +107,64 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun alreadyOrderedTranscriptPolicySkipsSortWithoutChangingStableTies() {
+        val ordered = (0 until 420).map { index ->
+            historyCall(index.toLong(), "").copy(id = (index / 3).toLong())
+                .let { index to (420L - index / 3L) }
+        }
+        var keyReads = 0
+        val same = AlreadyOrderedNewestFirstPolicy.sortIfNeeded(ordered) {
+            keyReads++
+            it.second
+        }
+        assertSame(ordered, same)
+        assertEquals(ordered.size, keyReads)
+        val olderFirst = ordered.asReversed()
+        val expected = olderFirst.sortedByDescending { it.second }
+        assertEquals(expected, AlreadyOrderedNewestFirstPolicy.sortIfNeeded(olderFirst) { it.second })
+        assertEquals(
+            listOf("second", "third", "first", "fourth"),
+            AlreadyOrderedNewestFirstPolicy.sortIfNeeded(listOf(
+                "first" to 0L, "second" to 10L, "third" to 10L, "fourth" to 0L
+            )) { it.second }.map { it.first }
+        )
+        assertSame(emptyList<Long>(), AlreadyOrderedNewestFirstPolicy.sortIfNeeded(emptyList<Long>()) { it })
+        val singleton = listOf(7L)
+        assertSame(singleton, AlreadyOrderedNewestFirstPolicy.sortIfNeeded(singleton) { it })
+    }
+
+    @Test
+    fun parsedTranscriptsRetainOrderOrSortCorrectlyIncludingMissingTimestamps() {
+        val profile = ServerProfile(id = "one", name = "Scanner", baseUrl = "https://scanner.invalid")
+        val orderedJson = JSONArray(
+            """[{"callId":4,"timestamp":1000},{"callId":5,"timestamp":1000},{"callId":3,"timestamp":800},{"callId":2},{"callId":1}]"""
+        )
+        val unsortedJson = JSONArray(
+            """[{"callId":2},{"callId":3,"timestamp":800},{"callId":5,"timestamp":1000},{"callId":1},{"callId":4,"timestamp":1000}]"""
+        )
+        assertEquals(listOf(4L, 5L, 3L, 2L, 1L),
+            ScannerRepository.parseTranscripts(profile, orderedJson).map { it.callId })
+        assertEquals(listOf(5L, 4L, 3L, 2L, 1L),
+            ScannerRepository.parseTranscripts(profile, unsortedJson).map { it.callId })
+        assertTrue(ScannerRepository.parseTranscripts(profile, JSONArray()).isEmpty())
+    }
+
+    @Test
+    fun parsedServerAlertsRetainEqualTimeOrderAndSortUnorderedPages() {
+        val profile = ServerProfile(id = "one", name = "Scanner", baseUrl = "https://scanner.invalid")
+        val newest = JSONArray(
+            """[{"alertId":9,"createdAt":300},{"alertId":8,"createdAt":300},{"alertId":7,"createdAt":100},{"alertId":6}]"""
+        )
+        val unordered = JSONArray(
+            """[{"alertId":7,"createdAt":100},{"alertId":9,"createdAt":300},{"alertId":6},{"alertId":8,"createdAt":300}]"""
+        )
+        assertEquals(listOf(9L, 8L, 7L, 6L),
+            ScannerRepository.parseServerAlerts(profile, newest).map { it.alertId })
+        assertEquals(listOf(9L, 8L, 7L, 6L),
+            ScannerRepository.parseServerAlerts(profile, unordered).map { it.alertId })
+    }
+
+    @Test
     fun audioCacheFilenamesPreserveOldAsciiSanitizingRules() {
         val profiles = listOf(
             "", "p1", "0d5421bc-935e-4ca9-bd7f-20aa3f1937ca",
