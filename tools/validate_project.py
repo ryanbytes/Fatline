@@ -790,6 +790,15 @@ require('viewModel.setTalkgroup(' in channels_tree and 'viewModel.setChannels(' 
 require('durationSeconds = payload.optDouble("duration")' in repo, 'live call duration metadata must be preserved')
 require('UnitAlias' in models and 'parseUnits' in protocol, 'ThinLine unit alias parsing missing')
 require('resolveCallSources' in repo and 'formatUnitDisplay' in repo, 'multi-source unit alias resolution missing')
+source_parser = repo.split('internal fun resolveCallSources(', 1)[1].split('private fun formatUnitDisplay(', 1)[0]
+require('if (rawSources == null || rawSources.length() <= 1)' in source_parser
+        and 'val parsed = mutableListOf<CallSource>()' in source_parser
+        and source_parser.index('if (rawSources == null || rawSources.length() <= 1)') <
+            source_parser.index('val parsed = mutableListOf<CallSource>()')
+        and 'emptyAndSingleSourcePayloadsMatchLegacyParsingAndFallbacks' in aggregation_tests
+        and 'singleSourceFastPathStillRespectsConfiguredAliasesAndTags' in aggregation_tests
+        and 'callSourcesAreOrderedDeduplicatedAndAliasAware' in aggregation_tests,
+        'source parsing must avoid collection allocation for zero/one sources without changing multi-source handling')
 require('sources: List<CallSource>' in models and 'sourceDisplay' in models, 'ordered call source model/display missing')
 require('call.sourceDisplay' in ui and 'call.sources.size > 1' in ui, 'scanner must display all resolved call sources')
 require('systemsParseExactAndRangeUnitAliases' in protocol_tests, 'unit alias regression test missing')
