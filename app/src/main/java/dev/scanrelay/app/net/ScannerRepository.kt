@@ -114,29 +114,53 @@ internal object LiveHistoryMergePolicy {
     private fun sortKey(call: RadioCall): Long =
         runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
 
+    /**
+     * Find where the live call belongs in the already-sorted History.
+     *
+     * The old linear scan parsed every older call's ISO timestamp on each
+     * arrival. With a large paged archive that means hundreds of expensive
+     * Instant.parse calls per incoming transmission. Binary search performs
+     * at most log2(history.size) timestamp comparisons instead.
+     *
+     * Exclude the replaced element without copying the list. For timestamps
+     * equal to the replacement, retain its original stable-sort position.
+     * New IDs are placed after existing calls having equal timestamps.
+     */
+    internal fun insertionIndex(
+        history: List<RadioCall>,
+        newTime: Long,
+        originalIndex: Int,
+        newestFirst: Boolean,
+        timestampOf: (RadioCall) -> Long = ::sortKey
+    ): Int {
+        val count = history.size - if (originalIndex >= 0) 1 else 0
+        var low = 0
+        var high = count
+        while (low < high) {
+            val mid = low + (high - low) / 2
+            val originalMid = if (originalIndex >= 0 && mid >= originalIndex) mid + 1 else mid
+            val oldTime = timestampOf(history[originalMid])
+            val earlier = if (newestFirst) newTime > oldTime else newTime < oldTime
+            val stableTie = newTime == oldTime && originalIndex >= 0 && originalMid > originalIndex
+            if (earlier || stableTie) high = mid else low = mid + 1
+        }
+        return low
+    }
+
     fun insert(history: List<RadioCall>, incoming: RadioCall, newestFirst: Boolean): List<RadioCall> {
         val originalIndex = history.indexOfFirst { it.id == incoming.id }
         if (originalIndex >= 0 && history[originalIndex] == incoming) return history
 
-        val newTime = sortKey(incoming)
+        val insertAt = insertionIndex(history, sortKey(incoming), originalIndex, newestFirst)
         val result = ArrayList<RadioCall>(history.size + if (originalIndex < 0) 1 else 0)
-        var inserted = false
+        var kept = 0
         for (index in history.indices) {
             if (index == originalIndex) continue
-            val existing = history[index]
-            if (!inserted) {
-                val existingTime = sortKey(existing)
-                val belongsBefore = if (newestFirst) newTime > existingTime else newTime < existingTime
-                // A duplicate keeps its former relative position among equals.
-                val tieBefore = newTime == existingTime && originalIndex >= 0 && index > originalIndex
-                if (belongsBefore || tieBefore) {
-                    result.add(incoming)
-                    inserted = true
-                }
-            }
-            result.add(existing)
+            if (kept == insertAt) result.add(incoming)
+            result.add(history[index])
+            kept++
         }
-        if (!inserted) result.add(incoming)
+        if (insertAt == kept) result.add(incoming)
         return result
     }
 }
