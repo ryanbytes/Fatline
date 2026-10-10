@@ -211,6 +211,32 @@ class PlaybackNotificationPolicyTest {
     }
 
     @Test
+    fun publicLockScreenCopyShowsOnlyGenericMonitoringStatus() {
+        assertEquals(
+            PlaybackNotificationText("FatLine", "Scanner active"),
+            ScannerPublicLockScreenPolicy.display(hasMonitoredProfiles = true, isPlaying = false)
+        )
+        // Even during playback, no talkgroup, callsign, server, or transcript
+        // is passed into the public variant.
+        assertEquals(
+            PlaybackNotificationText("FatLine", "Scanner active"),
+            ScannerPublicLockScreenPolicy.display(hasMonitoredProfiles = true, isPlaying = true)
+        )
+    }
+
+    @Test
+    fun publicLockScreenCopyHandlesStandaloneReplayAndInactiveService() {
+        assertEquals(
+            PlaybackNotificationText("FatLine", "Audio playback active"),
+            ScannerPublicLockScreenPolicy.display(hasMonitoredProfiles = false, isPlaying = true)
+        )
+        assertEquals(
+            PlaybackNotificationText("FatLine", "Scanner service active"),
+            ScannerPublicLockScreenPolicy.display(hasMonitoredProfiles = false, isPlaying = false)
+        )
+    }
+
+    @Test
     fun missingActiveCallMetadataGetsNeutralFallbacks() {
         assertEquals(
             PlaybackNotificationText("Radio traffic", "Listening"),
