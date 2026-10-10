@@ -1,5 +1,50 @@
 package dev.scanrelay.app.playback
 
+/**
+ * The foreground scanner notification is refreshed for every active scanner
+ * state change, not only for new talkgroups. Resolve the color tag only when
+ * the playing item or its immutable configuration input changes. The service
+ * owns this cache on its main thread; null playback clears stale color.
+ */
+internal class PlayingTagColorCache {
+    private var lastMediaId: String? = null
+    private var lastCall: dev.scanrelay.app.model.RadioCall? = null
+    private var lastSystems: List<dev.scanrelay.app.model.SystemConfig>? = null
+    private var lastTagColors: Map<String, String>? = null
+    private var color: dev.scanrelay.app.ui.UiAccentRgb? = null
+
+    fun colorFor(
+        mediaId: String?,
+        call: dev.scanrelay.app.model.RadioCall?,
+        server: dev.scanrelay.app.model.ServerScannerState?,
+        resolve: (dev.scanrelay.app.model.RadioCall, dev.scanrelay.app.model.ServerScannerState) ->
+            dev.scanrelay.app.ui.UiAccentRgb? = dev.scanrelay.app.ui.TagColors::playingCallColor
+    ): dev.scanrelay.app.ui.UiAccentRgb? {
+        if (mediaId == null || call == null || server == null || call.profileId != server.profile.id) {
+            clear()
+            return null
+        }
+        if (lastMediaId == mediaId && lastCall === call &&
+            lastSystems === server.systems && lastTagColors === server.tagColors
+        ) return color
+
+        color = resolve(call, server)
+        lastMediaId = mediaId
+        lastCall = call
+        lastSystems = server.systems
+        lastTagColors = server.tagColors
+        return color
+    }
+
+    fun clear() {
+        lastMediaId = null
+        lastCall = null
+        lastSystems = null
+        lastTagColors = null
+        color = null
+    }
+}
+
 internal data class PlaybackNotificationText(
     val title: String,
     val subtitle: String
