@@ -55,9 +55,12 @@ internal fun newlyActiveNwsAlerts(
     current: List<NwsSevereAlert>
 ): List<NwsSevereAlert> {
     if (knownIds == null) return emptyList()
-    val known = knownIds.toHashSet()
-    return current.filterNot { it.id in known }
+    return current.filterNot { it.id in knownIds }
 }
+
+/** Persist the weather-warning baseline only when it changes (or on first use). */
+internal fun weatherBaselineChanged(knownIds: Set<String>?, activeIds: Set<String>): Boolean =
+    knownIds == null || knownIds != activeIds
 
 /**
  * Share successful weather lookups for servers in the same ZIP during each
@@ -141,7 +144,10 @@ class NwsSevereWeatherMonitor(context: Context) {
                 WeatherAlertNotifier.post(appContext, profile, zip, alert)
             }
         }
-        prefs.edit().putStringSet(key, alerts.mapTo(mutableSetOf()) { it.id }).apply()
+        val activeIds = alerts.mapTo(HashSet(alerts.size)) { it.id }
+        if (weatherBaselineChanged(knownIds, activeIds)) {
+            prefs.edit().putStringSet(key, activeIds).apply()
+        }
     }
 
     private fun resolveZip(zip: String): Pair<Double, Double>? {
