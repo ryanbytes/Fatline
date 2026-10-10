@@ -108,6 +108,18 @@ internal object ScannerStateAggregationPolicy {
  * Hot-path scan-list membership lookup without allocating a flattened
  * talkgroup list for each received call. Preserve first-key-match semantics.
  */
+/**
+ * Servers may repeat identical passive metadata frames. Suppress redundant
+ * scanner-state emissions and their dependent UI/library work.
+ */
+internal object ScannerPassiveEventPolicy {
+    fun versionUpdate(state: ServerScannerState, version: String?): ServerScannerState? =
+        if (state.serverVersion == version) null else state.copy(serverVersion = version)
+
+    fun listenerCountUpdate(state: ServerScannerState, count: Int): ServerScannerState? =
+        if (state.listenerCount == count) null else state.copy(listenerCount = count)
+}
+
 internal object ScannerCallRoutingPolicy {
     fun channelEnabled(systems: List<SystemConfig>, key: ChannelKey): Boolean {
         for (system in systems) {
@@ -2934,8 +2946,12 @@ object ScannerRepository {
         when (envelope.command) {
             ThinLineProtocol.VERSION -> {
                 val version = (envelope.payload as? JSONObject)?.optString("version")?.takeIf { it.isNotBlank() }
-                synchronized(session) { session.state = session.state.copy(serverVersion = version) }
-                publish()
+                val changed = synchronized(session) {
+                    val next = ScannerPassiveEventPolicy.versionUpdate(session.state, version)
+                    if (next != null) session.state = next
+                    next != null
+                }
+                if (changed) publish()
             }
             ThinLineProtocol.PIN -> {
                 synchronized(session) {
@@ -2967,10 +2983,12 @@ object ScannerRepository {
             ThinLineProtocol.ALERT -> handleAlert(session, envelope.payload)
             ThinLineProtocol.INCIDENT -> scheduleAlertRefresh(session)
             ThinLineProtocol.LISTENER_COUNT -> ThinLineProtocol.parseListenerCount(envelope.payload)?.let { count ->
-                synchronized(session) {
-                    session.state = session.state.copy(listenerCount = count)
+                val changed = synchronized(session) {
+                    val next = ScannerPassiveEventPolicy.listenerCountUpdate(session.state, count)
+                    if (next != null) session.state = next
+                    next != null
                 }
-                publish()
+                if (changed) publish()
             }
             ThinLineProtocol.PIN_SET -> syncServerPin(session, envelope.payload)
             ThinLineProtocol.ERROR -> {
@@ -3653,37 +3671,43 @@ object ScannerRepository {
     ): String {
         val sourceText = sourceRef.toString()
         val dynamicAlias = tag?.trim()?.takeIf { it.isNotBlank() && it != sourceText }
-        val configuredAlias = systems
+        // An explicit source tag wins. Skip scanning unit aliases when
+        // that tag is already the displayed name.
+        val alias = dynamicAlias ?: systems
             .firstOrNull { it.systemRef == systemRef }
             ?.units
             ?.firstOrNull { it.matches(sourceRef) }
             ?.label
             ?.trim()
             ?.takeIf { it.isNotBlank() && it != sourceText }
-        val alias = dynamicAlias ?: configuredAlias
         return alias?.let { "$it | $sourceText" } ?: sourceText
     }
 
     internal fun matchesHistoryFilter(state: ServerScannerState, call: RadioCall): Boolean {
-        val systemMatches = state.historySystemRef?.let { call.systemRef == it } ?: true
-        val talkgroupMatches = (state.historyTalkgroupRef?.let { call.talkgroupRef == it } ?: true) &&
-            (state.historyTalkgroupRefs.isEmpty() || call.talkgroupRef in state.historyTalkgroupRefs)
-        val talkgroup = state.systems
-            .firstOrNull { it.systemRef == call.systemRef }
-            ?.talkgroups
-            ?.firstOrNull { it.talkgroupRef == call.talkgroupRef }
-        val groupMatches = state.historyGroup?.let { selected ->
-            talkgroup?.groups?.any { it.equals(selected, ignoreCase = true) } == true
-        } ?: true
-        val tagMatches = state.historyTag?.let { selected ->
-            talkgroup?.tag?.equals(selected, ignoreCase = true) == true
-        } ?: true
-        val dateMatches = state.historyDate?.let { selected ->
+        // Most listeners do not have archive group/tag filters selected.
+        // They should not search through the full system/talkgroup model for
+        // every incoming transmission, especially when other filters reject it.
+        if (state.historySystemRef?.let { call.systemRef != it } == true) return false
+        if (state.historyTalkgroupRef?.let { call.talkgroupRef != it } == true) return false
+        if (state.historyTalkgroupRefs.isNotEmpty() && call.talkgroupRef !in state.historyTalkgroupRefs) return false
+
+        val group = state.historyGroup
+        val tag = state.historyTag
+        if (group != null || tag != null) {
+            val talkgroup = state.systems
+                .firstOrNull { it.systemRef == call.systemRef }
+                ?.talkgroups
+                ?.firstOrNull { it.talkgroupRef == call.talkgroupRef }
+            if (group != null && talkgroup?.groups?.any { it.equals(group, ignoreCase = true) } != true) return false
+            if (tag != null && talkgroup?.tag?.equals(tag, ignoreCase = true) != true) return false
+        }
+
+        state.historyDate?.let { selected ->
             val cutoff = runCatching { Instant.parse(selected).toEpochMilli() }.getOrNull()
             val callTime = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrNull()
-            cutoff != null && callTime != null && callTime >= cutoff
-        } ?: true
-        return systemMatches && talkgroupMatches && groupMatches && tagMatches && dateMatches
+            if (cutoff == null || callTime == null || callTime < cutoff) return false
+        }
+        return true
     }
     private fun callSortKey(call: RadioCall): Long = runCatching { Instant.parse(call.dateTime).toEpochMilli() }.getOrDefault(0L)
 
