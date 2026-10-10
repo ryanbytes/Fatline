@@ -114,6 +114,63 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun binaryHistoryInsertionScalesLogarithmicallyWithLoadedArchiveSize() {
+        // Stable timestamp ties are intentionally common on busy scanner feeds.
+        // Count real timestamp-key comparisons, not elapsed CI wall time.
+        val baseMillis = Instant.parse("2026-10-09T00:00:00Z").toEpochMilli()
+        val ascending = (0 until 4_096).map { index ->
+            historyCall(index.toLong() + 1L, Instant.ofEpochMilli(baseMillis + (index / 4) * 1_000L).toString())
+        }
+        for (newestFirst in listOf(true, false)) {
+            val history = if (newestFirst) ascending.asReversed() else ascending
+            for (updatedIndex in listOf(-1, 0, 1, 1_024, 2_047, 4_094, 4_095)) {
+                for (seconds in listOf(-10L, 0L, 64L, 512L, 1_024L, 1_050L)) {
+                    val incoming = historyCall(
+                        if (updatedIndex >= 0) history[updatedIndex].id else 9_999L,
+                        Instant.ofEpochMilli(baseMillis + seconds * 1_000L).toString(),
+                        "Changed"
+                    )
+                    var timestampsExamined = 0
+                    val position = LiveHistoryMergePolicy.insertionIndex(
+                        history = history,
+                        newTime = Instant.parse(incoming.dateTime).toEpochMilli(),
+                        originalIndex = updatedIndex,
+                        newestFirst = newestFirst,
+                        timestampOf = { call ->
+                            timestampsExamined++
+                            Instant.parse(call.dateTime).toEpochMilli()
+                        }
+                    )
+                    assertTrue("O(log n) comparisons required: $timestampsExamined", timestampsExamined <= 13)
+                    val actual = LiveHistoryMergePolicy.insert(history, incoming, newestFirst)
+                    val reference = oldHistoryInsertion(history, incoming, newestFirst)
+                    assertEquals("sort=$newestFirst, updated=$updatedIndex, sec=$seconds", reference, actual)
+                    assertEquals(position, actual.indexOfFirst { it.id == incoming.id })
+                }
+            }
+        }
+    }
+
+    @Test
+    fun binaryHistoryInsertionKeepsEqualTimestampOrderWhenReplacingAnyPosition() {
+        val timestamp = "2026-10-09T10:10:00Z"
+        for (newestFirst in listOf(true, false)) {
+            val existing = (1L..50L).map { historyCall(it, timestamp) }
+            for (index in existing.indices) {
+                val incoming = existing[index].copy(talkgroupLabel = "Updated")
+                val actual = LiveHistoryMergePolicy.insert(existing, incoming, newestFirst)
+                assertEquals(existing.map { it.id }, actual.map { it.id })
+                assertEquals("Updated", actual[index].talkgroupLabel)
+            }
+            val appended = historyCall(99L, timestamp)
+            val result = LiveHistoryMergePolicy.insert(existing, appended, newestFirst)
+            assertEquals(99L, result.last().id)
+            assertEquals(emptyList<RadioCall>(),
+                LiveHistoryMergePolicy.insert(emptyList(), appended, newestFirst).drop(1))
+        }
+    }
+
+    @Test
     fun unchangedHistoryAndAlertsAreReusedAcrossStatusAndTranscriptUpdates() {
         val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
         val call = RadioCall(profileId = "one", serverName = "One", id = 1,
