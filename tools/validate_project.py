@@ -586,6 +586,12 @@ require('LiveHistoryMergePolicy.insert(' in repo
         and 'incrementalHistoryDuplicateKeepsStablePositionAmongEqualTimes' in aggregation_tests
         and 'incrementalHistoryMatchesStableSortForLargePagedArchiveAndUpdates' in aggregation_tests,
         'incremental live History must preserve chronological, stable-tie, duplicate-ID and paged batch behavior')
+require('internal fun insertionIndex(' in repo
+        and 'while (low < high)' in repo.split('internal object LiveHistoryMergePolicy', 1)[1].split('internal object RecentlyPlayedCallsPolicy', 1)[0]
+        and 'if (earlier || stableTie) high = mid else low = mid + 1' in repo
+        and 'binaryHistoryInsertionScalesLogarithmicallyWithLoadedArchiveSize' in aggregation_tests
+        and 'binaryHistoryInsertionKeepsEqualTimestampOrderWhenReplacingAnyPosition' in aggregation_tests,
+        'live History lookup must be logarithmic without changing equal-timestamp or replacement order')
 require('liveCallsRespectActiveHistoryFilter' in (ROOT / 'app/src/test/java/dev/scanrelay/app/net/ScannerRepositoryTest.kt').read_text(), 'archive-filter live-call regression test missing')
 require('Current TG' in ui and 'Current SYS' in ui and 'All archive' in ui, 'current-channel/system archive filter controls missing')
 require('talkgroupRef: Long? = null' in viewmodel and 'ScannerRepository.requestHistory(profileId, reset, systemRef, talkgroupRef)' in viewmodel, 'archive filter bridge missing from view model')
