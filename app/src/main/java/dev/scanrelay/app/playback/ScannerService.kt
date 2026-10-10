@@ -850,7 +850,11 @@ class ScannerService : MediaLibraryService() {
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(open)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // Talkgroup names and other playback metadata belong to the
+            // private notification. The public version below shows only a
+            // generic activity label on securely locked devices.
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicLockScreenNotification(open))
             .setCategory(
                 if (ScannerForegroundNotificationPolicy.usesMediaStyle(player.isPlaying)) NotificationCompat.CATEGORY_TRANSPORT
                 else NotificationCompat.CATEGORY_SERVICE
@@ -882,6 +886,26 @@ class ScannerService : MediaLibraryService() {
         // the tag color wherever the system supports it.
         if (tagColor != null) builder.setColor(tagColor).setColorized(true)
         return builder.build()
+    }
+
+    private fun publicLockScreenNotification(open: PendingIntent): Notification {
+        val safeText = ScannerPublicLockScreenPolicy.display(
+            hasMonitoredProfiles = monitoredProfileIds.isNotEmpty(),
+            isPlaying = player.isPlaying
+        )
+        // Deliberately no MediaStyle, album art, talkgroup, tag or
+        // transmission data. No action can run without unlocking the phone.
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_fatline_talkgroup)
+            .setContentTitle(safeText.title)
+            .setContentText(safeText.subtitle)
+            .setContentIntent(open)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
     }
 
     private fun currentPlayingTagColor(): Int? {
