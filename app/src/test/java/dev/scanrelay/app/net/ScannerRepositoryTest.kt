@@ -226,6 +226,47 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun identicalPublishedServerReferencesNeedNoNewStateEmission() {
+        val one = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val two = ServerProfile(id = "two", name = "Two", baseUrl = "https://scanner.invalid")
+        val serverOne = ServerScannerState(profile = one, statusText = "Connected")
+        val serverTwo = ServerScannerState(profile = two, statusText = "Connected")
+        val previous = ScannerState(servers = linkedMapOf("one" to serverOne, "two" to serverTwo))
+
+        // Fresh map instances and different insertion order still represent
+        // the same published snapshot, provided the per-server objects match.
+        assertFalse(ScannerStateAggregationPolicy.hasChanges(previous,
+            linkedMapOf("two" to serverTwo, "one" to serverOne)))
+        assertFalse(ScannerStateAggregationPolicy.hasChanges(previous, previous.servers))
+    }
+
+    @Test
+    fun anyChangedServerOrProfileMembershipForcesPublication() {
+        val one = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
+        val two = ServerProfile(id = "two", name = "Two", baseUrl = "https://scanner.invalid")
+        val serverOne = ServerScannerState(profile = one, statusText = "Connected")
+        val serverTwo = ServerScannerState(profile = two, statusText = "Connected")
+        val previous = ScannerState(servers = mapOf("one" to serverOne, "two" to serverTwo))
+
+        assertTrue(ScannerStateAggregationPolicy.hasChanges(previous,
+            mapOf("one" to serverOne.copy(statusText = "Reconnecting"), "two" to serverTwo)))
+        assertTrue(ScannerStateAggregationPolicy.hasChanges(previous,
+            mapOf("one" to serverOne, "two" to serverTwo.copy(listenerCount = 5))))
+        assertTrue(ScannerStateAggregationPolicy.hasChanges(previous, mapOf("one" to serverOne)))
+        assertTrue(ScannerStateAggregationPolicy.hasChanges(previous,
+            mapOf("one" to serverOne, "two" to serverTwo, "three" to serverTwo)))
+        assertTrue(ScannerStateAggregationPolicy.hasChanges(previous,
+            mapOf("one" to serverOne, "three" to serverTwo)))
+
+        // Even an equivalent replacement must proceed through the existing
+        // StateFlow equality behavior, rather than being dropped by identity.
+        assertTrue(ScannerStateAggregationPolicy.hasChanges(previous,
+            mapOf("one" to serverOne.copy(), "two" to serverTwo)))
+        assertFalse(ScannerStateAggregationPolicy.hasChanges(
+            ScannerState(), emptyMap()))
+    }
+
+    @Test
     fun singleServerNewestFirstAggregateReusesHistoryListWithoutSorting() {
         val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
         val calls = (1..100).map { index ->
