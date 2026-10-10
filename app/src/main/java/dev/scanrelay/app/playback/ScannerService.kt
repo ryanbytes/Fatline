@@ -1006,6 +1006,31 @@ class ScannerService : MediaLibraryService() {
         const val EXTRA_SUBTITLE = "subtitle"
         const val EXTRA_CALL_TOKEN = "call_token"
 
+        /** Open the user's existing foreground scanner notification channel. */
+        fun lockScreenNotificationSettingsIntent(context: Context): Intent {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            val channel = manager.getNotificationChannel(CHANNEL_ID)
+            val intent = if (channel != null) {
+                Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, CHANNEL_ID)
+            } else {
+                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+            }
+            return intent
+        }
+
+        /** FGS visibility does not mean lock-screen visibility was allowed. */
+        fun lockScreenNotificationStatus(context: Context): String {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            val channel = manager.getNotificationChannel(CHANNEL_ID)
+            return ScannerLockScreenAvailability.description(
+                appNotificationsEnabled = manager.areNotificationsEnabled(),
+                channelEnabled = channel?.importance?.let { it != NotificationManager.IMPORTANCE_NONE }
+            )
+        }
+
         /**
          * Called only from a visible Activity. Android may not restart a media-playback
          * foreground service after process death, so recover sessions on next app launch.
