@@ -41,6 +41,45 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun audioCacheFilenamesPreserveOldAsciiSanitizingRules() {
+        val profiles = listOf(
+            "", "p1", "0d5421bc-935e-4ca9-bd7f-20aa3f1937ca",
+            "one/server", "name spaces", "dots.and_underscores--",
+            "../unsafe", "é", "日本語", "\\path\\name", "star*pipe|colon:here"
+        )
+        for (id in profiles) {
+            val legacy = id.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            assertEquals(id, legacy, AudioCacheNamePolicy.safeProfile(id))
+        }
+    }
+
+    @Test
+    fun audioCacheExtensionsPreserveOldFilenameAndMimeFallbacks() {
+        val names = listOf(
+            null, "", "call.mp3", "call.MP3", "call.ogg", "call.m4a",
+            "call.", "foo.name-too-long", "foo.é", "foo.mp3?", "noextension",
+            "call...MP3", "call.0", "call.abcdefgh", "call.abcdefghi"
+        )
+        val types = listOf(null, "audio/mpeg", "AUDIO/MPEG", "audio/mp4",
+            "audio/aac", "audio/wav", "audio/ogg", "audio/unknown")
+        for (name in names) {
+            for (mime in types) {
+                val legacy = name?.substringAfterLast('.', "")
+                    ?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) }
+                    ?: when (mime?.lowercase()) {
+                        "audio/mpeg", "audio/mp3" -> "mp3"
+                        "audio/mp4", "audio/m4a" -> "m4a"
+                        "audio/aac" -> "aac"
+                        "audio/wav", "audio/x-wav" -> "wav"
+                        "audio/ogg" -> "ogg"
+                        else -> "bin"
+                    }
+                assertEquals("name=$name, mime=$mime", legacy, AudioCacheNamePolicy.extension(name, mime))
+            }
+        }
+    }
+
+    @Test
     fun incrementalHistoryInsertPreservesChronologyBothDirections() {
         val base = listOf(
             historyCall(1, "2026-10-09T10:00:00Z"),
