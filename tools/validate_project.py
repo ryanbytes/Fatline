@@ -443,6 +443,24 @@ require('override fun onUpdateNotification(session: MediaSession, startInForegro
         and 'liveTagColorAndChangedScannerStatusStillPublishWithoutSpuriousRefresh' in notification_tests,
         'persistent idle scanner foreground notification must resist Media3 idle cleanup and switch correctly to media playback')
 
+require('internal object ScannerPublicLockScreenPolicy' in notification_policy
+        and 'hasMonitoredProfiles -> PlaybackNotificationText("FatLine", "Scanner active")' in notification_policy
+        and '.setVisibility(NotificationCompat.VISIBILITY_PRIVATE)' in service
+        and '.setPublicVersion(publicLockScreenNotification(open))' in service
+        and 'private fun publicLockScreenNotification(open: PendingIntent): Notification' in service
+        and 'ScannerPublicLockScreenPolicy.display(' in service
+        and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
+        and 'publicLockScreenCopyShowsOnlyGenericMonitoringStatus' in notification_tests
+        and 'publicLockScreenCopyHandlesStandaloneReplayAndInactiveService' in notification_tests,
+        'lock-screen privacy-off needs a generic PUBLIC replacement notification with no talkgroup metadata')
+public_notification = service.split('private fun publicLockScreenNotification(', 1)[1].split('private fun currentPlayingTagColor()', 1)[0]
+require('MediaStyleNotificationHelper' not in public_notification
+        and '.setColorized(' not in public_notification
+        and 'call.talkgroup' not in public_notification
+        and 'serverName' not in public_notification
+        and 'transcript' not in public_notification,
+        'public lock-screen preview must not reveal private scanner activity details')
+
 tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
 tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
 require('fun playingCallColor(' in tag_colors_policy
