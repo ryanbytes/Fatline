@@ -280,7 +280,7 @@ require('ScannerHudPanel(server, currentlyPlayingCall)' in scanner_card, 'scanne
 require('ScannerHudPolicy.flags(' in ui and '"LIVE" to flags.live' in ui and '"SCAN" to flags.scan' in ui and '"RX" to flags.rx' in ui, 'scanner HUD annunciators must derive from real state')
 require('"HOLD SYS" to flags.holdSystem' in ui and '"HOLD TG" to flags.holdTalkgroup' in ui and '"PAUSE" to flags.pause' in ui, 'scanner HUD hold/pause indicators missing')
 require('isPlaying = call != null' in ui and 'scan = live && !isPlaying' in hud_policy and 'rx = isPlaying' in hud_policy, 'HUD must not fake receiving while idle')
-require('server.tagColors::get' in ui and 'tagBacklight.copy(alpha = 0.14f)' in ui, 'HUD tag-color backlight missing')
+require('val tagRgb = TagColors.playingCallColor(call, server)' in ui and 'tagBacklight.copy(alpha = 0.14f)' in ui, 'HUD tag-color backlight missing')
 require('connectedIdleShowsScanningButNotReceiverActivity' in hud_tests and 'disconnectedBufferedPlaybackIsStillRecognizedAsAudio' in hud_tests, 'HUD truthful state regression tests missing')
 
 require('Playback queue' not in scanner_screen, 'separate playback queue card must be removed')
