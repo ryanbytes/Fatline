@@ -387,7 +387,7 @@ require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)
         and 'if (!foregroundStarted) {' in service
         and 'foregroundStarted = false' in service
         and 'lastPostedNotification = null' in service
-        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))' in service
+        and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText, color))' in service
         and 'identicalNotificationTextAndQueueCountDoNotRepublish' in notification_tests,
         'notification posting must skip duplicates without omitting queue/status changes')
 require('internal object ScannerLockScreenPolicy' in notification_policy
@@ -409,6 +409,21 @@ require('internal object ScannerLockScreenPolicy' in notification_policy
         and 'lockScreenShowsMonitoringWhenLiveAudioIsPausedButConnectionRemains' in notification_tests
         and 'lockScreenDoesNotShowScanningAfterLastScannerDisconnects' in notification_tests,
         'single foreground notification must show accurate public lock-screen scanner status')
+
+tag_colors_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/TagColors.kt').read_text()
+tag_colors_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/ui/TagColorsTest.kt').read_text()
+require('fun playingCallColor(' in tag_colors_policy
+        and 'return rgb(tag, server.tagColors)' in tag_colors_policy
+        and 'val tagRgb = TagColors.playingCallColor(currentlyPlayingCall, server)' in ui
+        and 'CardDefaults.cardColors(containerColor = cardColor)' in ui
+        and 'TagColors.playingCallColor(call, server)' in ui
+        and 'TagColors.playingCallColor(call, server)' in service
+        and 'if (!::player.isInitialized || !player.isPlaying) return null' in service
+        and 'lastPostedNotificationColor == color' in service
+        and 'lastPostedNotificationColor = color' in service
+        and 'builder.setColor(tagColor).setColorized(true)' in service
+        and 'activeCallTagColorUsesConfiguredOverridesAndSemanticDefaults' in tag_colors_tests,
+        'lock-screen notification and in-app playing card must share active talkgroup tag color with stale-color reset')
 
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
