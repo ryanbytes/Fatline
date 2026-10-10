@@ -73,7 +73,8 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
         if (gapMs > 20_000L) gapsOver20Seconds++
         last = next
         samples++
-        peakPssKb = listOfNotNull(peakPssKb, next.pssKb).maxOrNull()
+        // No temporary list/iterator for each optional PSS reading.
+        next.pssKb?.let { pss -> peakPssKb = maxOf(peakPssKb ?: pss, pss) }
         peakJavaHeapKb = maxOf(peakJavaHeapKb, next.javaHeapKb)
         peakNativeHeapKb = maxOf(peakNativeHeapKb, next.nativeHeapKb)
         everPlugged = everPlugged || next.plugged
