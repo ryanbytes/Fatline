@@ -72,6 +72,9 @@ class ScannerService : MediaLibraryService() {
     // publication. These fields are only accessed by the service main thread.
     private var foregroundStarted = false
     private var lastPostedNotification: PlaybackNotificationText? = null
+    // Only changed on the service main thread. Avoid reading SharedPreferences
+    // whenever Media3 or scanner state emits a background update.
+    private var monitoredProfileIds: Set<String> = emptySet()
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
     private val pausedProfiles = mutableSetOf<String>()
@@ -141,7 +144,7 @@ class ScannerService : MediaLibraryService() {
             NetworkHandoffTransition.NETWORK_LOST -> {
                 currentNetworkHandle = null
                 ScannerRepository.networkUnavailable()
-                updateNotification("FatLine", "Waiting for network")
+                updatePlaybackNotification()
             }
             NetworkHandoffTransition.NETWORK_RESTORED,
             NetworkHandoffTransition.NETWORK_SWITCHED -> active?.let(::handleNetworkAvailable)
@@ -169,6 +172,7 @@ class ScannerService : MediaLibraryService() {
         super.onCreate()
         ScannerRepository.initialize(this)
         pauseStore = ScannerPauseStore(this)
+        monitoredProfileIds = activeProfileIds()
         playbackQueueStore = PlaybackQueueStore(this)
         volumeStore = PlaybackVolumeStore(this)
         _outputVolumePercent.value = volumeStore.percent()
@@ -258,7 +262,12 @@ class ScannerService : MediaLibraryService() {
         session = MediaLibrarySession.Builder(this, player, LibraryCallback()).build()
         restoreSavedPlaybackQueue()
         serviceScope.launch {
-            ScannerRepository.state.collect(::refreshFavoriteLibraryChildren)
+            ScannerRepository.state.collect { state ->
+                refreshFavoriteLibraryChildren(state)
+                // Show live scanning/connection status even while silent. The
+                // duplicate-text guard avoids reposting on every new call.
+                if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()
+            }
         }
     }
 
@@ -441,6 +450,7 @@ class ScannerService : MediaLibraryService() {
             .toMutableSet()
 
     private fun persistActiveProfiles(active: Set<String>) {
+        monitoredProfileIds = active.toSet()
         val editor = getSharedPreferences(PREFS, MODE_PRIVATE).edit()
         if (active.isEmpty()) editor.remove(KEY_ACTIVE_PROFILES)
         else editor.putStringSet(KEY_ACTIVE_PROFILES, active.toSet())
@@ -448,12 +458,7 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun updateMonitoringNotification(count: Int) {
-        if (count <= 0) return
-        if (::player.isInitialized && player.isPlaying) {
-            updatePlaybackNotification()
-        } else {
-            updateNotification("FatLine", "Monitoring $count server${if (count == 1) "" else "s"}")
-        }
+        if (count > 0) updatePlaybackNotification()
     }
 
     private fun stopIfIdle() {
@@ -772,6 +777,8 @@ class ScannerService : MediaLibraryService() {
         // Background playback is ongoing, not an unread alert: it must not
         // produce a permanent home-screen launcher notification dot.
         channel.setShowBadge(false)
+        // The user can still override lock-screen privacy in Android Settings.
+        channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
@@ -805,6 +812,9 @@ class ScannerService : MediaLibraryService() {
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(open)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(0, "Skip", skip)
@@ -815,10 +825,17 @@ class ScannerService : MediaLibraryService() {
 
     private fun currentPlaybackNotification(): PlaybackNotificationText {
         val metadata = player.currentMediaItem?.mediaMetadata
-        return PlaybackNotificationPolicy.display(
+        val playing = PlaybackNotificationPolicy.display(
             isPlaying = player.isPlaying,
             title = metadata?.title?.toString(),
             artist = metadata?.artist?.toString()
+        )
+        return ScannerLockScreenPolicy.display(
+            activeProfiles = monitoredProfileIds,
+            state = ScannerRepository.state.value,
+            pausedProfiles = pausedProfiles,
+            playing = playing,
+            isPlaying = player.isPlaying
         )
     }
 
