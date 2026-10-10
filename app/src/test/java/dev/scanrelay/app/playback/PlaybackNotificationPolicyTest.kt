@@ -160,53 +160,48 @@ class PlaybackNotificationPolicyTest {
     }
 
     @Test
-    fun idleScannerUsesPersistentStatusCardInsteadOfMediaStyle() {
-        // Idle, stopped, reconnecting and deliberately muted do not have
-        // actual Media3 playback, even if an old queued item still exists.
-        assertEquals(false, ScannerForegroundNotificationPolicy.usesMediaStyle(false))
-        assertEquals(true, ScannerForegroundNotificationPolicy.usesMediaStyle(true))
-    }
-
-    @Test
-    fun notificationRepostsWhenSwitchingBetweenIdleAndMediaWithoutTextChanges() {
-        val same = PlaybackNotificationText("FatLine · Scanning", "1 scanner connected")
+    fun sameTalkgroupNewTransmissionRepostsNotificationEvenWithIdenticalText() {
+        val same = PlaybackNotificationText("Fire Dispatch", "Wabash · SAFE-T · TG 341")
         assertEquals(
             false,
-            ScannerForegroundNotificationPolicy.needsUpdate(same, null, false, same.copy(), null, false)
+            ScannerForegroundNotificationPolicy.needsUpdate(same, null, "call:p1:live:17", same.copy(), null, "call:p1:live:17")
         )
+        // Media3 can transition directly between two calls on the same TG.
+        // Re-post the same persistent service notification with fresh details.
         assertEquals(
             true,
-            ScannerForegroundNotificationPolicy.needsUpdate(same, null, false, same, null, true)
-        )
-        assertEquals(
-            true,
-            ScannerForegroundNotificationPolicy.needsUpdate(same, null, true, same, null, false)
-        )
-        assertEquals(
-            true,
-            ScannerForegroundNotificationPolicy.needsUpdate(same, null, null, same, null, false)
+            ScannerForegroundNotificationPolicy.needsUpdate(same, null, "call:p1:live:17", same, null, "call:p1:live:18")
         )
     }
 
     @Test
-    fun liveTagColorAndChangedScannerStatusStillPublishWithoutSpuriousRefresh() {
+    fun scannerNotificationUpdatesOnStartStopColorAndConnectionChanges() {
         val idle = PlaybackNotificationText("FatLine · Scanning", "1 scanner connected")
         assertEquals(
             true,
-            ScannerForegroundNotificationPolicy.needsUpdate(idle, null, false, idle, 0xFF2979FF.toInt(), false)
+            ScannerForegroundNotificationPolicy.needsUpdate(idle, null, null, idle, null, "call:p1:live:17")
+        )
+        assertEquals(
+            true,
+            ScannerForegroundNotificationPolicy.needsUpdate(idle, null, "call:p1:live:17", idle, null, null)
+        )
+        assertEquals(
+            true,
+            ScannerForegroundNotificationPolicy.needsUpdate(idle, null, null, idle, 0xFF2979FF.toInt(), null)
         )
         assertEquals(
             true,
             ScannerForegroundNotificationPolicy.needsUpdate(
-                idle, null, false,
+                idle, null, null,
                 PlaybackNotificationText("FatLine · Connecting", "Waiting for scanner connection"),
-                null, false
+                null, null
             )
         )
         assertEquals(
             false,
             ScannerForegroundNotificationPolicy.needsUpdate(
-                idle, 0xFF2979FF.toInt(), false, idle.copy(), 0xFF2979FF.toInt(), false
+                idle, 0xFF2979FF.toInt(), "call:p1:live:17",
+                idle.copy(), 0xFF2979FF.toInt(), "call:p1:live:17"
             )
         )
     }
