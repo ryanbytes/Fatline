@@ -12,19 +12,22 @@ internal data class AndroidAutoFavorite(
 internal object AndroidAutoLibraryPolicy {
     fun favoriteChannels(profileId: String, state: ScannerState): List<AndroidAutoFavorite> {
         val server = state.servers[profileId] ?: return emptyList()
-        return server.systems
-            .filterNot { it.systemRef in server.hiddenSystemRefs }
-            .flatMap { system ->
-                system.talkgroups
-                    .filter { it.favorite }
-                    .map { talkgroup ->
-                        AndroidAutoFavorite(
-                            mediaId = "channel:$profileId:${talkgroup.systemRef}:${talkgroup.talkgroupRef}",
-                            title = talkgroup.displayName,
-                            subtitle = system.label
-                        )
-                    }
+        // A single pass avoids building visible-system, favorite-talkgroup
+        // and per-system mapping lists when Android Auto reopens its library.
+        // Preserve the exact server/system/talkgroup order and hidden filter.
+        return buildList {
+            for (system in server.systems) {
+                if (system.systemRef in server.hiddenSystemRefs) continue
+                for (talkgroup in system.talkgroups) {
+                    if (!talkgroup.favorite) continue
+                    add(AndroidAutoFavorite(
+                        mediaId = "channel:$profileId:${talkgroup.systemRef}:${talkgroup.talkgroupRef}",
+                        title = talkgroup.displayName,
+                        subtitle = system.label
+                    ))
+                }
             }
+        }
     }
 
     fun childrenChanged(
