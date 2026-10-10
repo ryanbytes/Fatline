@@ -401,7 +401,7 @@ require('internal object ScannerLockScreenPolicy' in notification_policy
         and 'ScannerRepository.state.collect { state ->' in service
         and 'if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()' in service
         and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
-        and 'NotificationCompat.CATEGORY_TRANSPORT' in service and 'NotificationCompat.CATEGORY_SERVICE' in service
+        and 'NotificationCompat.CATEGORY_TRANSPORT' not in service and 'NotificationCompat.CATEGORY_SERVICE' in service
         and 'channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC' in service
         and 'private const val NOTIFICATION_ID = 8101' in service
         and 'lockScreenShowsScanningBetweenCallsWhenConnected' in notification_tests
