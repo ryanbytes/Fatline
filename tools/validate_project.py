@@ -470,7 +470,7 @@ require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' i
 local_monitor = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/LocalTranscriptAlerts.kt').read_text()
 local_monitor_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/alerts/LocalTranscriptAlertPolicyTest.kt').read_text()
 require('fun configureLocalTranscriptAlerts(' in repo and 'fun configureLocalTranscriptAlerts(' in viewmodel and 'Local transcript alerts' in ui, 'local transcript rules must be editable in app')
-require('fun startTranscriptMonitor(' in repo and 'delay(LocalTranscriptAlertPolicy.pollIntervalMs(store.batterySaver(profileId)))' in repo and 'pollRecentTranscripts(session, store)' in repo, 'transcript monitor must run in the foreground scanner service independently of audio pause')
+require('fun startTranscriptMonitor(' in repo and 'delay(LocalTranscriptAlertPolicy.pollIntervalMs(store.batterySaver(profileId)))' in repo and 'pollRecentTranscripts(session, store, recentPollCache)' in repo, 'transcript monitor must run in the foreground scanner service independently of audio pause')
 require('api/transcripts?limit=100&offset=0&pin=' in repo and 'executeJsonArray(request)' in repo, 'monitor must poll server transcript API, not a hosted relay')
 require('store.baseline(' in repo and 'store.isNewSinceEnable(' in repo and 'store.accept(profileId, callId)' in repo, 'monitor must skip historical calls and deduplicate live/polled calls')
 require('processLocalTranscript(session, id, call.transcript' in repo and 'row.reviewedTranscript' in repo, 'monitor must process both live and delayed transcript text')
@@ -868,6 +868,30 @@ require('val alias = dynamicAlias ?: systems' in repo
         and 'if (sources.isEmpty()) return sourceLabel' in models
         and 'if (sources.size == 1)' in models,
         'source names must avoid source-list allocation when zero or one source is present')
+
+
+transcript_cache = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/RecentTranscriptPollCache.kt').read_text()
+transcript_cache_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/alerts/RecentTranscriptPollCacheTest.kt').read_text()
+require('class RecentTranscriptPollCache' in transcript_cache
+        and 'maxEntries: Int = 128' in transcript_cache
+        and 'maxTotalCharacters: Int = 65_536' in transcript_cache
+        and 'maxTextCharacters: Int = 4_096' in transcript_cache
+        and 'previous?.text == text' in transcript_cache
+        and 'previous.systemLabel == systemLabel' in transcript_cache
+        and 'previous.talkgroupLabel == talkgroupLabel' in transcript_cache
+        and 'val recentPollCache = RecentTranscriptPollCache()' in repo
+        and 'pollRecentTranscripts(session, store, recentPollCache)' in repo
+        and 'recentPollCache.forget(row.callId)' in repo
+        and 'reviewedTextAndCallLabelsAreAlwaysRecheckedWhenChanged' in transcript_cache_tests
+        and 'eachMonitorRestartRechecksItsFirstPage' in transcript_cache_tests
+        and 'boundedCacheEvictsOldestAndRechecksItWhenItReturns' in transcript_cache_tests
+        and 'blankAndFailedTranscriptsMayBeRetried' in transcript_cache_tests,
+        'transcript polling must avoid repeat rule matching without missing reviewed edits')
+require('weatherBaselineChanged(knownIds, activeIds)' in weather
+        and 'if (weatherBaselineChanged(knownIds, activeIds))' in weather
+        and 'return current.filterNot { it.id in knownIds }' in weather
+        and 'unchangedWeatherAlertsSkipDiskWritesButStillAllowNewWarnings' in weather_tests,
+        'NWS polling must preserve alerts while avoiding unchanged baseline writes')
 
 for path in ROOT.glob('app/src/main/java/**/*.kt'):
     text = path.read_text()

@@ -36,6 +36,22 @@ class NwsSevereWeatherTest {
         assertEquals(2, requests)
     }
 
+    @Test fun unchangedWeatherAlertsSkipDiskWritesButStillAllowNewWarnings() {
+        val initial = setOf("tornado-1", "flood-2")
+        assertTrue(weatherBaselineChanged(null, emptySet()))
+        assertTrue(weatherBaselineChanged(null, initial))
+        assertEquals(false, weatherBaselineChanged(initial, initial.toSet()))
+        assertEquals(false, weatherBaselineChanged(emptySet(), emptySet()))
+        assertTrue(weatherBaselineChanged(initial, setOf("tornado-1")))
+        assertTrue(weatherBaselineChanged(initial, initial + "new-warning"))
+        val alerts = listOf(
+            NwsSevereAlert("tornado-1", "Tornado Warning", "", "", "Severe"),
+            NwsSevereAlert("new-warning", "Severe Thunderstorm Warning", "", "", "Severe")
+        )
+        assertEquals(listOf("new-warning"), newlyActiveNwsAlerts(initial, alerts).map { it.id })
+        assertTrue(weatherBaselineChanged(initial, alerts.mapTo(mutableSetOf()) { it.id }))
+    }
+
     @Test fun keepsOnlyUniqueSevereAndExtremeAlerts() {
         val alerts = parseNwsSevereAlerts(JSONObject(
             """{"features":[
