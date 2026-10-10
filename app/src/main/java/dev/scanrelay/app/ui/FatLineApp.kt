@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -525,7 +526,10 @@ private fun ScannerStatusCard(
 
             ScannerHudPanel(server, currentlyPlayingCall)
 
-            currentlyPlayingCall?.takeIf { it.profileId == server.profile.id }?.let { call ->
+            // Reserve the Call actions row even during silence. Calls no longer
+            // change the scanner card height whenever the button appears.
+            Box(Modifier.fillMaxWidth().height(48.dp)) {
+              currentlyPlayingCall?.takeIf { it.profileId == server.profile.id }?.let { call ->
                 val key = ChannelKey(call.systemRef, call.talkgroupRef)
                 var callMenuExpanded by remember(server.profile.id, call.id) { mutableStateOf(false) }
                 Box {
@@ -568,6 +572,7 @@ private fun ScannerStatusCard(
                         )
                     }
                 }
+              }
             }
 
             Row(
@@ -753,7 +758,11 @@ private fun ScannerHudPanel(server: ServerScannerState, currentlyPlayingCall: Ra
                 }
             }
             Text(flags.headline, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-            if (call != null) {
+            // Fix the HUD's three call-detail rows in a stable footprint;
+            // show nothing stale between calls, but preserve their space.
+            Box(Modifier.fillMaxWidth().heightIn(min = 76.dp)) {
+              if (call != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     call.talkgroupLabel,
                     style = MaterialTheme.typography.titleMedium,
@@ -777,6 +786,8 @@ private fun ScannerHudPanel(server: ServerScannerState, currentlyPlayingCall: Ra
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                }
+              }
             }
         }
     }
