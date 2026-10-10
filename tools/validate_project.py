@@ -390,6 +390,26 @@ require('PlaybackNotificationPolicy.needsUpdate(lastPostedNotification, current)
         and 'getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(title, queueText))' in service
         and 'identicalNotificationTextAndQueueCountDoNotRepublish' in notification_tests,
         'notification posting must skip duplicates without omitting queue/status changes')
+require('internal object ScannerLockScreenPolicy' in notification_policy
+        and 'if (activeProfiles.isEmpty()) return playing' in notification_policy
+        and 'if (connected == 0)' in notification_policy
+        and '"FatLine · Scanning"' in notification_policy
+        and '"FatLine · Monitoring"' in notification_policy
+        and 'ScannerLockScreenPolicy.display(' in service
+        and 'monitoredProfileIds = activeProfileIds()' in service
+        and 'monitoredProfileIds = active.toSet()' in service
+        and 'ScannerRepository.state.collect { state ->' in service
+        and 'if (monitoredProfileIds.isNotEmpty()) updatePlaybackNotification()' in service
+        and '.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)' in service
+        and '.setCategory(NotificationCompat.CATEGORY_SERVICE)' in service
+        and 'channel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC' in service
+        and 'private const val NOTIFICATION_ID = 8101' in service
+        and 'lockScreenShowsScanningBetweenCallsWhenConnected' in notification_tests
+        and 'lockScreenReportsDisconnectedAndPartialConnectionsWithoutClaimingScanning' in notification_tests
+        and 'lockScreenShowsMonitoringWhenLiveAudioIsPausedButConnectionRemains' in notification_tests
+        and 'lockScreenDoesNotShowScanningAfterLastScannerDisconnects' in notification_tests,
+        'single foreground notification must show accurate public lock-screen scanner status')
+
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
