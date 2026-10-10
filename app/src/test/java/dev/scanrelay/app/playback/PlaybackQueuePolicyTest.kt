@@ -17,6 +17,47 @@ class PlaybackQueuePolicyTest {
     )
 
     @Test
+    fun delimiterLiveCallKeyMatchesPreviousSevenPartParserForEdgeCases() {
+        fun previous(mediaId: String): CallKey? {
+            val parts = mediaId.split(':')
+            if (parts.size != 7 || parts[0] != "call" || parts[2] != "live") return null
+            val profileId = parts[1].takeIf(String::isNotBlank) ?: return null
+            val callId = parts[3].toLongOrNull()?.takeIf { it > 0L } ?: return null
+            return CallKey(profileId, callId)
+        }
+        val samples = listOf(
+            "", "call:p1:live:1:1:1:token", "call:p1:live:1:1:1:", "call:p1:live:+1:1:1:token",
+            "call:p1:live:0001:1:1:token", "call:p1:live:0:1:1:token",
+            "call:p1:live:-1:1:1:token", "call:p1:live:9223372036854775808:1:1:token",
+            "call:p1:live:9223372036854775807:1:1:token",
+            "call::live:1:1:1:token", "call:p1:Live:1:1:1:token",
+            "CALL:p1:live:1:1:1:token", "call:p1:replay:1:1:1:token",
+            "call:p1:live:1:1:1:token:extra", "call:p1:live:1:1:1",
+            "call:p1:live:1:1:1:token:", "call:p1:live:1::1:token",
+            "call:p1:live:1:1::token", "call:p1:live:1:1:1:token-extra",
+            "call:profile-with-hyphen:live:12:7:8:abc",
+            "call:p1:live: 12:1:1:token", "call:p1:live:12 :1:1:token"
+        )
+        for (mediaId in samples) {
+            assertEquals(mediaId, previous(mediaId), PlaybackQueuePolicy.liveCallKey(mediaId))
+        }
+        for (number in -5..500) {
+            for (kind in listOf("live", "replay", "other")) {
+                val id = "call:p${number % 7}:$kind:$number:${number % 5}:6:token-$number"
+                assertEquals(id, previous(id), PlaybackQueuePolicy.liveCallKey(id))
+            }
+        }
+    }
+
+    @Test
+    fun delimiterParserPreservesReconnectDuplicateChecksForAlternateNumericIds() {
+        val oldCall = listOf("call:p1:live:+15:1:2:token", "call:p2:live:15:1:2:other")
+        assertFalse(PlaybackQueuePolicy.shouldEnqueueLiveCall("p1", 15L, emptySet(), oldCall))
+        assertFalse(PlaybackQueuePolicy.shouldEnqueueLiveCall("p2", 15L, emptySet(), oldCall))
+        assertTrue(PlaybackQueuePolicy.shouldEnqueueLiveCall("p3", 15L, emptySet(), oldCall))
+    }
+
+    @Test
     fun pendingAudioLaunchKeepsCallWhenNormalServiceStartWorks() {
         val pending = mutableMapOf("token" to liveCall(1))
         var normal = 0
