@@ -425,6 +425,23 @@ require('fun playingCallColor(' in tag_colors_policy
         and 'activeCallTagColorUsesConfiguredOverridesAndSemanticDefaults' in tag_colors_tests,
         'lock-screen notification and in-app playing card must share active talkgroup tag color with stale-color reset')
 
+require('Box(Modifier.fillMaxWidth().height(48.dp))' in scanner_card
+        and 'heightIn(min = 76.dp)' in ui
+        and 'currentlyPlayingCall?.takeIf { it.profileId == server.profile.id }?.let { call ->' in scanner_card
+        and 'if (call != null)' in ui
+        and 'No scanner configured' in ui,
+        'scanner card must reserve stable HUD and Call actions space between calls without showing stale content')
+require('fun lockScreenNotificationStatus(context: Context): String' in service
+        and 'fun lockScreenNotificationSettingsIntent(context: Context): Intent' in service
+        and 'Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS' in service
+        and 'Settings.ACTION_APP_NOTIFICATION_SETTINGS' in service
+        and 'manager.areNotificationsEnabled()' in service
+        and 'ScannerLockScreenAvailability.description(' in service
+        and 'lockScreenStatus' in ui
+        and 'Text("Lock-screen notification settings")' in ui
+        and 'blockedAppAndChannelNotificationsExplainInvisibleLockScreenCard' in notification_tests,
+        'lock screen must expose system notification settings and explain blocked/silent visibility')
+
 recent_main = ui.split('"Recent live calls",', 1)[1].split('item { Spacer(Modifier.height(16.dp)) }', 1)[0]
 recent_row = ui.split('private fun RecentLiveCallRow(', 1)[1].split('@Composable', 1)[0]
 require('RecentLiveCallRow(' in recent_main and 'onPlay = { viewModel.playNow(call.profileId, call.id) }' in recent_main, 'recent live calls must tap to play immediately')
