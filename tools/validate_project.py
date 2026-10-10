@@ -352,6 +352,14 @@ require('PlaybackQueuePolicy.liveCallKey(entry.mediaId)?.let(::rememberLiveCall)
 require('recentlyAcceptedLiveCalls.removeAll { it.profileId == profileId }' in service, 'explicit scanner disconnect must clear its recent-live identity window')
 require('reconnectCannotQueueDuplicateLiveCallOrEvictOtherWaitingCalls' in queue_tests and 'recentlyPlayedLiveCallsAreNotReplayedWhenServerResendsBacklog' in queue_tests, 'reconnect deduplication tests missing')
 require('removeLiveProfileMedia(profileId)' in service and 'isLiveCallForProfile(' in service and 'isLiveCallForProfile(' in queue_policy, 'pausing a scanner must remove only its live calls')
+require('fun liveChannelForProfile(mediaId: String, profileId: String): ChannelKey?' in queue_policy
+        and 'mediaId.indexOf(\':\', startIndex = 5)' in queue_policy
+        and 'PlaybackQueuePolicy.liveChannelForProfile(mediaId, profileId)' in service
+        and 'val mediaId = player.getMediaItemAt(index).mediaId' in service
+        and "val parts = player.getMediaItemAt(index).mediaId.split(':')" not in service
+        and "val parts = mediaId.split(':', limit = 4)" not in queue_policy
+        and 'delimiterProfileRemovalAndChannelPruningMatchOldSplitParsers' in queue_tests,
+        'paused/scanner channel queue pruning must avoid split allocations and preserve prior media ID matching')
 require('removeProfileMedia(profileId)' in service, 'disconnect must still remove all audio for its scanner')
 require('pausingScannerFiltersOnlyItsLiveMediaAndPreservesManualReplay' in queue_tests and 'malformedMediaIdentifiersAreNeverMatchedAsLiveCalls' in queue_tests, 'paused scanner manual replay regression coverage missing')
 require('fun playNow(profileId: String, callId: Long)' in repo and 'session.pendingImmediateReplay.remove(id)' in repo, 'manual replay priority must survive asynchronous server CAL')

@@ -691,12 +691,10 @@ class ScannerService : MediaLibraryService() {
 
     private fun filterProfileMedia(profileId: String) {
         for (index in player.mediaItemCount - 1 downTo 0) {
-            val parts = player.getMediaItemAt(index).mediaId.split(':')
-            if (parts.size < 7 || parts[0] != "call" || parts[1] != profileId || parts[2] != "live") continue
-            val systemRef = parts[4].toLongOrNull() ?: continue
-            val talkgroupRef = parts[5].toLongOrNull() ?: continue
-            if (!ScannerRepository.isChannelSubscribed(profileId, systemRef, talkgroupRef)) {
-                playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
+            val mediaId = player.getMediaItemAt(index).mediaId
+            val channel = PlaybackQueuePolicy.liveChannelForProfile(mediaId, profileId) ?: continue
+            if (!ScannerRepository.isChannelSubscribed(profileId, channel.systemRef, channel.talkgroupRef)) {
+                playedLiveCallTracker.cancelIf(mediaId)
                 player.removeMediaItem(index)
             }
         }
@@ -787,8 +785,9 @@ class ScannerService : MediaLibraryService() {
 
     private fun removeLiveProfileMedia(profileId: String) {
         for (index in player.mediaItemCount - 1 downTo 0) {
-            if (PlaybackQueuePolicy.isLiveCallForProfile(player.getMediaItemAt(index).mediaId, profileId)) {
-                playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
+            val mediaId = player.getMediaItemAt(index).mediaId
+            if (PlaybackQueuePolicy.isLiveCallForProfile(mediaId, profileId)) {
+                playedLiveCallTracker.cancelIf(mediaId)
                 player.removeMediaItem(index)
             }
         }
