@@ -10,6 +10,71 @@ import org.junit.Test
 
 class PlaybackNotificationPolicyTest {
     @Test
+    fun activeTalkgroupColorReusesResolutionAcrossUnchangedScannerUpdates() {
+        val profile = ServerProfile(id = "one", name = "County", baseUrl = "https://scanner.invalid")
+        val systems = listOf(dev.scanrelay.app.model.SystemConfig(
+            systemRef = 10, label = "Public Safety",
+            talkgroups = listOf(dev.scanrelay.app.model.TalkgroupConfig(
+                10, 200, "Dispatch", tag = "Fire"
+            ))
+        ))
+        val original = ServerScannerState(
+            profile = profile, systems = systems, tagColors = mapOf("fire" to "#00e676")
+        )
+        val activeCall = RadioCall(
+            profileId = "one", serverName = "County", id = 13, systemRef = 10, talkgroupRef = 200,
+            systemLabel = "Public Safety", talkgroupLabel = "Dispatch", dateTime = ""
+        )
+        val cache = PlayingTagColorCache()
+        var resolutions = 0
+        val resolve = { call: RadioCall, server: ServerScannerState ->
+            resolutions++
+            dev.scanrelay.app.ui.TagColors.playingCallColor(call, server)
+        }
+        val id = "call:one:live:13:10:200:a"
+        assertEquals(dev.scanrelay.app.ui.UiAccentRgb(0, 230, 118),
+            cache.colorFor(id, activeCall, original, resolve))
+        repeat(150) { i ->
+            val unrelatedStatusChange = original.copy(statusText = "Receiving $i", listenerCount = i)
+            assertEquals(dev.scanrelay.app.ui.UiAccentRgb(0, 230, 118),
+                cache.colorFor(id, activeCall, unrelatedStatusChange, resolve))
+        }
+        assertEquals(1, resolutions)
+
+        // Same media ID with replaced immutable call metadata re-resolves.
+        val updatedCall = activeCall.copy(talkgroupLabel = "Dispatch updated")
+        assertEquals(dev.scanrelay.app.ui.UiAccentRgb(0, 230, 118),
+            cache.colorFor(id, updatedCall, original, resolve))
+        assertEquals(2, resolutions)
+
+        // User tag overrides and system/channel edits must never become stale.
+        val changedColor = original.copy(tagColors = mapOf("fire" to "#2979ff"))
+        assertEquals(dev.scanrelay.app.ui.UiAccentRgb(41, 121, 255),
+            cache.colorFor(id, updatedCall, changedColor, resolve))
+        assertEquals(3, resolutions)
+        val noTag = original.copy(systems = listOf(systems[0].copy(
+            talkgroups = listOf(systems[0].talkgroups[0].copy(tag = ""))
+        )))
+        assertEquals(null, cache.colorFor(id, updatedCall, noTag, resolve))
+        assertEquals(4, resolutions)
+        assertEquals(null, cache.colorFor(id, updatedCall, noTag, resolve))
+        assertEquals(4, resolutions) // missing tag result also cached
+
+        // Silence, missing server or mismatched profile clears any old tint.
+        assertEquals(null, cache.colorFor(null, updatedCall, changedColor, resolve))
+        assertEquals(null, cache.colorFor(id, updatedCall, null, resolve))
+        assertEquals(null, cache.colorFor(id, updatedCall.copy(profileId = "other"), changedColor, resolve))
+        assertEquals(4, resolutions)
+        assertEquals(dev.scanrelay.app.ui.UiAccentRgb(41, 121, 255),
+            cache.colorFor(id, updatedCall, changedColor, resolve))
+        assertEquals(5, resolutions)
+        val nextId = "call:one:live:14:10:200:token"
+        assertEquals(dev.scanrelay.app.ui.UiAccentRgb(41, 121, 255),
+            cache.colorFor(nextId, updatedCall, changedColor, resolve))
+        assertEquals(6, resolutions)
+    }
+
+    @Test
     fun activePlaybackShowsCurrentCall() {
         assertEquals(
             PlaybackNotificationText("Dispatch", "Server · County"),
