@@ -12,6 +12,44 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidAutoLibraryPolicyTest {
+    @Test fun singlePassFavoritesMatchLegacyFilterMapOrderAndMetadata() {
+        val profile = ServerProfile(id = "scannerA", name = "Scanner A", baseUrl = "http://scanner.local")
+        val systems = (0 until 30).map { system ->
+            SystemConfig(
+                systemRef = system.toLong() + 1L,
+                label = "System $system",
+                talkgroups = (0 until 45).map { talkgroup ->
+                    TalkgroupConfig(
+                        systemRef = system.toLong() + 1L,
+                        talkgroupRef = talkgroup.toLong() + 100L,
+                        label = "TG $system:$talkgroup",
+                        favorite = (system + talkgroup) % 4 == 0
+                    )
+                }
+            )
+        }
+        for (hidden in listOf(emptySet(), setOf(1L, 3L, 5L, 7L), (1L..30L).toSet())) {
+            val state = ScannerState(servers = mapOf(profile.id to ServerScannerState(
+                profile = profile, systems = systems, hiddenSystemRefs = hidden
+            )))
+            // Independent reference to the exact previous implementation.
+            val expected = systems.filterNot { it.systemRef in hidden }.flatMap { system ->
+                system.talkgroups.filter { it.favorite }.map { talkgroup ->
+                    AndroidAutoFavorite(
+                        mediaId = "channel:${profile.id}:${talkgroup.systemRef}:${talkgroup.talkgroupRef}",
+                        title = talkgroup.displayName,
+                        subtitle = system.label
+                    )
+                }
+            }
+            assertEquals(expected, AndroidAutoLibraryPolicy.favoriteChannels(profile.id, state))
+        }
+        assertEquals(
+            emptyList<AndroidAutoFavorite>(),
+            AndroidAutoLibraryPolicy.favoriteChannels(profile.id, ScannerState())
+        )
+    }
+
     @Test fun exposesOnlyFavoriteChannelsFromVisibleSystems() {
         val profile = ServerProfile(id = "one", name = "County", baseUrl = "http://scanner.local")
         val state = ScannerState(

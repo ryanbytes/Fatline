@@ -8,11 +8,27 @@ internal object PlaybackQueuePolicy {
 
     /** An incoming live call is identified by server profile and call ID, not by a random media token. */
     fun liveCallKey(mediaId: String): CallKey? {
-        val parts = mediaId.split(':')
-        if (parts.size != 7 || parts[0] != "call" || parts[2] != "live") return null
-        val profileId = parts[1].takeIf(String::isNotBlank) ?: return null
-        val callId = parts[3].toLongOrNull()?.takeIf { it > 0L } ?: return null
-        return CallKey(profileId, callId)
+        // The live/replay queue can contain hundreds of IDs. Avoid split(':')
+        // allocating seven substrings plus a list for every duplicate probe.
+        // Keep the original exact seven-field format and numeric semantics.
+        if (!mediaId.startsWith("call:")) return null
+        val profileEnd = mediaId.indexOf(':', startIndex = 5)
+        if (profileEnd <= 5) return null
+        val kindStart = profileEnd + 1
+        val kindEnd = mediaId.indexOf(':', startIndex = kindStart)
+        if (kindEnd - kindStart != 4 ||
+            !mediaId.regionMatches(kindStart, "live", 0, 4)
+        ) return null
+        val idStart = kindEnd + 1
+        val idEnd = mediaId.indexOf(':', startIndex = idStart)
+        if (idEnd < 0) return null
+        val systemEnd = mediaId.indexOf(':', startIndex = idEnd + 1)
+        if (systemEnd < 0) return null
+        val tgEnd = mediaId.indexOf(':', startIndex = systemEnd + 1)
+        if (tgEnd < 0 || mediaId.indexOf(':', startIndex = tgEnd + 1) >= 0) return null
+        val callId = mediaId.substring(idStart, idEnd).toLongOrNull()
+            ?.takeIf { it > 0L } ?: return null
+        return CallKey(mediaId.substring(5, profileEnd), callId)
     }
 
     fun shouldEnqueueLiveCall(

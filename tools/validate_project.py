@@ -338,6 +338,14 @@ queue_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PlaybackQue
 queue_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PlaybackQueuePolicyTest.kt').read_text()
 
 require('shouldEnqueueLiveCall(' in queue_policy and 'liveCallKey(' in queue_policy, 'stable live call identity deduplication missing')
+live_key_parser = queue_policy.split('fun liveCallKey(mediaId: String): CallKey?', 1)[1].split('fun shouldEnqueueLiveCall(', 1)[0]
+require("mediaId.split(':')" not in live_key_parser
+        and "val profileEnd = mediaId.indexOf(':', startIndex = 5)" in live_key_parser
+        and 'mediaId.regionMatches(kindStart, "live", 0, 4)' in live_key_parser
+        and "mediaId.indexOf(':', startIndex = tgEnd + 1) >= 0" in live_key_parser
+        and 'delimiterLiveCallKeyMatchesPreviousSevenPartParserForEdgeCases' in queue_tests
+        and 'delimiterParserPreservesReconnectDuplicateChecksForAlternateNumericIds' in queue_tests,
+        'live deduplication must avoid seven-piece media ID split and exactly preserve old parsing semantics')
 require('if (liveFeed && !PlaybackQueuePolicy.shouldEnqueueLiveCall(' in service and 'pendingCalls.remove(token)' in service, 'duplicate live deliveries must be dropped before queue trimming')
 require('rememberLiveCall(CallKey(profileId, callId))' in service and 'RECENT_LIVE_ID_LIMIT' in service, 'recent live deduplication must be bounded across reconnects')
 require('PlaybackQueuePolicy.liveCallKey(entry.mediaId)?.let(::rememberLiveCall)' in service, 'recovered queued calls must populate the recent-live identity window')
@@ -1019,6 +1027,12 @@ require('fun hasChanges(previous: ScannerState, current: Map<String, ServerScann
         and 'identicalPublishedServerReferencesNeedNoNewStateEmission' in aggregation_tests
         and 'anyChangedServerOrProfileMembershipForcesPublication' in aggregation_tests,
         'unchanged per-server snapshot references must bypass unnecessary state publication')
+require('fun favoriteChannels(profileId: String, state: ScannerState): List<AndroidAutoFavorite>' in auto_policy
+        and 'return buildList {' in auto_policy.split('fun favoriteChannels(', 1)[1].split('fun childrenChanged(', 1)[0]
+        and 'for (system in server.systems)' in auto_policy
+        and 'for (talkgroup in system.talkgroups)' in auto_policy
+        and 'singlePassFavoritesMatchLegacyFilterMapOrderAndMetadata' in auto_tests,
+        'Android Auto favorites rebuilds must avoid intermediate lists while preserving channel order')
 require('fun forEachChanged(state: ScannerState, onChanged: (String, Int) -> Unit)' in auto_policy
         and 'val stale = snapshots.entries.iterator()' in auto_policy
         and 'favoriteLibraryCache.forEachChanged(state)' in service
