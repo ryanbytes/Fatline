@@ -73,6 +73,48 @@ class LocalTranscriptAlertPolicyTest {
     }
 
     @Test
+    fun preparedRuleSearchStringsPreserveLegacyMatchOrderAndTokenBoundaries() {
+        val rules = listOf("fire", "shots fired", "!!!", "110", "CARDIAC ARREST", "fire")
+        val prepared = LocalTranscriptAlertPolicy.prepare(rules)
+        fun originalMatcher(text: String): List<String> {
+            if (text.isBlank()) return emptyList()
+            val separator = Regex("[^\\p{L}\\p{N}]+")
+            val normalizedText = text.lowercase(java.util.Locale.ROOT)
+                .replace(separator, " ").trim()
+            val haystack = " " + normalizedText + " "
+            return prepared.filter { rule ->
+                rule.normalized.isNotBlank() && haystack.contains(" " + rule.normalized + " ")
+            }.map { it.original }
+        }
+        for (text in listOf(
+            "", "   ", "dispatch reports FIRE!", "firefighter", "shots, fired",
+            "cardiac-arrest response", "110", "1100", "FIRE shots fired",
+            "Multiple FIRE sightings and fire reports", "!!!", "nothing matches"
+        )) {
+            assertEquals(text, originalMatcher(text),
+                LocalTranscriptAlertPolicy.matchesPrepared(text, prepared))
+        }
+        assertEquals(listOf("fire", "fire"),
+            LocalTranscriptAlertPolicy.matchesPrepared("fire", prepared))
+        assertTrue(LocalTranscriptAlertPolicy.matchesPrepared(
+            "fire", emptyList()).isEmpty())
+        assertTrue(prepared[2].searchNeedle.isEmpty())
+    }
+
+    @Test
+    fun cachedPreparedNeedlesChangeWithRuleEdits() {
+        val cache = TranscriptRuleCache()
+        val before = cache.get("one", "fire, shots fired")
+        assertEquals(" fire ", before.prepared.first().searchNeedle)
+        val after = cache.get("one", "cardiac arrest")
+        assertEquals(" cardiac arrest ", after.prepared.first().searchNeedle)
+        assertTrue(LocalTranscriptAlertPolicy.matchesPrepared(
+            "fire report", after.prepared).isEmpty())
+        assertEquals(listOf("cardiac arrest"),
+            LocalTranscriptAlertPolicy.matchesPrepared("Cardiac-arrest!", after.prepared))
+    }
+
+    @Test
     fun batterySaverHalvesPeriodicNetworkChecks() {
         assertEquals(30_000L, LocalTranscriptAlertPolicy.pollIntervalMs(false))
         assertEquals(60_000L, LocalTranscriptAlertPolicy.pollIntervalMs(true))
