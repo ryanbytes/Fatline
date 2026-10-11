@@ -10,6 +10,7 @@ import android.os.Process
 import android.os.SystemClock
 import dev.scanrelay.app.net.ScannerTransportMetrics
 import dev.scanrelay.app.net.ScannerTransportSnapshot
+import java.time.Instant
 import java.util.Locale
 
 /** Process counters use monotonic time; battery capacity/charge is whole-device, not app-only. */
@@ -125,6 +126,11 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
                 appendLine("WebSocket CAL frames received: ${counterDelta(startTransport.receivedCallFrames, endTransport.receivedCallFrames) ?: "unavailable"}")
                 appendLine("WebSocket CFG frames received: ${counterDelta(startTransport.successfulConfigs, endTransport.successfulConfigs) ?: "unavailable"}")
                 appendLine("WebSocket failure/close callbacks: ${counterDelta(startTransport.socketTerminations, endTransport.socketTerminations) ?: "unavailable"}")
+                val events = ScannerTransportMetrics.eventsBetween(startTransport.eventSequence, endTransport.eventSequence)
+                appendLine("Connection and queue events (local; at most 96 newest retained): ${events.size}")
+                events.forEach { event ->
+                    appendLine("  ${Instant.ofEpochMilli(event.timestampMs)} ${event.detail}")
+                }
             }
             appendLine("Phone battery level: $batteryPercent")
             appendLine("Phone battery charge used: ${batteryDelta?.let { String.format(Locale.US, "%.2f mAh", it / 1000.0) } ?: "unavailable"}")
@@ -132,7 +138,8 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
             appendLine("Battery counters are whole-phone measurements, not FatLine-only drain.")
             appendLine("CPU percent is relative to one core and can exceed 100% on multicore devices.")
             appendLine("Sampling is opt-in and happens only while the scanner service is running.")
-            append("CAL/CFG and socket callback counts do not establish whether any calls were missed; network handoffs may not produce a failure/close callback.")
+            appendLine("CAL/CFG and socket callback counts do not establish whether any calls were missed; network handoffs may not produce a failure/close callback.")
+            append("Live call IDs need not be consecutive. Verify possible omissions against the server archive.")
         }
     }
 }
