@@ -36,4 +36,33 @@ class NetworkHandoffPolicyTest {
         assertFalse(NetworkHandoffPolicy.isCurrentLoss(lostHandle = 10L, currentHandle = null))
         assertTrue(NetworkHandoffPolicy.isCurrentLoss(lostHandle = 20L, currentHandle = 20L))
     }
+    @Test
+    fun onlyEstablishedInternetValidationLossAndRecoveryTriggerReconnect() {
+        // Initial capability events must not break LAN-only scanner servers.
+        assertEquals(
+            InternetValidationTransition.NO_CHANGE,
+            NetworkHandoffPolicy.internetValidation(null, false)
+        )
+        assertEquals(
+            InternetValidationTransition.NO_CHANGE,
+            NetworkHandoffPolicy.internetValidation(null, true)
+        )
+        assertEquals(
+            InternetValidationTransition.VALIDATION_LOST,
+            NetworkHandoffPolicy.internetValidation(true, false)
+        )
+        assertEquals(
+            InternetValidationTransition.NO_CHANGE,
+            NetworkHandoffPolicy.internetValidation(false, false)
+        )
+        assertEquals(
+            InternetValidationTransition.VALIDATION_RESTORED,
+            NetworkHandoffPolicy.internetValidation(false, true)
+        )
+        assertEquals(
+            InternetValidationTransition.NO_CHANGE,
+            NetworkHandoffPolicy.internetValidation(true, true)
+        )
+    }
+
 }
