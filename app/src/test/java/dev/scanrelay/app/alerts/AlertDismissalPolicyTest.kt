@@ -4,6 +4,7 @@ import dev.scanrelay.app.model.ScannerAlert
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,6 +18,32 @@ class AlertDismissalPolicyTest {
         profileId = profileId, serverName = "Scanner", title = title,
         body = body, dateTime = "2026-10-09T18:00:00Z", alertId = id, callId = 123
     )
+
+    @Test
+    fun noDismissedAlertsReuseTheOriginalListWithoutFiltering() {
+        val alerts = listOf(alert(id = 1), alert(id = 2), alert(id = null))
+        assertSame(alerts, AlertDismissalPolicy.visible(alerts, emptySet()))
+        assertSame(alerts, AlertDismissalPolicy.visible(alerts, emptySet()))
+        assertEquals(alerts, AlertDismissalPolicy.visible(alerts, setOf("not-a-match")))
+        assertTrue(AlertDismissalPolicy.visible(emptyList(), setOf("any")).isEmpty())
+    }
+
+    @Test
+    fun cachedStableKeyPreservesLegacyValuesAcrossCopies() {
+        val server = alert(id = 91, title = "Old", body = "Original")
+        assertEquals("alert-91", server.stableKey)
+        assertEquals("alert-91", server.copy(title = "Updated").stableKey)
+        val local = alert(id = null, title = "Unit|call", body = "fire|incident")
+        assertEquals("Unit|call|fire|incident|2026-10-09T18:00:00Z", local.stableKey)
+        assertSame(local.stableKey, local.stableKey)
+        assertEquals("Unit|call|revised|2026-10-09T18:00:00Z",
+            local.copy(body = "revised").stableKey)
+        assertEquals("Unit|call|fire|incident|",
+            local.copy(dateTime = null).stableKey)
+        assertEquals(AlertDismissalPolicy.key(local), AlertDismissalPolicy.key(local))
+        assertNotEquals(AlertDismissalPolicy.key(local),
+            AlertDismissalPolicy.key(local.copy(body = "revised")))
+    }
 
     @Test
     fun deletedAlertStaysHiddenAfterHistoryIsReloaded() {

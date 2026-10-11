@@ -979,6 +979,12 @@ require('getSharedPreferences("fatline_dismissed_alerts"' in alert_dismissal
         and 'deletionDoesNotHideOtherAlertsOrAnotherScanner' in alert_dismissal_tests
         and 'tombstonesAreBoundedAndRedismissedAlertsMoveToNewest' in alert_dismissal_tests,
         'dismissal store and regression tests missing')
+require('if (dismissedKeys.isEmpty() || alerts.isEmpty()) alerts' in alert_dismissal
+        and 'if (raw.isNullOrBlank() || raw == "[]") return result' in alert_dismissal
+        and 'val stableKey: String = alertId?.let' in models
+        and 'noDismissedAlertsReuseTheOriginalListWithoutFiltering' in alert_dismissal_tests
+        and 'cachedStableKeyPreservesLegacyValuesAcrossCopies' in alert_dismissal_tests,
+        'empty alert dismissals should bypass JSON decode and hashing without changing stable keys')
 
 probe = (ROOT / 'app/src/main/java/dev/scanrelay/app/playback/PerformanceProbe.kt').read_text()
 probe_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/playback/PerformanceProbeTest.kt').read_text()
