@@ -8,8 +8,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
@@ -39,6 +41,7 @@ import dev.scanrelay.app.model.RadioCall
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.net.NetworkHandoffPolicy
 import dev.scanrelay.app.net.NetworkHandoffTransition
+import dev.scanrelay.app.net.InternetValidationTransition
 import dev.scanrelay.app.net.ScannerRepository
 import java.io.File
 import java.util.UUID
@@ -83,6 +86,8 @@ class ScannerService : MediaLibraryService() {
     private var monitoredProfileIds: Set<String> = emptySet()
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
+    private var currentNetworkValidated: Boolean? = null
+    private var suspendedForValidationLoss = false
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
     private val playedLiveCallTracker = PlayedLiveCallTracker()
@@ -155,12 +160,26 @@ class ScannerService : MediaLibraryService() {
         when (NetworkHandoffPolicy.transition(currentNetworkHandle, active?.networkHandle)) {
             NetworkHandoffTransition.NETWORK_LOST -> {
                 currentNetworkHandle = null
+                currentNetworkValidated = null
+                networkHandler.removeCallbacks(networkValidationCheck)
+                suspendedForValidationLoss = false
                 ScannerRepository.networkUnavailable()
                 updatePlaybackNotification()
             }
             NetworkHandoffTransition.NETWORK_RESTORED,
             NetworkHandoffTransition.NETWORK_SWITCHED -> active?.let(::handleNetworkAvailable)
             NetworkHandoffTransition.NO_CHANGE -> Unit
+        }
+    }
+
+    // Only react to a sustained loss of internet validation. A short validation
+    // flap must not interrupt audio or discard queued calls.
+    private val networkValidationCheck = Runnable {
+        if (currentNetworkValidated == false && currentNetworkHandle != null && !suspendedForValidationLoss) {
+            suspendedForValidationLoss = true
+            Log.i("FatLineNetwork", "Default network lost internet validation")
+            ScannerRepository.networkUnavailable()
+            updateMonitoringNotification(activeProfileIds().size)
         }
     }
 
@@ -176,6 +195,32 @@ class ScannerService : MediaLibraryService() {
                 // or after this callback. Give the handoff a short window before declaring offline.
                 networkHandler.removeCallbacks(networkLossCheck)
                 networkHandler.postDelayed(networkLossCheck, NETWORK_LOSS_GRACE_MS)
+            }
+        }
+
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+            val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            networkHandler.post {
+                // Ignore delayed capability events from the previous Wi-Fi/cellular network.
+                if (network.networkHandle != currentNetworkHandle) return@post
+                val change = NetworkHandoffPolicy.internetValidation(currentNetworkValidated, validated)
+                currentNetworkValidated = validated
+                when (change) {
+                    InternetValidationTransition.VALIDATION_LOST -> {
+                        networkHandler.removeCallbacks(networkValidationCheck)
+                        networkHandler.postDelayed(networkValidationCheck, NETWORK_LOSS_GRACE_MS)
+                    }
+                    InternetValidationTransition.VALIDATION_RESTORED -> {
+                        networkHandler.removeCallbacks(networkValidationCheck)
+                        if (suspendedForValidationLoss) {
+                            suspendedForValidationLoss = false
+                            Log.i("FatLineNetwork", "Default network internet validation restored")
+                            ScannerRepository.networkChanged("Internet restored")
+                            updateMonitoringNotification(activeProfileIds().size)
+                        }
+                    }
+                    InternetValidationTransition.NO_CHANGE -> Unit
+                }
             }
         }
     }
@@ -393,13 +438,21 @@ class ScannerService : MediaLibraryService() {
 
     private fun startNetworkTracking() {
         connectivityManager = getSystemService(ConnectivityManager::class.java)
-        currentNetworkHandle = connectivityManager.activeNetwork?.networkHandle
-        if (currentNetworkHandle == null) ScannerRepository.networkUnavailable()
+        // Observe the first onAvailable even when Android already had a default
+        // network before service creation. The repository may still be marked offline.
+        currentNetworkHandle = null
+        currentNetworkValidated = null
+        if (connectivityManager.activeNetwork == null) ScannerRepository.networkUnavailable()
         runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+            .onFailure { error ->
+                Log.e("FatLineNetwork", "Failed to register default-network callback", error)
+                connectivityManager.activeNetwork?.let(::handleNetworkAvailable)
+            }
     }
 
     private fun stopNetworkTracking() {
         networkHandler.removeCallbacks(networkLossCheck)
+        networkHandler.removeCallbacks(networkValidationCheck)
         if (::connectivityManager.isInitialized) {
             runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
         }
@@ -410,6 +463,12 @@ class ScannerService : MediaLibraryService() {
         val newHandle = network.networkHandle
         val transition = NetworkHandoffPolicy.transition(currentNetworkHandle, newHandle)
         currentNetworkHandle = newHandle
+        if (transition != NetworkHandoffTransition.NO_CHANGE) {
+            networkHandler.removeCallbacks(networkValidationCheck)
+            currentNetworkValidated = null
+            suspendedForValidationLoss = false
+            Log.i("FatLineNetwork", "Default network: $transition")
+        }
         when (transition) {
             NetworkHandoffTransition.NETWORK_RESTORED -> {
                 ScannerRepository.networkChanged("Network restored")
