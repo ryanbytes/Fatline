@@ -34,7 +34,10 @@ internal object AlertDismissalPolicy {
     }
 
     fun visible(alerts: List<ScannerAlert>, dismissedKeys: Set<String>): List<ScannerAlert> =
-        alerts.filterNot { key(it) in dismissedKeys }
+        // Most users have no dismissed alerts. Reuse the immutable input list
+        // instead of SHA-256 hashing every alert and allocating a filtered copy.
+        if (dismissedKeys.isEmpty() || alerts.isEmpty()) alerts
+        else alerts.filterNot { key(it) in dismissedKeys }
 }
 
 internal class AlertDismissalStore(context: Context) {
@@ -44,7 +47,11 @@ internal class AlertDismissalStore(context: Context) {
 
     private fun read(profileId: String): LinkedHashSet<String> {
         val result = LinkedHashSet<String>()
-        val rows = runCatching { JSONArray(prefs.getString(prefKey(profileId), "[]")) }.getOrNull()
+        val raw = prefs.getString(prefKey(profileId), null)
+        // Avoid parsing an empty JSON array on every alert refresh and every
+        // local keyword match when the user has never dismissed an alert.
+        if (raw.isNullOrBlank() || raw == "[]") return result
+        val rows = runCatching { JSONArray(raw) }.getOrNull()
         if (rows != null) for (i in 0 until rows.length()) {
             rows.optString(i).takeIf(String::isNotBlank)?.let(result::add)
         }
