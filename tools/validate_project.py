@@ -634,6 +634,12 @@ require('store.matches(profileId, transcript)' in repo
         and 'cachedRules.get(profileId, rawRules(profileId)).prepared' in local_monitor
         and 'cachedRules.clear(profileId)' in local_monitor,
         'local transcript matching must use pre-normalized phrase rules and invalidate edits/deletions')
+require('val searchNeedle: String = if (normalized.isNotBlank()) " $normalized " else ""' in local_monitor
+        and 'if (transcript.isBlank() || prepared.isEmpty()) return emptyList()' in local_monitor
+        and 'if (matches == null) matches = ArrayList(2)' in local_monitor
+        and 'preparedRuleSearchStringsPreserveLegacyMatchOrderAndTokenBoundaries' in local_monitor_tests
+        and 'cachedPreparedNeedlesChangeWithRuleEdits' in local_monitor_tests,
+        'transcript keyword matching must reuse prepared boundaries without allocating no-match lists')
 require('preparedRulesRetainPhraseMatchingAndWordBoundaries' in local_monitor_tests
         and 'cachedRulesReusedAndRepreparedAsSoonAsRuleTextChanges' in local_monitor_tests,
         'prepared local keyword matcher must be covered by equivalence and cache invalidation tests')
