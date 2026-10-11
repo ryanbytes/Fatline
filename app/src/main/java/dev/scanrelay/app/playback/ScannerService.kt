@@ -923,7 +923,7 @@ class ScannerService : MediaLibraryService() {
         // It remains a single FGS notification (NOTIFICATION_ID 8101).
         val details = currentScannerNotificationDetails(title, text)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_fatline_talkgroup)
+            .setSmallIcon(R.drawable.ic_fatline_belt_buckle)
             .setContentTitle(details.title)
             .setContentText(details.summary)
             .setContentIntent(open)
