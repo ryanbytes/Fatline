@@ -198,9 +198,11 @@ data class ScannerAlert(
     val incidentLon: Double? = null,
     val createdAt: Long? = null
 ) {
-    val stableKey: String
-        get() = alertId?.let { "alert-$it" }
-            ?: listOf(title, body, dateTime.orEmpty()).joinToString("|")
+    // Immutable alert fields allow computing the dismissal/rendering key once
+    // instead of allocating a list and joining strings on every access.
+    // Data-class copy() constructs a new key when its identifying fields change.
+    val stableKey: String = alertId?.let { "alert-$it" }
+        ?: title + "|" + body + "|" + dateTime.orEmpty()
 }
 
 enum class ConnectionStatus {
