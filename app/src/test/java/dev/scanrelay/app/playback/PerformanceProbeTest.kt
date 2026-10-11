@@ -1,5 +1,6 @@
 package dev.scanrelay.app.playback
 
+import dev.scanrelay.app.net.ScannerTransportSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,12 +10,14 @@ class PerformanceProbeTest {
     private fun reading(
         elapsed: Long, cpu: Long, pss: Long? = 20_480L, javaHeap: Long = 8_192L,
         native: Long = 4_096L, rx: Long? = 10_240L, tx: Long? = 4_096L,
-        pct: Int? = 80, charge: Long? = 3_000_000L, plugged: Boolean = false
+        pct: Int? = 80, charge: Long? = 3_000_000L, plugged: Boolean = false,
+        transport: ScannerTransportSnapshot? = null
     ) = PerformanceReading(
         elapsedMs = elapsed, cpuMs = cpu, pssKb = pss,
         javaHeapKb = javaHeap, nativeHeapKb = native,
         rxBytes = rx, txBytes = tx,
-        batteryPercent = pct, chargeMicroAh = charge, plugged = plugged
+        batteryPercent = pct, chargeMicroAh = charge, plugged = plugged,
+        transport = transport
     )
 
     @Test
@@ -43,6 +46,33 @@ class PerformanceProbeTest {
         assertTrue(report.contains("Phone battery level: 80% → 79%"))
         assertTrue(report.contains("Phone battery charge used: 10.00 mAh"))
         assertTrue(report.contains("whole-phone measurements, not FatLine-only"))
+    }
+
+    @Test
+    fun transportCountersExposeRealFramesAndSocketFailuresWithoutGuessingMissingCalls() {
+        val beginning = ScannerTransportSnapshot(
+            receivedCallFrames = 8, successfulConfigs = 1, socketTerminations = 0
+        )
+        val finish = ScannerTransportSnapshot(
+            receivedCallFrames = 19, successfulConfigs = 3, socketTerminations = 2
+        )
+        val probe = PerformanceProbe(
+            "Idle monitoring", reading(elapsed = 0, cpu = 0, transport = beginning)
+        )
+        probe.sample(reading(elapsed = 10_000, cpu = 100, transport = finish))
+        val report = probe.report()
+        assertTrue(report.contains("WebSocket CAL frames received: 11"))
+        assertTrue(report.contains("WebSocket CFG frames received: 2"))
+        assertTrue(report.contains("WebSocket failure/close callbacks: 2"))
+        assertTrue(report.contains("do not establish whether any calls were missed"))
+    }
+
+    @Test
+    fun nullableTransportCountersStayAbsentInOfflineReadings() {
+        val report = PerformanceProbe(
+            "Offline fixture", reading(elapsed = 0, cpu = 0)
+        ).report()
+        assertFalse(report.contains("WebSocket CAL frames received"))
     }
 
     @Test
