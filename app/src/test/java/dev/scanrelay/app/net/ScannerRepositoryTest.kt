@@ -333,6 +333,49 @@ class ScannerRepositoryTest {
     }
 
     @Test
+    fun liveHistoryIsBoundedWhileIdleInBothSortDirections() {
+        val ascending = (1L..850L).map { id ->
+            historyCall(id, Instant.ofEpochSecond(id).toString())
+        }
+        val newestFirst = ascending.asReversed()
+        val retainedNew = LiveHistoryRetentionPolicy.retain(
+            newestFirst, archiveRowsLoaded = 0, newestFirst = true
+        )
+        val retainedOld = LiveHistoryRetentionPolicy.retain(
+            ascending, archiveRowsLoaded = 0, newestFirst = false
+        )
+        assertEquals(500, retainedNew.size)
+        assertEquals(newestFirst.take(500), retainedNew)
+        assertEquals(500, retainedOld.size)
+        assertEquals(ascending.takeLast(500), retainedOld)
+        assertEquals(850L, retainedNew.first().id)
+        assertEquals(351L, retainedOld.first().id)
+    }
+
+    @Test
+    fun liveHistoryCapPreservesUserPagedArchiveAndNoOpIdentity() {
+        val descending = (1L..850L).map { id ->
+            historyCall(id, Instant.ofEpochSecond(id).toString())
+        }.asReversed()
+        // A paged archive is intentionally retained alongside the 500-row
+        // headroom for calls arriving while the user browses History.
+        assertSame(
+            descending,
+            LiveHistoryRetentionPolicy.retain(descending, archiveRowsLoaded = 400, newestFirst = true)
+        )
+        assertEquals(
+            descending.take(700),
+            LiveHistoryRetentionPolicy.retain(descending, archiveRowsLoaded = 200, newestFirst = true)
+        )
+        val newCall = historyCall(851, Instant.ofEpochSecond(851).toString())
+        val updated = LiveHistoryMergePolicy.insert(descending, newCall, newestFirst = true)
+        val retained = LiveHistoryRetentionPolicy.retain(updated, archiveRowsLoaded = 200, newestFirst = true)
+        assertEquals(700, retained.size)
+        assertEquals(851L, retained.first().id)
+        assertEquals(152L, retained.last().id)
+    }
+
+    @Test
     fun unchangedHistoryAndAlertsAreReusedAcrossStatusAndTranscriptUpdates() {
         val profile = ServerProfile(id = "one", name = "One", baseUrl = "https://scanner.invalid")
         val call = RadioCall(profileId = "one", serverName = "One", id = 1,
