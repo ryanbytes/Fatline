@@ -87,7 +87,7 @@ class ScannerService : MediaLibraryService() {
     private val networkHandler = Handler(Looper.getMainLooper())
     private var currentNetworkHandle: Long? = null
     private var currentNetworkValidated: Boolean? = null
-    private var suspendedForValidationLoss = false
+    private var restartedForValidationLoss = false
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
     private val playedLiveCallTracker = PlayedLiveCallTracker()
@@ -162,7 +162,7 @@ class ScannerService : MediaLibraryService() {
                 currentNetworkHandle = null
                 currentNetworkValidated = null
                 networkHandler.removeCallbacks(networkValidationCheck)
-                suspendedForValidationLoss = false
+                restartedForValidationLoss = false
                 ScannerRepository.networkUnavailable()
                 updatePlaybackNotification()
             }
@@ -172,13 +172,13 @@ class ScannerService : MediaLibraryService() {
         }
     }
 
-    // Only react to a sustained loss of internet validation. A short validation
-    // flap must not interrupt audio or discard queued calls.
+    // Only react to sustained validation loss. Keep retrying even on a
+    // LAN-only network: failed internet validation does not mean no network.
     private val networkValidationCheck = Runnable {
-        if (currentNetworkValidated == false && currentNetworkHandle != null && !suspendedForValidationLoss) {
-            suspendedForValidationLoss = true
+        if (currentNetworkValidated == false && currentNetworkHandle != null && !restartedForValidationLoss) {
+            restartedForValidationLoss = true
             Log.i("FatLineNetwork", "Default network lost internet validation")
-            ScannerRepository.networkUnavailable()
+            ScannerRepository.networkChanged("Internet validation lost")
             updateMonitoringNotification(activeProfileIds().size)
         }
     }
@@ -212,8 +212,8 @@ class ScannerService : MediaLibraryService() {
                     }
                     InternetValidationTransition.VALIDATION_RESTORED -> {
                         networkHandler.removeCallbacks(networkValidationCheck)
-                        if (suspendedForValidationLoss) {
-                            suspendedForValidationLoss = false
+                        if (restartedForValidationLoss) {
+                            restartedForValidationLoss = false
                             Log.i("FatLineNetwork", "Default network internet validation restored")
                             ScannerRepository.networkChanged("Internet restored")
                             updateMonitoringNotification(activeProfileIds().size)
@@ -466,7 +466,7 @@ class ScannerService : MediaLibraryService() {
         if (transition != NetworkHandoffTransition.NO_CHANGE) {
             networkHandler.removeCallbacks(networkValidationCheck)
             currentNetworkValidated = null
-            suspendedForValidationLoss = false
+            restartedForValidationLoss = false
             Log.i("FatLineNetwork", "Default network: $transition")
         }
         when (transition) {
