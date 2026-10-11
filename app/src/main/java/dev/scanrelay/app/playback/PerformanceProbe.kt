@@ -8,6 +8,8 @@ import android.os.BatteryManager
 import android.os.Debug
 import android.os.Process
 import android.os.SystemClock
+import dev.scanrelay.app.net.ScannerTransportMetrics
+import dev.scanrelay.app.net.ScannerTransportSnapshot
 import java.util.Locale
 
 /** Process counters use monotonic time; battery capacity/charge is whole-device, not app-only. */
@@ -21,7 +23,8 @@ internal data class PerformanceReading(
     val txBytes: Long?,
     val batteryPercent: Int?,
     val chargeMicroAh: Long?,
-    val plugged: Boolean
+    val plugged: Boolean,
+    val transport: ScannerTransportSnapshot? = null
 )
 
 internal object PerformanceReader {
@@ -44,7 +47,8 @@ internal object PerformanceReader {
             txBytes = TrafficStats.getUidTxBytes(Process.myUid()).takeIf { it >= 0L },
             batteryPercent = capacity,
             chargeMicroAh = charge,
-            plugged = plugged
+            plugged = plugged,
+            transport = ScannerTransportMetrics.snapshot()
         )
     }
 }
@@ -115,12 +119,20 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
             appendLine("Native heap start / end / peak: ${memoryText(first.nativeHeapKb)} / ${memoryText(last.nativeHeapKb)} / ${memoryText(peakNativeHeapKb)}")
             appendLine("UID network received: ${transferredText(counterDelta(first.rxBytes, last.rxBytes))}")
             appendLine("UID network sent: ${transferredText(counterDelta(first.txBytes, last.txBytes))}")
+            val startTransport = first.transport
+            val endTransport = last.transport
+            if (startTransport != null && endTransport != null) {
+                appendLine("WebSocket CAL frames received: ${counterDelta(startTransport.receivedCallFrames, endTransport.receivedCallFrames) ?: "unavailable"}")
+                appendLine("WebSocket CFG frames received: ${counterDelta(startTransport.successfulConfigs, endTransport.successfulConfigs) ?: "unavailable"}")
+                appendLine("WebSocket failure/close callbacks: ${counterDelta(startTransport.socketTerminations, endTransport.socketTerminations) ?: "unavailable"}")
+            }
             appendLine("Phone battery level: $batteryPercent")
             appendLine("Phone battery charge used: ${batteryDelta?.let { String.format(Locale.US, "%.2f mAh", it / 1000.0) } ?: "unavailable"}")
             appendLine("Charging observed: $everPlugged")
             appendLine("Battery counters are whole-phone measurements, not FatLine-only drain.")
             appendLine("CPU percent is relative to one core and can exceed 100% on multicore devices.")
-            append("Sampling is opt-in and happens only while the scanner service is running.")
+            appendLine("Sampling is opt-in and happens only while the scanner service is running.")
+            append("CAL/CFG and socket callback counts do not establish whether any calls were missed; network handoffs may not produce a failure/close callback.")
         }
     }
 }
