@@ -3523,11 +3523,13 @@ object ScannerRepository {
             val avoided = key in session.state.avoided
             shouldPlay = replayRequested || (!session.state.paused && enabled && talkgroupHoldAllows && systemHoldAllows && !avoided)
             val merged = if (matchesHistoryFilter(session.state, call)) {
-                val newestFirst = session.state.historySort < 0
+                val inserted = LiveHistoryMergePolicy.insert(
+                    session.state.history, call, newestFirst = session.state.historySort < 0
+                )
                 LiveHistoryRetentionPolicy.retain(
-                    LiveHistoryMergePolicy.insert(session.state.history, call, newestFirst),
+                    inserted,
                     archiveRowsLoaded = session.historyOffset,
-                    newestFirst = newestFirst
+                    newestFirst = session.state.historySort < 0
                 )
             } else {
                 session.state.history
