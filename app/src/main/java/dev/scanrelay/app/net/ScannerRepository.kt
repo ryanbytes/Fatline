@@ -261,6 +261,23 @@ internal object LiveHistoryMergePolicy {
 }
 
 /**
+ * Live traffic can continue arriving for days while History is never opened.
+ * Retain 500 live rows beyond the number of intentionally fetched archive
+ * rows. This bounds idle monitoring memory without silently truncating pages
+ * requested through History pagination. Never modifies Recent or queued audio.
+ */
+internal object LiveHistoryRetentionPolicy {
+    private const val LIVE_EXTRA_ROWS = 500
+
+    fun retain(history: List<RadioCall>, archiveRowsLoaded: Int, newestFirst: Boolean): List<RadioCall> {
+        val limit = (archiveRowsLoaded.coerceAtLeast(0).toLong() + LIVE_EXTRA_ROWS)
+            .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        if (history.size <= limit) return history
+        return if (newestFirst) history.take(limit) else history.takeLast(limit)
+    }
+}
+
+/**
  * Call audio is written to a private per-scanner cache directory. Avoid
  * compiling two regular expressions and allocating matchers for every call.
  * Keep the former ASCII-only file name and extension validation exactly.
@@ -2849,6 +2866,7 @@ object ScannerRepository {
 
             override fun onFailure(message: String, cause: Throwable?) {
                 if (!isCurrent(session, generation)) return
+                ScannerTransportMetrics.terminated()
                 synchronized(session) {
                     session.handshakeJob?.cancel()
                     session.handshakeJob = null
@@ -2869,6 +2887,7 @@ object ScannerRepository {
 
             override fun onClosed(reason: String) {
                 if (!isCurrent(session, generation)) return
+                ScannerTransportMetrics.terminated()
                 synchronized(session) {
                     session.handshakeJob?.cancel()
                     session.handshakeJob = null
@@ -3066,9 +3085,11 @@ object ScannerRepository {
                     session.reconnectAttempt = 0
                 }
                 handleConfig(session, envelope.payload as? JSONObject ?: return)
+                ScannerTransportMetrics.configured()
                 startTranscriptMonitor(session)
             }
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
+                ScannerTransportMetrics.receivedCallFrame()
                 val callFlag = envelope.flag?.toString()
                 scope.launch { session.callMutex.withLock { processCall(session, payload, generation, callFlag) } }
             }
@@ -3502,8 +3523,11 @@ object ScannerRepository {
             val avoided = key in session.state.avoided
             shouldPlay = replayRequested || (!session.state.paused && enabled && talkgroupHoldAllows && systemHoldAllows && !avoided)
             val merged = if (matchesHistoryFilter(session.state, call)) {
-                LiveHistoryMergePolicy.insert(
-                    session.state.history, call, newestFirst = session.state.historySort < 0
+                val newestFirst = session.state.historySort < 0
+                LiveHistoryRetentionPolicy.retain(
+                    LiveHistoryMergePolicy.insert(session.state.history, call, newestFirst),
+                    archiveRowsLoaded = session.historyOffset,
+                    newestFirst = newestFirst
                 )
             } else {
                 session.state.history
