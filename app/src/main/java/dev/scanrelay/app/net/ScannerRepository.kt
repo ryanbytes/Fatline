@@ -358,6 +358,9 @@ object ScannerRepository {
         @Volatile var alertPreferenceSaveJob: Job? = null
         @Volatile var alertPreferenceRevision = 0L
         @Volatile var hasConnected = false
+        // IDs are metadata only: gaps between them cannot prove missed calls.
+        @Volatile var lastLiveCallId: Long? = null
+        @Volatile var awaitingFirstLiveAfterReconnect = false
         @Volatile var disconnectNotified = false
         @Volatile var disconnectNotificationJob: Job? = null
     }
@@ -2749,6 +2752,7 @@ object ScannerRepository {
     }
 
     fun networkUnavailable() {
+        ScannerTransportMetrics.event("Default network unavailable; queued=${ScannerService.queuedCallCount.value}")
         networkAvailable = false
         sessions.values.forEach { session ->
             val oldSocket = synchronized(session) {
@@ -2758,6 +2762,7 @@ object ScannerRepository {
                 session.handshakeJob?.cancel()
                 session.handshakeJob = null
                 session.socketGeneration++
+                if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
                 val old = session.socket
                 session.socket = null
                 session.state = session.state.copy(
@@ -2774,6 +2779,7 @@ object ScannerRepository {
     }
 
     fun networkChanged(reason: String = "Network changed") {
+        ScannerTransportMetrics.event("Default network: ${reason.take(70)}; queued=${ScannerService.queuedCallCount.value}")
         networkAvailable = true
         sessions.values.forEach { restartSession(it, "$reason; reconnecting", resetBackoff = true) }
     }
@@ -2832,10 +2838,12 @@ object ScannerRepository {
             session.socketGeneration
         }
         publish()
+        logConnectionEvent(session, "socket connecting")
 
         val socket = ThinLineSocket(session.profile, object : ThinLineSocket.Listener {
             override fun onOpen() {
                 if (!isCurrent(session, generation)) return
+                logConnectionEvent(session, "WebSocket open; negotiating")
                 synchronized(session) {
                     session.state = session.state.copy(
                         status = ConnectionStatus.CONNECTING,
@@ -2867,7 +2875,9 @@ object ScannerRepository {
             override fun onFailure(message: String, cause: Throwable?) {
                 if (!isCurrent(session, generation)) return
                 ScannerTransportMetrics.terminated()
+                logConnectionEvent(session, "WebSocket failure; last live CAL=${session.lastLiveCallId ?: "none"}")
                 synchronized(session) {
+                    if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
                     session.handshakeJob?.cancel()
                     session.handshakeJob = null
                     session.socket = null
@@ -2888,7 +2898,9 @@ object ScannerRepository {
             override fun onClosed(reason: String) {
                 if (!isCurrent(session, generation)) return
                 ScannerTransportMetrics.terminated()
+                logConnectionEvent(session, "WebSocket closed; last live CAL=${session.lastLiveCallId ?: "none"}")
                 synchronized(session) {
+                    if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
                     session.handshakeJob?.cancel()
                     session.handshakeJob = null
                     session.socket = null
@@ -2914,7 +2926,9 @@ object ScannerRepository {
 
         runCatching { socket.connect() }.onFailure { error ->
             if (!isCurrent(session, generation)) return@onFailure
+            logConnectionEvent(session, "WebSocket startup failure")
             synchronized(session) {
+                if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
                 session.socket = null
                 session.state = session.state.copy(
                     status = ConnectionStatus.CONNECTING,
@@ -3011,6 +3025,7 @@ object ScannerRepository {
             val jitter = session.profile.id.hashCode().toLong().absoluteValue % 350L
             // The base retry delay remains capped at 30_000L.
             val retryDelay = ReconnectBackoff.delayMillis(session.reconnectAttempt, jitter)
+            logConnectionEvent(session, "retry in ${retryDelay}ms (attempt ${session.reconnectAttempt})")
             val retrySeconds = ((retryDelay + 999L) / 1_000L).toInt()
             session.state = session.state.copy(
                 status = ConnectionStatus.CONNECTING,
@@ -3034,6 +3049,7 @@ object ScannerRepository {
             session.handshakeJob?.cancel()
             session.handshakeJob = null
             session.socketGeneration++
+            if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
             if (resetBackoff) session.reconnectAttempt = 0
             val old = session.socket
             session.socket = null
@@ -3045,8 +3061,14 @@ object ScannerRepository {
             old
         }
         publish()
+        logConnectionEvent(session, "session restart: ${reason.replace("\\n", " ").take(65)}")
         oldSocket?.abort()
         if (networkAvailable && isCurrent(session)) openSocket(session)
+    }
+
+    private fun logConnectionEvent(session: Session, message: String) {
+        val name = session.profile.name.replace("\\n", " ").replace("\\r", " ").take(40)
+        ScannerTransportMetrics.event("${name}: ${message}; queued=${ScannerService.queuedCallCount.value}")
     }
 
     private fun isCurrent(session: Session): Boolean = !session.stopped && sessions[session.profile.id] === session
@@ -3086,11 +3108,32 @@ object ScannerRepository {
                 }
                 handleConfig(session, envelope.payload as? JSONObject ?: return)
                 ScannerTransportMetrics.configured()
+                logConnectionEvent(session, "CFG accepted; livefeed requested")
                 startTranscriptMonitor(session)
             }
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
                 ScannerTransportMetrics.receivedCallFrame()
                 val callFlag = envelope.flag?.toString()
+                if (callFlag != ThinLineProtocol.PLAY_FLAG) {
+                    val id = payload.optLong("id").takeIf { it > 0L }
+                    if (id != null) {
+                        if (session.awaitingFirstLiveAfterReconnect) {
+                            var first = false
+                            var previous: Long? = null
+                            synchronized(session) {
+                                if (session.awaitingFirstLiveAfterReconnect) {
+                                    first = true
+                                    previous = session.lastLiveCallId
+                                    session.awaitingFirstLiveAfterReconnect = false
+                                }
+                                session.lastLiveCallId = id
+                            }
+                            if (first) logConnectionEvent(session, "first live CAL after interruption=${id}; previous=${previous ?: "none"}")
+                        } else {
+                            session.lastLiveCallId = id
+                        }
+                    }
+                }
                 scope.launch { session.callMutex.withLock { processCall(session, payload, generation, callFlag) } }
             }
             ThinLineProtocol.LIST_CALL -> handleHistory(session, envelope.payload as? JSONObject ?: return)
