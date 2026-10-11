@@ -30,7 +30,11 @@ internal object LocalTranscriptAlertPolicy {
     private fun normalize(text: String): String =
         text.lowercase(Locale.ROOT).replace(separator, " ").trim()
 
-    internal data class PreparedRule(val original: String, val normalized: String)
+    internal data class PreparedRule(val original: String, val normalized: String) {
+        // Prepare token boundaries once per rule edit, not once per incoming
+        // live/delayed transcript. Empty normalized rules still never match.
+        val searchNeedle: String = if (normalized.isNotBlank()) " $normalized " else ""
+    }
 
     fun prepare(rules: List<String>): List<PreparedRule> = rules.map { rule ->
         PreparedRule(rule, normalize(rule))
@@ -38,11 +42,19 @@ internal object LocalTranscriptAlertPolicy {
 
     /** Token boundaries protect "fire" from matching "firefighter". */
     fun matchesPrepared(transcript: String, prepared: List<PreparedRule>): List<String> {
-        if (transcript.isBlank()) return emptyList()
+        if (transcript.isBlank() || prepared.isEmpty()) return emptyList()
         val haystack = " " + normalize(transcript) + " "
-        return prepared.filter { rule ->
-            rule.normalized.isNotBlank() && haystack.contains(" " + rule.normalized + " ")
-        }.map { it.original }
+        // Most transcripts do not match any of the configured phrases.
+        // Allocate a result list only on the first match; do not construct
+        // filter/map intermediate lists for each transcript.
+        var matches: MutableList<String>? = null
+        for (rule in prepared) {
+            if (rule.searchNeedle.isNotEmpty() && haystack.contains(rule.searchNeedle)) {
+                if (matches == null) matches = ArrayList(2)
+                matches.add(rule.original)
+            }
+        }
+        return matches ?: emptyList()
     }
 
     fun matches(transcript: String, rules: List<String>): List<String> =
