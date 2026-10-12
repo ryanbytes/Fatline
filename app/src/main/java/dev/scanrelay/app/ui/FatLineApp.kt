@@ -91,6 +91,7 @@ import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.playback.QueuedCall
+import dev.scanrelay.app.playback.GitHubDiagnosticsCredentials
 import dev.scanrelay.app.playback.ScannerService
 import java.net.URLEncoder
 import java.time.Instant
@@ -3061,6 +3062,10 @@ private fun SettingsScreen(
     }
     var performanceScenario by remember { mutableStateOf("Idle monitoring") }
     var performanceScenarioMenu by remember { mutableStateOf(false) }
+    var githubTokenText by remember { mutableStateOf("") }
+    var githubConfigured by remember { mutableStateOf(GitHubDiagnosticsCredentials.configured(context)) }
+    var githubUploadStatus by remember { mutableStateOf(GitHubDiagnosticsCredentials.status(context)) }
+    var githubSetupError by remember { mutableStateOf<String?>(null) }
     var editingId by remember(selectedProfileId) {
         mutableStateOf(selectedProfileId ?: UUID.randomUUID().toString())
     }
@@ -3859,7 +3864,7 @@ private fun SettingsScreen(
                     Text(
                         "Optional local measurement: FatLine CPU, app memory, network bytes and available phone battery counters. " +
                             "Sampling runs every 10 seconds in the scanner service, even when this screen is closed. " +
-                            "No data is uploaded.",
+                            "Manual reports remain local; automatic diagnostics upload only when GitHub authorization is configured below.",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -3920,6 +3925,67 @@ private fun SettingsScreen(
                             "Battery data measures the whole phone and cannot isolate FatLine.",
                         style = MaterialTheme.typography.bodySmall
                     )
+                    HorizontalDivider()
+                    Text("Automatic GitHub diagnostics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "When scanning is active, FatLine automatically records five-minute performance summaries. " +
+                            "Upload is disabled until authorized. Once enabled, batches go to private " +
+                            "ryanbytes/Scratch about once per hour. Unsent records remain on-device (up to 48 hours or 4 MiB). " +
+                            "No audio, transcripts, passwords, or scanner server addresses are uploaded.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        if (githubConfigured) "GitHub upload: configured" else "GitHub upload: disabled",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = githubTokenText,
+                        onValueChange = { githubTokenText = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        label = { Text("GitHub fine-grained token") }
+                    )
+                    Text(
+                        "Use a fine-grained GitHub personal access token restricted to Scratch, " +
+                            "with Contents: Read and write. Token is encrypted with Android Keystore. " +
+                            "Do not place it in the public FatLine repository.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                runCatching { GitHubDiagnosticsCredentials.save(context, githubTokenText) }
+                                    .onSuccess {
+                                        githubTokenText = ""
+                                        githubConfigured = true
+                                        githubSetupError = null
+                                        githubUploadStatus = GitHubDiagnosticsCredentials.status(context)
+                                    }
+                                    .onFailure {
+                                        githubSetupError = "Unable to store GitHub authorization"
+                                    }
+                            },
+                            enabled = githubTokenText.isNotBlank()
+                        ) { Text("Authorize") }
+                        OutlinedButton(
+                            onClick = {
+                                GitHubDiagnosticsCredentials.remove(context)
+                                githubTokenText = ""
+                                githubConfigured = false
+                                githubUploadStatus = GitHubDiagnosticsCredentials.status(context)
+                                githubSetupError = null
+                            },
+                            enabled = githubConfigured
+                        ) { Text("Disable uploads") }
+                    }
+                    githubSetupError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    Text(githubUploadStatus, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = {
+                        githubUploadStatus = GitHubDiagnosticsCredentials.status(context)
+                        githubConfigured = GitHubDiagnosticsCredentials.configured(context)
+                    }) { Text("Refresh upload status") }
+
                 }
             }
         }
