@@ -122,13 +122,38 @@ class ScannerService : MediaLibraryService() {
     private var performanceProbe: PerformanceProbe? = null
     private var performanceJob: Job? = null
 
+    /** Called on the service main thread; collection sizes are opt-in only. */
+    private fun sampledCollections(): PerformanceCollectionCounts {
+        val servers = ScannerRepository.state.value.servers.values
+        var history = 0
+        var recentlyPlayed = 0
+        var transcripts = 0
+        var alerts = 0
+        for (server in servers) {
+            history += server.history.size
+            recentlyPlayed += server.recentCalls.size
+            transcripts += server.transcripts.size
+            alerts += server.alerts.size
+        }
+        return PerformanceCollectionCounts(
+            mediaItems = if (::player.isInitialized) player.mediaItemCount else 0,
+            mappedCalls = callByMediaId.size,
+            pendingCalls = pendingCalls.size,
+            recentAcceptedIds = recentlyAcceptedLiveCalls.size,
+            historyCalls = history,
+            recentlyPlayedCalls = recentlyPlayed,
+            transcripts = transcripts,
+            alerts = alerts
+        )
+    }
+
     private fun startPerformanceProbe(label: String) {
         if (activeProfileIds().isEmpty()) {
             _performanceCapture.value = PerformanceCaptureState(error = "Connect a scanner before measuring")
             return
         }
         stopPerformanceProbe()
-        val probe = PerformanceProbe(label, PerformanceReader.read(this))
+        val probe = PerformanceProbe(label, PerformanceReader.read(this).copy(collections = sampledCollections()))
         performanceProbe = probe
         _performanceCapture.value = PerformanceCaptureState(running = true, label = label)
         performanceJob = serviceScope.launch {
@@ -141,7 +166,7 @@ class ScannerService : MediaLibraryService() {
                 val reading = withContext(Dispatchers.Default) {
                     PerformanceReader.read(applicationContext)
                 }
-                performanceProbe?.sample(reading)
+                performanceProbe?.sample(reading.copy(collections = sampledCollections()))
             }
         }
     }
@@ -151,7 +176,7 @@ class ScannerService : MediaLibraryService() {
         performanceJob = null
         val probe = performanceProbe ?: return
         performanceProbe = null
-        probe.sample(PerformanceReader.read(this))
+        probe.sample(PerformanceReader.read(this).copy(collections = sampledCollections()))
         _performanceCapture.value = PerformanceCaptureState(report = probe.report(), label = probe.scenario)
     }
 
