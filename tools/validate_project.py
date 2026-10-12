@@ -204,7 +204,7 @@ require('player.volume = PlaybackVolumePolicy.gain(normalized)' in service and '
 require('ACTION_SET_OUTPUT_VOLUME -> setOutputVolumeInternal(' in service and 'fun setOutputVolume(context: Context, percent: Int)' in service, 'scanner volume service action missing')
 require('fun setOutputVolume(percent: Int)' in viewmodel and 'viewModel.setOutputVolume(pendingVolume)' in ui, 'scanner volume UI and ViewModel missing')
 require('fun gain(percent: Int): Float = clamp(percent) / 100f' in volume_policy and 'outputVolumeControlsOnlyPlayerGain' in volume_tests, 'independent output gain policy test missing')
-require('AudioManager' not in service and 'setStreamVolume(' not in service, 'scanner volume must never set the OS shared stream volume')
+require(all(api not in service for api in ('setStreamVolume(', 'adjustStreamVolume(', 'adjustSuggestedStreamVolume(', 'setStreamMute(')), 'scanner volume must never change the OS shared stream volume')
 
 
 require('startForeground' in service and 'START_STICKY' in service, 'foreground restart behavior missing')

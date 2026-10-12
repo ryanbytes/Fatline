@@ -36,4 +36,20 @@ class LiveCallLifecycleMetricsTest {
         assertEquals(1L, after.removed)
         assertEquals(1L, after.playerErrors)
     }
+
+    @Test
+    fun playbackProgressClassifiesForegroundVersusBackground() {
+        val metrics = LiveCallLifecycleCounters()
+        metrics.activityVisible(false)
+        metrics.progressVerified()
+        metrics.activityVisible(true)
+        metrics.progressVerified()
+        metrics.progressVerified()
+        metrics.activityVisible(false)
+        metrics.progressVerified()
+        val result = metrics.snapshot()
+        assertEquals(4L, result.started)
+        assertEquals(2L, result.verifiedWhileForeground)
+        assertEquals(2L, result.verifiedWhileBackground)
+    }
 }

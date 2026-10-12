@@ -76,12 +76,13 @@ class PerformanceProbeTest {
     fun lifecycleSummariesOnlyExposeCounterDeltasNotIndividualCallData() {
         val first = LiveCallLifecycleSnapshot(
             received = 100, routed = 70, filtered = 30, enqueued = 60,
-            started = 45, completed = 43
+            started = 45, completed = 43, verifiedWhileForeground = 5, verifiedWhileBackground = 2
         )
         val last = LiveCallLifecycleSnapshot(
             received = 111, routed = 79, filtered = 32, missingAudio = 1,
             dispatchFailures = 1, suppressed = 2, duplicates = 1,
-            enqueued = 68, started = 52, completed = 50, removed = 1, playerErrors = 1
+            enqueued = 68, started = 52, completed = 50, removed = 1, playerErrors = 1,
+            verifiedWhileForeground = 12, verifiedWhileBackground = 6
         )
         val probe = PerformanceProbe(
             "Live", reading(elapsed = 0, cpu = 0, lifecycle = first)
@@ -94,6 +95,7 @@ class PerformanceProbeTest {
         assertTrue(report.contains(
             "Live exclusions (filtered / no audio / suppressed / duplicates / dispatch failed / removed / player errors): 2 / 1 / 2 / 1 / 1 / 1 / 1"
         ))
+        assertTrue(report.contains("Verified playback progress while Activity (visible / hidden): 7 / 4"))
         assertTrue(report.contains("not matched per-call delivery proof"))
     }
 

@@ -197,7 +197,8 @@ class ScannerService : MediaLibraryService() {
                 .copy(collections = sampledCollections())
             var current = PerformanceProbe("Automatic scanner monitoring", initial)
             var startedMs = initial.elapsedMs
-            var lastTimelineSequence = PlaybackDeliveryTrace.journal.sequence()
+            // Include process/service creation and Activity return just before sampling begins.
+            var lastTimelineSequence = 0L
             while (true) {
                 delay(AUTOMATIC_SAMPLE_INTERVAL_MS)
                 val sample = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
