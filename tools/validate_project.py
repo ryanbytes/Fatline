@@ -998,7 +998,8 @@ require('internal class ScannerIdleNotificationGate' in notification_policy
         'unchanged idle scanner state must avoid notification work without hiding playback updates')
 require('val reading = withContext(Dispatchers.Default)' in service
         and 'PerformanceReader.read(applicationContext)' in service
-        and 'performanceProbe?.sample(reading)' in service
+        and ('performanceProbe?.sample(reading)' in service
+             or 'performanceProbe?.sample(reading.copy(collections = sampledCollections()))' in service)
         and 'next.pssKb?.let { pss -> peakPssKb = maxOf(peakPssKb ?: pss, pss) }' in probe
         and 'nullablePssPeakTrackingPreservesPeakAcrossMissingSamples' in probe_tests,
         'opt-in performance sampling must not block the UI thread or allocate peak PSS lists')
