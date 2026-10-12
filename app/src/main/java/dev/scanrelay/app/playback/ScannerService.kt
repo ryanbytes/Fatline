@@ -44,7 +44,6 @@ import dev.scanrelay.app.net.NetworkHandoffTransition
 import dev.scanrelay.app.net.InternetValidationTransition
 import dev.scanrelay.app.net.ScannerRepository
 import java.io.File
-import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
@@ -142,15 +141,17 @@ class ScannerService : MediaLibraryService() {
                     .copy(collections = sampledCollections())
                 current.sample(sample)
                 if (sample.elapsedMs - startedMs >= AUTOMATIC_REPORT_INTERVAL_MS) {
-                    val report = current.report()
+                    // Omit free-text connection messages from outbound diagnostics.
+                    val report = current.report(includeEventDetails = false)
                     try {
                         withContext(Dispatchers.IO) {
-                            AutomaticPerformanceLogStore.append(
-                                File(context.filesDir, "fatline_diagnostics"), report
-                            )
+                            val directory = File(context.filesDir, "fatline_diagnostics/pending")
+                            AutomaticPerformanceLogStore.append(directory, report)
+                            GitHubDiagnosticsUploader.uploadIfDue(context, directory)
                         }
-                    } catch (error: IOException) {
-                        Log.w("FatLinePerformance", "Unable to store automatic performance summary", error)
+                    } catch (error: Exception) {
+                        // Keep sampling after an IO failure; do not expose credentials.
+                        Log.w("FatLinePerformance", "Automatic diagnostics storage or upload failed")
                     }
                     current = PerformanceProbe("Automatic scanner monitoring", sample)
                     startedMs = sample.elapsedMs
