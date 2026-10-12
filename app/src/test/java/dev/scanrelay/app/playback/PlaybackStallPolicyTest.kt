@@ -33,8 +33,8 @@ class PlaybackStallPolicyTest {
         assertFalse(check(31_000, "b"))
         assertTrue(check(41_000, "b"))
         assertFalse(check(100_000, "a"))
-        assertFalse(check(130_000, "a")) // Starts new observation after switching media IDs
-        assertTrue(check(140_000, "a"))
+        assertTrue(check(130_000, "a")) // Retry now allowed after observing a again
+        assertFalse(check(140_000, "a")) // Second retry remains rate-limited
     }
 
     @Test fun recoveringStopsWhenPlaybackResumes() {
