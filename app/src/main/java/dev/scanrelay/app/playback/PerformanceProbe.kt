@@ -113,7 +113,9 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
         if (gapMs > 20_000L) gapsOver20Seconds++
         // A GC counter advance means at least one collection occurred since the
         // last sample. The heap sample is later, not an exact post-GC heap size.
-        if (next.gcCount != null && last.gcCount != null && next.gcCount > last.gcCount) {
+        val previousGcCount = last.gcCount
+        val currentGcCount = next.gcCount
+        if (currentGcCount != null && previousGcCount != null && currentGcCount > previousGcCount) {
             minHeapAfterObservedGcKb = minOf(minHeapAfterObservedGcKb ?: next.javaHeapKb, next.javaHeapKb)
             maxHeapAfterObservedGcKb = maxOf(maxHeapAfterObservedGcKb ?: next.javaHeapKb, next.javaHeapKb)
         }
