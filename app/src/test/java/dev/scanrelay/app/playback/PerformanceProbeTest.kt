@@ -11,13 +11,16 @@ class PerformanceProbeTest {
         elapsed: Long, cpu: Long, pss: Long? = 20_480L, javaHeap: Long = 8_192L,
         native: Long = 4_096L, rx: Long? = 10_240L, tx: Long? = 4_096L,
         pct: Int? = 80, charge: Long? = 3_000_000L, plugged: Boolean = false,
-        transport: ScannerTransportSnapshot? = null
+        transport: ScannerTransportSnapshot? = null,
+        gcCount: Long? = null, committed: Long? = null,
+        collections: PerformanceCollectionCounts? = null
     ) = PerformanceReading(
         elapsedMs = elapsed, cpuMs = cpu, pssKb = pss,
         javaHeapKb = javaHeap, nativeHeapKb = native,
         rxBytes = rx, txBytes = tx,
         batteryPercent = pct, chargeMicroAh = charge, plugged = plugged,
-        transport = transport
+        transport = transport, gcCount = gcCount,
+        javaHeapCommittedKb = committed, collections = collections
     )
 
     @Test
@@ -166,5 +169,70 @@ class PerformanceProbeTest {
         val probe = PerformanceProbe("Quick", reading(elapsed = 0L, cpu = 0L))
         probe.sample(reading(elapsed = 0L, cpu = 0L))
         assertTrue(probe.report().contains("Avg app CPU: unavailable"))
+    }
+
+    @Test
+    fun reportsGcActivityWithoutClaimingExactPostGcHeap() {
+        val probe = PerformanceProbe(
+            "Idle monitoring", reading(
+                elapsed = 0, cpu = 0, javaHeap = 8_192,
+                committed = 16_384, gcCount = 100
+            )
+        )
+        probe.sample(reading(
+            elapsed = 10_000, cpu = 100, javaHeap = 10_240,
+            committed = 20_480, gcCount = 102
+        ))
+        probe.sample(reading(
+            elapsed = 20_000, cpu = 200, javaHeap = 13_312,
+            committed = 24_576, gcCount = 102
+        ))
+        probe.sample(reading(
+            elapsed = 30_000, cpu = 300, javaHeap = 9_216,
+            committed = 24_576, gcCount = 103
+        ))
+        val report = probe.report()
+        assertTrue(report.contains("ART GC events during capture: 3"))
+        assertTrue(report.contains("Java heap committed start / end / peak: 16.0 MiB / 24.0 MiB / 24.0 MiB"))
+        assertTrue(report.contains("Java heap samples following GC activity (min / max): 9.0 MiB / 10.0 MiB"))
+        assertTrue(report.contains("not immediate post-GC retained-heap measurements"))
+    }
+
+    @Test
+    fun reportsStartEndAndPeakCollectionSizesEvenIfQueueDrains() {
+        fun counts(media: Int, mapped: Int, pending: Int, ids: Int, history: Int) =
+            PerformanceCollectionCounts(media, mapped, pending, ids, history, 10, 0, 2)
+
+        val probe = PerformanceProbe(
+            "Idle monitoring", reading(
+                elapsed = 0, cpu = 0,
+                collections = counts(2, 2, 0, 12, 50)
+            )
+        )
+        probe.sample(reading(
+            elapsed = 10_000, cpu = 100,
+            collections = counts(6, 6, 2, 20, 80)
+        ))
+        probe.sample(reading(
+            elapsed = 20_000, cpu = 200,
+            collections = counts(1, 1, 0, 20, 50)
+        ))
+        val report = probe.report()
+        assertTrue(report.contains(
+            "Playback refs (media / mapped / pending / recent IDs) start / end / peak: 2 / 2 / 0 / 12 / 1 / 1 / 0 / 20 / 6 / 6 / 2 / 20"
+        ))
+        assertTrue(report.contains(
+            "Repository rows (history / recent / transcripts / alerts) start / end / peak: 50 / 10 / 0 / 2 / 50 / 10 / 0 / 2 / 80 / 10 / 0 / 2"
+        ))
+    }
+
+    @Test
+    fun missingGcCountersCannotBeMisreadAsZeroCollections() {
+        val report = PerformanceProbe(
+            "Idle monitoring", reading(elapsed = 0, cpu = 0)
+        ).report()
+        assertTrue(report.contains("ART GC events during capture: unavailable"))
+        assertTrue(report.contains("Java heap samples following GC activity (min / max): unavailable / unavailable"))
+        assertFalse(report.contains("Playback refs (media"))
     }
 }
