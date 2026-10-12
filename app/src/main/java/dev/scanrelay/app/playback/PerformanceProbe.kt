@@ -14,6 +14,32 @@ import java.time.Instant
 import java.util.Locale
 
 /** Process counters use monotonic time; battery capacity/charge is whole-device, not app-only. */
+/** Counts only; never include call details, transcripts, or account identifiers. */
+internal data class PerformanceCollectionCounts(
+    val mediaItems: Int,
+    val mappedCalls: Int,
+    val pendingCalls: Int,
+    val recentAcceptedIds: Int,
+    val historyCalls: Int,
+    val recentlyPlayedCalls: Int,
+    val transcripts: Int,
+    val alerts: Int
+) {
+    fun playbackText() = "$mediaItems / $mappedCalls / $pendingCalls / $recentAcceptedIds"
+    fun repositoryText() = "$historyCalls / $recentlyPlayedCalls / $transcripts / $alerts"
+
+    fun maximum(other: PerformanceCollectionCounts) = PerformanceCollectionCounts(
+        maxOf(mediaItems, other.mediaItems),
+        maxOf(mappedCalls, other.mappedCalls),
+        maxOf(pendingCalls, other.pendingCalls),
+        maxOf(recentAcceptedIds, other.recentAcceptedIds),
+        maxOf(historyCalls, other.historyCalls),
+        maxOf(recentlyPlayedCalls, other.recentlyPlayedCalls),
+        maxOf(transcripts, other.transcripts),
+        maxOf(alerts, other.alerts)
+    )
+}
+
 internal data class PerformanceReading(
     val elapsedMs: Long,
     val cpuMs: Long,
@@ -25,7 +51,10 @@ internal data class PerformanceReading(
     val batteryPercent: Int?,
     val chargeMicroAh: Long?,
     val plugged: Boolean,
-    val transport: ScannerTransportSnapshot? = null
+    val transport: ScannerTransportSnapshot? = null,
+    val gcCount: Long? = null,
+    val javaHeapCommittedKb: Long? = null,
+    val collections: PerformanceCollectionCounts? = null
 )
 
 internal object PerformanceReader {
@@ -43,6 +72,8 @@ internal object PerformanceReader {
             cpuMs = Process.getElapsedCpuTime(),
             pssKb = Debug.getPss().takeIf { it > 0L },
             javaHeapKb = (runtime.totalMemory() - runtime.freeMemory()) / 1024L,
+            javaHeapCommittedKb = runtime.totalMemory() / 1024L,
+            gcCount = Debug.getRuntimeStat("art.gc.gc-count")?.toLongOrNull(),
             nativeHeapKb = Debug.getNativeHeapAllocatedSize() / 1024L,
             rxBytes = TrafficStats.getUidRxBytes(Process.myUid()).takeIf { it >= 0L },
             txBytes = TrafficStats.getUidTxBytes(Process.myUid()).takeIf { it >= 0L },
@@ -64,6 +95,10 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
     private var peakPssKb: Long? = first.pssKb
     private var peakJavaHeapKb = first.javaHeapKb
     private var peakNativeHeapKb = first.nativeHeapKb
+    private var peakJavaHeapCommittedKb: Long? = first.javaHeapCommittedKb
+    private var peakCollections: PerformanceCollectionCounts? = first.collections
+    private var minHeapAfterObservedGcKb: Long? = null
+    private var maxHeapAfterObservedGcKb: Long? = null
     private var everPlugged = first.plugged
     private var longestSampleGapMs = 0L
     private var gapsOver20Seconds = 0
@@ -76,12 +111,22 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
         val gapMs = next.elapsedMs - last.elapsedMs
         longestSampleGapMs = maxOf(longestSampleGapMs, gapMs)
         if (gapMs > 20_000L) gapsOver20Seconds++
+        // A GC counter advance means at least one collection occurred since the
+        // last sample. The heap sample is later, not an exact post-GC heap size.
+        val previousGcCount = last.gcCount
+        val currentGcCount = next.gcCount
+        if (currentGcCount != null && previousGcCount != null && currentGcCount > previousGcCount) {
+            minHeapAfterObservedGcKb = minOf(minHeapAfterObservedGcKb ?: next.javaHeapKb, next.javaHeapKb)
+            maxHeapAfterObservedGcKb = maxOf(maxHeapAfterObservedGcKb ?: next.javaHeapKb, next.javaHeapKb)
+        }
         last = next
         samples++
         // No temporary list/iterator for each optional PSS reading.
         next.pssKb?.let { pss -> peakPssKb = maxOf(peakPssKb ?: pss, pss) }
         peakJavaHeapKb = maxOf(peakJavaHeapKb, next.javaHeapKb)
         peakNativeHeapKb = maxOf(peakNativeHeapKb, next.nativeHeapKb)
+        next.javaHeapCommittedKb?.let { kb -> peakJavaHeapCommittedKb = maxOf(peakJavaHeapCommittedKb ?: kb, kb) }
+        next.collections?.let { counts -> peakCollections = peakCollections?.maximum(counts) ?: counts }
         everPlugged = everPlugged || next.plugged
     }
 
@@ -94,7 +139,13 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
     private fun transferredText(bytes: Long?): String =
         bytes?.let { String.format(Locale.US, "%.1f KiB", it / 1024.0) } ?: "unavailable"
 
-    fun report(): String {
+    private fun playbackCounts(counts: PerformanceCollectionCounts?): String =
+        counts?.playbackText() ?: "unavailable"
+
+    private fun repositoryCounts(counts: PerformanceCollectionCounts?): String =
+        counts?.repositoryText() ?: "unavailable"
+
+    fun report(includeEventDetails: Boolean = true): String {
         val durationMs = (last.elapsedMs - first.elapsedMs).coerceAtLeast(0L)
         val cpuMs = (last.cpuMs - first.cpuMs).coerceAtLeast(0L)
         val cpuPercent = if (durationMs > 0L) cpuMs * 100.0 / durationMs else null
@@ -118,6 +169,13 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
             appendLine("PSS memory start / end / peak: ${memoryText(first.pssKb)} / ${memoryText(last.pssKb)} / ${memoryText(peakPssKb)}")
             appendLine("Java heap start / end / peak: ${memoryText(first.javaHeapKb)} / ${memoryText(last.javaHeapKb)} / ${memoryText(peakJavaHeapKb)}")
             appendLine("Native heap start / end / peak: ${memoryText(first.nativeHeapKb)} / ${memoryText(last.nativeHeapKb)} / ${memoryText(peakNativeHeapKb)}")
+            appendLine("Java heap committed start / end / peak: ${memoryText(first.javaHeapCommittedKb)} / ${memoryText(last.javaHeapCommittedKb)} / ${memoryText(peakJavaHeapCommittedKb)}")
+            appendLine("ART GC events during capture: ${counterDelta(first.gcCount, last.gcCount) ?: "unavailable"}")
+            appendLine("Java heap samples following GC activity (min / max): ${memoryText(minHeapAfterObservedGcKb)} / ${memoryText(maxHeapAfterObservedGcKb)}")
+            if (first.collections != null || last.collections != null) {
+                appendLine("Playback refs (media / mapped / pending / recent IDs) start / end / peak: ${playbackCounts(first.collections)} / ${playbackCounts(last.collections)} / ${playbackCounts(peakCollections)}")
+                appendLine("Repository rows (history / recent / transcripts / alerts) start / end / peak: ${repositoryCounts(first.collections)} / ${repositoryCounts(last.collections)} / ${repositoryCounts(peakCollections)}")
+            }
             appendLine("UID network received: ${transferredText(counterDelta(first.rxBytes, last.rxBytes))}")
             appendLine("UID network sent: ${transferredText(counterDelta(first.txBytes, last.txBytes))}")
             val startTransport = first.transport
@@ -128,7 +186,7 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
                 appendLine("WebSocket failure/close callbacks: ${counterDelta(startTransport.socketTerminations, endTransport.socketTerminations) ?: "unavailable"}")
                 val events = ScannerTransportMetrics.eventsBetween(startTransport.eventSequence, endTransport.eventSequence)
                 appendLine("Connection and queue events (local; at most 96 newest retained): ${events.size}")
-                events.forEach { event ->
+                if (includeEventDetails) events.forEach { event ->
                     appendLine("  ${Instant.ofEpochMilli(event.timestampMs)} ${event.detail}")
                 }
             }
@@ -138,6 +196,7 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
             appendLine("Battery counters are whole-phone measurements, not FatLine-only drain.")
             appendLine("CPU percent is relative to one core and can exceed 100% on multicore devices.")
             appendLine("Sampling is opt-in and happens only while the scanner service is running.")
+            appendLine("GC-associated heap samples are not immediate post-GC retained-heap measurements.")
             appendLine("CAL/CFG and socket callback counts do not establish whether any calls were missed; network handoffs may not produce a failure/close callback.")
             append("Live call IDs need not be consecutive. Verify possible omissions against the server archive.")
         }

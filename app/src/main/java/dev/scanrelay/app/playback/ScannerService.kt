@@ -121,6 +121,69 @@ class ScannerService : MediaLibraryService() {
     private val idleNotificationGate = ScannerIdleNotificationGate()
     private var performanceProbe: PerformanceProbe? = null
     private var performanceJob: Job? = null
+    private var automaticPerformanceJob: Job? = null
+    /**
+     * Independent of the manual performance probe. Starts with active scanner
+     * monitoring; persists compact 5-minute summaries on private storage.
+     * No network upload occurs without a user-controlled upload destination.
+     */
+    private fun startAutomaticPerformanceLogging() {
+        if (automaticPerformanceJob != null || activeProfileIds().isEmpty()) return
+        automaticPerformanceJob = serviceScope.launch {
+            val context = applicationContext
+            val initial = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
+                .copy(collections = sampledCollections())
+            var current = PerformanceProbe("Automatic scanner monitoring", initial)
+            var startedMs = initial.elapsedMs
+            while (true) {
+                delay(AUTOMATIC_SAMPLE_INTERVAL_MS)
+                val sample = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
+                    .copy(collections = sampledCollections())
+                current.sample(sample)
+                if (sample.elapsedMs - startedMs >= AUTOMATIC_REPORT_INTERVAL_MS) {
+                    // Omit free-text connection messages from outbound diagnostics.
+                    val report = current.report(includeEventDetails = false)
+                    try {
+                        withContext(Dispatchers.IO) {
+                            val directory = File(context.filesDir, "fatline_diagnostics/pending")
+                            AutomaticPerformanceLogStore.append(directory, report)
+                            GitHubDiagnosticsUploader.uploadIfDue(context, directory)
+                        }
+                    } catch (error: Exception) {
+                        // Keep sampling after an IO failure; do not expose credentials.
+                        Log.w("FatLinePerformance", "Automatic diagnostics storage or upload failed")
+                    }
+                    current = PerformanceProbe("Automatic scanner monitoring", sample)
+                    startedMs = sample.elapsedMs
+                }
+            }
+        }
+    }
+
+    /** Called on the service main thread; collection sizes are opt-in only. */
+    private fun sampledCollections(): PerformanceCollectionCounts {
+        val servers = ScannerRepository.state.value.servers.values
+        var history = 0
+        var recentlyPlayed = 0
+        var transcripts = 0
+        var alerts = 0
+        for (server in servers) {
+            history += server.history.size
+            recentlyPlayed += server.recentCalls.size
+            transcripts += server.transcripts.size
+            alerts += server.alerts.size
+        }
+        return PerformanceCollectionCounts(
+            mediaItems = if (::player.isInitialized) player.mediaItemCount else 0,
+            mappedCalls = callByMediaId.size,
+            pendingCalls = pendingCalls.size,
+            recentAcceptedIds = recentlyAcceptedLiveCalls.size,
+            historyCalls = history,
+            recentlyPlayedCalls = recentlyPlayed,
+            transcripts = transcripts,
+            alerts = alerts
+        )
+    }
 
     private fun startPerformanceProbe(label: String) {
         if (activeProfileIds().isEmpty()) {
@@ -128,7 +191,7 @@ class ScannerService : MediaLibraryService() {
             return
         }
         stopPerformanceProbe()
-        val probe = PerformanceProbe(label, PerformanceReader.read(this))
+        val probe = PerformanceProbe(label, PerformanceReader.read(this).copy(collections = sampledCollections()))
         performanceProbe = probe
         _performanceCapture.value = PerformanceCaptureState(running = true, label = label)
         performanceJob = serviceScope.launch {
@@ -141,7 +204,7 @@ class ScannerService : MediaLibraryService() {
                 val reading = withContext(Dispatchers.Default) {
                     PerformanceReader.read(applicationContext)
                 }
-                performanceProbe?.sample(reading)
+                performanceProbe?.sample(reading.copy(collections = sampledCollections()))
             }
         }
     }
@@ -151,7 +214,7 @@ class ScannerService : MediaLibraryService() {
         performanceJob = null
         val probe = performanceProbe ?: return
         performanceProbe = null
-        probe.sample(PerformanceReader.read(this))
+        probe.sample(PerformanceReader.read(this).copy(collections = sampledCollections()))
         _performanceCapture.value = PerformanceCaptureState(report = probe.report(), label = probe.scenario)
     }
 
@@ -415,10 +478,13 @@ class ScannerService : MediaLibraryService() {
             }
             null -> restoreConnections()
         }
+        startAutomaticPerformanceLogging()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        automaticPerformanceJob?.cancel()
+        automaticPerformanceJob = null
         stopPerformanceProbe()
         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         playedLiveCallTracker.cancel()
@@ -1126,6 +1192,8 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_CLEAR_QUEUE = "dev.scanrelay.CLEAR_QUEUE"
         const val ACTION_STOP_AUDIO = "dev.scanrelay.STOP_AUDIO"
         const val ACTION_REMOVE_PROFILE = "dev.scanrelay.REMOVE_PROFILE"
+        private const val AUTOMATIC_SAMPLE_INTERVAL_MS = 60_000L
+        private const val AUTOMATIC_REPORT_INTERVAL_MS = 5 * 60_000L
         const val ACTION_START_PERFORMANCE_CAPTURE = "dev.scanrelay.START_PERFORMANCE_CAPTURE"
         const val ACTION_STOP_PERFORMANCE_CAPTURE = "dev.scanrelay.STOP_PERFORMANCE_CAPTURE"
         const val EXTRA_PERFORMANCE_SCENARIO = "performance_scenario"
