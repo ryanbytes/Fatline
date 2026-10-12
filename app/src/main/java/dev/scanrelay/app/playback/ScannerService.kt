@@ -11,6 +11,8 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.media.AudioManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -92,6 +94,50 @@ class ScannerService : MediaLibraryService() {
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
     private val playedLiveCallTracker = PlayedLiveCallTracker()
+    private val playbackStallPolicy = PlaybackStallPolicy()
+    private val playbackWatchdogHandler = Handler(Looper.getMainLooper())
+    private val playbackWatchdog = object : Runnable {
+        override fun run() {
+            if (!::player.isInitialized || releasingPlayer) return
+            val stuck = playbackStallPolicy.shouldRecover(
+                nowMs = SystemClock.elapsedRealtime(),
+                mediaId = player.currentMediaItem?.mediaId,
+                playWhenReady = player.playWhenReady,
+                isPlaying = player.isPlaying,
+                isBuffering = player.playbackState == Player.STATE_BUFFERING,
+                playbackSuppressed = player.playbackSuppressionReason !=
+                    Player.PLAYBACK_SUPPRESSION_REASON_NONE
+            )
+            if (stuck && player.currentMediaItemIndex in 0 until player.mediaItemCount) {
+                // Retain the entire queue, including current position. A local file
+                // stuck buffering is retried once per item per cooldown window.
+                recordPlaybackEvent("stall_recovery")
+                val index = player.currentMediaItemIndex
+                val position = player.currentPosition.coerceAtLeast(0L)
+                player.stop()
+                player.seekTo(index, position)
+                player.prepare()
+                player.play()
+            }
+            playbackWatchdogHandler.postDelayed(this, 5_000L)
+        }
+    }
+
+    private fun recordPlaybackEvent(event: String) {
+        if (!::player.isInitialized) {
+            PlaybackDeliveryTrace.record(event)
+            return
+        }
+        val musicVolume = runCatching {
+            val audio = getSystemService(AudioManager::class.java)
+            "${audio.getStreamVolume(AudioManager.STREAM_MUSIC)}/${audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}"
+        }.getOrDefault("unavailable")
+        PlaybackDeliveryTrace.record(
+            event, "state=${player.playbackState} playing=${player.isPlaying}" +
+                " when_ready=${player.playWhenReady} suppressed=${player.playbackSuppressionReason}" +
+                " media=${player.mediaItemCount} music_volume=$musicVolume"
+        )
+    }
 
     private fun observeLivePlaybackProgress(mediaId: String?, positionMs: Long) {
         val awaiting = playedLiveCallTracker.awaitingProgress(mediaId)
@@ -151,6 +197,7 @@ class ScannerService : MediaLibraryService() {
                 .copy(collections = sampledCollections())
             var current = PerformanceProbe("Automatic scanner monitoring", initial)
             var startedMs = initial.elapsedMs
+            var lastTimelineSequence = PlaybackDeliveryTrace.journal.sequence()
             while (true) {
                 delay(AUTOMATIC_SAMPLE_INTERVAL_MS)
                 val sample = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
@@ -158,7 +205,9 @@ class ScannerService : MediaLibraryService() {
                 current.sample(sample)
                 if (sample.elapsedMs - startedMs >= AUTOMATIC_REPORT_INTERVAL_MS) {
                     // Omit free-text connection messages from outbound diagnostics.
-                    val report = current.report(includeEventDetails = false)
+                    val report = current.report(includeEventDetails = false) +
+                        "\n" + PlaybackDeliveryTrace.journal.reportSince(lastTimelineSequence)
+                    lastTimelineSequence = PlaybackDeliveryTrace.journal.sequence()
                     try {
                         withContext(Dispatchers.IO) {
                             val directory = File(context.filesDir, "fatline_diagnostics/pending")
@@ -306,6 +355,7 @@ class ScannerService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        PlaybackDeliveryTrace.record("service_created")
         ScannerRepository.initialize(this)
         pauseStore = ScannerPauseStore(this)
         monitoredProfileIds = activeProfileIds()
@@ -336,6 +386,9 @@ class ScannerService : MediaLibraryService() {
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_BUFFERING && player.mediaItemCount > 0) {
+                        recordPlaybackEvent("player_buffering")
+                    }
                     // The last call has no next-item transition; terminal END
                     // is its natural playback-completion signal.
                     if (playbackState == Player.STATE_ENDED) {
@@ -352,6 +405,7 @@ class ScannerService : MediaLibraryService() {
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    recordPlaybackEvent(if (isPlaying) "player_playing" else "player_not_playing")
                     if (isPlaying) {
                         val id = player.currentMediaItem?.mediaId
                         playedLiveCallTracker.started(
@@ -396,6 +450,7 @@ class ScannerService : MediaLibraryService() {
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    recordPlaybackEvent("player_error")
                     if (PlaybackQueuePolicy.mediaKind(player.currentMediaItem?.mediaId.orEmpty()) == "live") {
                         LiveCallLifecycleMetrics.playerError()
                     }
@@ -418,6 +473,7 @@ class ScannerService : MediaLibraryService() {
             )
             .build()
         restoreSavedPlaybackQueue()
+        playbackWatchdogHandler.postDelayed(playbackWatchdog, 5_000L)
         serviceScope.launch {
             ScannerRepository.state.collect { state ->
                 refreshFavoriteLibraryChildren(state)
@@ -467,7 +523,10 @@ class ScannerService : MediaLibraryService() {
         }
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
-            ACTION_RESUME_CONNECTIONS -> restoreConnections()
+            ACTION_RESUME_CONNECTIONS -> {
+                recordPlaybackEvent("service_resume")
+                restoreConnections()
+            }
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
             ACTION_DISCONNECT_ALL -> disconnectAll()
             ACTION_ENQUEUE -> addMediaFromIntent(intent)
@@ -504,13 +563,18 @@ class ScannerService : MediaLibraryService() {
                 }
                 stopIfIdle()
             }
-            null -> restoreConnections()
+            null -> {
+                recordPlaybackEvent("sticky_restart")
+                restoreConnections()
+            }
         }
         startAutomaticPerformanceLogging()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        recordPlaybackEvent("service_destroyed")
+        playbackWatchdogHandler.removeCallbacks(playbackWatchdog)
         automaticPerformanceJob?.cancel()
         automaticPerformanceJob = null
         stopPerformanceProbe()

@@ -1,6 +1,7 @@
 package dev.scanrelay.app.playback
 
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Process-local aggregate live-call counters. No call IDs, channels, audio,
@@ -18,7 +19,9 @@ internal data class LiveCallLifecycleSnapshot(
     val started: Long = 0,
     val completed: Long = 0,
     val removed: Long = 0,
-    val playerErrors: Long = 0
+    val playerErrors: Long = 0,
+    val verifiedWhileForeground: Long = 0,
+    val verifiedWhileBackground: Long = 0
 )
 
 /** Thread-safe accumulator shared by socket, repository and Media3 callbacks. */
@@ -35,6 +38,9 @@ internal open class LiveCallLifecycleCounters {
     private val completedCount = AtomicLong()
     private val removedCount = AtomicLong()
     private val playerErrorCount = AtomicLong()
+    private val foregroundCount = AtomicLong()
+    private val backgroundCount = AtomicLong()
+    private val visible = AtomicBoolean(false)
 
     fun received() { receivedCount.incrementAndGet() }
     fun routed() { routedCount.incrementAndGet() }
@@ -44,7 +50,12 @@ internal open class LiveCallLifecycleCounters {
     fun suppressed() { suppressedCount.incrementAndGet() }
     fun duplicate() { duplicateCount.incrementAndGet() }
     fun enqueued() { queuedCount.incrementAndGet() }
-    fun progressVerified() { startedCount.incrementAndGet() }
+    fun activityVisible(value: Boolean) { visible.set(value) }
+    fun progressVerified() {
+        startedCount.incrementAndGet()
+        if (visible.get()) foregroundCount.incrementAndGet()
+        else backgroundCount.incrementAndGet()
+    }
     fun completed() { completedCount.incrementAndGet() }
     fun removed() { removedCount.incrementAndGet() }
     fun playerError() { playerErrorCount.incrementAndGet() }
@@ -61,7 +72,9 @@ internal open class LiveCallLifecycleCounters {
         started = startedCount.get(),
         completed = completedCount.get(),
         removed = removedCount.get(),
-        playerErrors = playerErrorCount.get()
+        playerErrors = playerErrorCount.get(),
+        verifiedWhileForeground = foregroundCount.get(),
+        verifiedWhileBackground = backgroundCount.get()
     )
 }
 

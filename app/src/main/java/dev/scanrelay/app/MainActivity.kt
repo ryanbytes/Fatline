@@ -11,11 +11,25 @@ import androidx.activity.viewModels
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import dev.scanrelay.app.playback.ScannerService
+import dev.scanrelay.app.playback.LiveCallLifecycleMetrics
+import dev.scanrelay.app.playback.PlaybackDeliveryTrace
 import dev.scanrelay.app.ui.FatLineApp
 
 class MainActivity : ComponentActivity() {
     private val viewModel: ScannerViewModel by viewModels()
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    override fun onStart() {
+        super.onStart()
+        LiveCallLifecycleMetrics.activityVisible(true)
+        PlaybackDeliveryTrace.record("activity_visible")
+    }
+
+    override fun onStop() {
+        LiveCallLifecycleMetrics.activityVisible(false)
+        PlaybackDeliveryTrace.record("activity_hidden")
+        super.onStop()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

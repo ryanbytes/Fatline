@@ -204,6 +204,11 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
                         count(initialLifecycle.started, finalLifecycle.started),
                         count(initialLifecycle.completed, finalLifecycle.completed)
                     ).joinToString(" / "))
+                appendLine("Verified playback progress while Activity (visible / hidden): " +
+                    listOf(
+                        count(initialLifecycle.verifiedWhileForeground, finalLifecycle.verifiedWhileForeground),
+                        count(initialLifecycle.verifiedWhileBackground, finalLifecycle.verifiedWhileBackground)
+                    ).joinToString(" / "))
                 appendLine("Live exclusions (filtered / no audio / suppressed / duplicates / dispatch failed / removed / player errors): " +
                     listOf(
                         count(initialLifecycle.filtered, finalLifecycle.filtered),
