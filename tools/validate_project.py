@@ -552,9 +552,11 @@ require('if (recent.isNotEmpty()) {' in ui
 require('fun recordCompletedLiveCall(call: RadioCall)' in repo
         and 'RecentlyPlayedCallsPolicy.complete(session.state.recentCalls, call)' in repo
         and 'recentCalls = recent' not in repo.split('val shouldPlay: Boolean', 1)[1]
-        and 'playedLiveCallTracker.ended()?.let(ScannerRepository::recordCompletedLiveCall)' in service
+        and 'playedLiveCallTracker.ended()?.let {' in service
+        and 'LiveCallLifecycleMetrics.completed()' in service
+        and 'ScannerRepository.recordCompletedLiveCall(it)' in service
         and 'reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO' in service
-        and 'completed?.let(ScannerRepository::recordCompletedLiveCall)' in service
+        and 'completed?.let {' in service
         and 'playedLiveCallTracker.cancelIf(' in service
         and 'playedLiveCallTracker.cancel()' in service,
         'Recent must update exclusively when actual live playback completes, never on arrival, Skip or Stop')
@@ -569,7 +571,9 @@ require('private var playbackAdvanced = false' in queue_policy
         and 'val completed = if (playbackAdvanced)' in queue_policy,
         'Recent completion must require actual player position progress')
 require('private val playbackProgressCheck = object : Runnable' in service
-        and 'playedLiveCallTracker.observedProgress(id, player.currentPosition)' in service
+        and 'observeLivePlaybackProgress(id, player.currentPosition)' in service
+        and 'playedLiveCallTracker.observedProgress(mediaId, positionMs)' in service
+        and 'playedLiveCallTracker.awaitingProgress(mediaId)' in service
         and 'override fun onPositionDiscontinuity(' in service
         and 'reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION' in service
         and 'oldPosition.mediaItem?.mediaId, oldPosition.positionMs' in service
