@@ -44,6 +44,7 @@ import dev.scanrelay.app.net.NetworkHandoffTransition
 import dev.scanrelay.app.net.InternetValidationTransition
 import dev.scanrelay.app.net.ScannerRepository
 import java.io.File
+import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
@@ -121,6 +122,42 @@ class ScannerService : MediaLibraryService() {
     private val idleNotificationGate = ScannerIdleNotificationGate()
     private var performanceProbe: PerformanceProbe? = null
     private var performanceJob: Job? = null
+    private var automaticPerformanceJob: Job? = null
+    /**
+     * Independent of the manual performance probe. Starts with active scanner
+     * monitoring; persists compact 5-minute summaries on private storage.
+     * No network upload occurs without a user-controlled upload destination.
+     */
+    private fun startAutomaticPerformanceLogging() {
+        if (automaticPerformanceJob != null || activeProfileIds().isEmpty()) return
+        automaticPerformanceJob = serviceScope.launch {
+            val context = applicationContext
+            val initial = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
+                .copy(collections = sampledCollections())
+            var current = PerformanceProbe("Automatic scanner monitoring", initial)
+            var startedMs = initial.elapsedMs
+            while (true) {
+                delay(AUTOMATIC_SAMPLE_INTERVAL_MS)
+                val sample = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
+                    .copy(collections = sampledCollections())
+                current.sample(sample)
+                if (sample.elapsedMs - startedMs >= AUTOMATIC_REPORT_INTERVAL_MS) {
+                    val report = current.report()
+                    try {
+                        withContext(Dispatchers.IO) {
+                            AutomaticPerformanceLogStore.append(
+                                File(context.filesDir, "fatline_diagnostics"), report
+                            )
+                        }
+                    } catch (error: IOException) {
+                        Log.w("FatLinePerformance", "Unable to store automatic performance summary", error)
+                    }
+                    current = PerformanceProbe("Automatic scanner monitoring", sample)
+                    startedMs = sample.elapsedMs
+                }
+            }
+        }
+    }
 
     /** Called on the service main thread; collection sizes are opt-in only. */
     private fun sampledCollections(): PerformanceCollectionCounts {
@@ -440,10 +477,13 @@ class ScannerService : MediaLibraryService() {
             }
             null -> restoreConnections()
         }
+        startAutomaticPerformanceLogging()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        automaticPerformanceJob?.cancel()
+        automaticPerformanceJob = null
         stopPerformanceProbe()
         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         playedLiveCallTracker.cancel()
@@ -1151,6 +1191,8 @@ class ScannerService : MediaLibraryService() {
         const val ACTION_CLEAR_QUEUE = "dev.scanrelay.CLEAR_QUEUE"
         const val ACTION_STOP_AUDIO = "dev.scanrelay.STOP_AUDIO"
         const val ACTION_REMOVE_PROFILE = "dev.scanrelay.REMOVE_PROFILE"
+        private const val AUTOMATIC_SAMPLE_INTERVAL_MS = 60_000L
+        private const val AUTOMATIC_REPORT_INTERVAL_MS = 5 * 60_000L
         const val ACTION_START_PERFORMANCE_CAPTURE = "dev.scanrelay.START_PERFORMANCE_CAPTURE"
         const val ACTION_STOP_PERFORMANCE_CAPTURE = "dev.scanrelay.STOP_PERFORMANCE_CAPTURE"
         const val EXTRA_PERFORMANCE_SCENARIO = "performance_scenario"
