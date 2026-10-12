@@ -145,7 +145,7 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
     private fun repositoryCounts(counts: PerformanceCollectionCounts?): String =
         counts?.repositoryText() ?: "unavailable"
 
-    fun report(): String {
+    fun report(includeEventDetails: Boolean = true): String {
         val durationMs = (last.elapsedMs - first.elapsedMs).coerceAtLeast(0L)
         val cpuMs = (last.cpuMs - first.cpuMs).coerceAtLeast(0L)
         val cpuPercent = if (durationMs > 0L) cpuMs * 100.0 / durationMs else null
@@ -186,7 +186,7 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
                 appendLine("WebSocket failure/close callbacks: ${counterDelta(startTransport.socketTerminations, endTransport.socketTerminations) ?: "unavailable"}")
                 val events = ScannerTransportMetrics.eventsBetween(startTransport.eventSequence, endTransport.eventSequence)
                 appendLine("Connection and queue events (local; at most 96 newest retained): ${events.size}")
-                events.forEach { event ->
+                if (includeEventDetails) events.forEach { event ->
                     appendLine("  ${Instant.ofEpochMilli(event.timestampMs)} ${event.detail}")
                 }
             }
