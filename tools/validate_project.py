@@ -1022,7 +1022,7 @@ require('Text("Performance probe"' in ui
         and 'ScannerService.startPerformanceCapture(context, performanceScenario)' in ui
         and 'ScannerService.stopPerformanceCapture(context)' in ui
         and 'ClipData.newPlainText(' in ui
-        and 'No data is uploaded.' in ui,
+        and 'Manual reports remain local; automatic diagnostics upload only when GitHub authorization is configured below.' in ui,
         'performance measurement needs opt-in, stop and local copy controls')
 require('private var longestSampleGapMs = 0L' in probe
         and 'if (gapMs > 20_000L) gapsOver20Seconds++' in probe
