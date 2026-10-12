@@ -19,6 +19,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
@@ -91,6 +92,21 @@ class ScannerService : MediaLibraryService() {
     private val pausedProfiles = mutableSetOf<String>()
     private val callByMediaId = mutableMapOf<String, RadioCall>()
     private val playedLiveCallTracker = PlayedLiveCallTracker()
+
+    private fun observeLivePlaybackProgress(mediaId: String?, positionMs: Long) {
+        val awaiting = playedLiveCallTracker.awaitingProgress(mediaId)
+        if (playedLiveCallTracker.observedProgress(mediaId, positionMs) && awaiting) {
+            LiveCallLifecycleMetrics.progressVerified()
+        }
+    }
+
+    /** Previously played timeline entries should not register as pending removals. */
+    private fun noteLiveItemRemoved(index: Int) {
+        if (index < player.currentMediaItemIndex || player.playbackState == Player.STATE_ENDED) return
+        if (PlaybackQueuePolicy.mediaKind(player.getMediaItemAt(index).mediaId) == "live") {
+            LiveCallLifecycleMetrics.removed()
+        }
+    }
     // A short-lived check runs only until the current audio item has shown
     // real position movement; it does not poll while idle or already verified.
     private val playbackProgressHandler = Handler(Looper.getMainLooper())
@@ -98,7 +114,7 @@ class ScannerService : MediaLibraryService() {
         override fun run() {
             if (!::player.isInitialized || !player.isPlaying) return
             val id = player.currentMediaItem?.mediaId
-            playedLiveCallTracker.observedProgress(id, player.currentPosition)
+            observeLivePlaybackProgress(id, player.currentPosition)
             if (playedLiveCallTracker.awaitingProgress(id)) {
                 playbackProgressHandler.postDelayed(this, 75L)
             }
@@ -109,7 +125,7 @@ class ScannerService : MediaLibraryService() {
         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         if (!::player.isInitialized || !player.isPlaying) return
         val id = player.currentMediaItem?.mediaId
-        playedLiveCallTracker.observedProgress(id, player.currentPosition)
+        observeLivePlaybackProgress(id, player.currentPosition)
         if (playedLiveCallTracker.awaitingProgress(id)) {
             playbackProgressHandler.postDelayed(playbackProgressCheck, 75L)
         }
@@ -323,10 +339,13 @@ class ScannerService : MediaLibraryService() {
                     // The last call has no next-item transition; terminal END
                     // is its natural playback-completion signal.
                     if (playbackState == Player.STATE_ENDED) {
-                        playedLiveCallTracker.observedProgress(
+                        observeLivePlaybackProgress(
                             player.currentMediaItem?.mediaId, player.currentPosition
                         )
-                        playedLiveCallTracker.ended()?.let(ScannerRepository::recordCompletedLiveCall)
+                        playedLiveCallTracker.ended()?.let {
+                            LiveCallLifecycleMetrics.completed()
+                            ScannerRepository.recordCompletedLiveCall(it)
+                        }
                         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
                     }
                     persistPlaybackQueue()
@@ -353,7 +372,10 @@ class ScannerService : MediaLibraryService() {
                         nextPlaying = player.isPlaying,
                         nextPositionMs = player.currentPosition
                     )
-                    completed?.let(ScannerRepository::recordCompletedLiveCall)
+                    completed?.let {
+                        LiveCallLifecycleMetrics.completed()
+                        ScannerRepository.recordCompletedLiveCall(it)
+                    }
                     checkPlaybackProgress()
                     syncCurrentlyPlayingCall()
                     updatePlaybackNotification()
@@ -367,9 +389,15 @@ class ScannerService : MediaLibraryService() {
                     // On a gapless automatic transition, the old item may have
                     // ended between progress checks. Use its final Media3 position.
                     if (reason == Player.DISCONTINUITY_REASON_AUTO_TRANSITION) {
-                        playedLiveCallTracker.observedProgress(
+                        observeLivePlaybackProgress(
                             oldPosition.mediaItem?.mediaId, oldPosition.positionMs
                         )
+                    }
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    if (PlaybackQueuePolicy.mediaKind(player.currentMediaItem?.mediaId.orEmpty()) == "live") {
+                        LiveCallLifecycleMetrics.playerError()
                     }
                 }
 
@@ -767,6 +795,7 @@ class ScannerService : MediaLibraryService() {
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
         val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
         if (liveFeed && !_audioEnabled.value) {
+            LiveCallLifecycleMetrics.suppressed()
             // Keep live scanner and transcript monitoring connected, but never
             // accumulate an unheard backlog during intentional audio Stop.
             pendingCalls.remove(token)
@@ -777,6 +806,7 @@ class ScannerService : MediaLibraryService() {
                 paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)
             )) {
             pendingCalls.remove(token)
+            if (liveFeed) LiveCallLifecycleMetrics.suppressed()
             return
         }
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
@@ -788,6 +818,7 @@ class ScannerService : MediaLibraryService() {
                 mediaIdAt = { index -> player.getMediaItemAt(index).mediaId }
             )) {
             pendingCalls.remove(token)
+            LiveCallLifecycleMetrics.duplicate()
             return
         }
         val systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L)
@@ -823,6 +854,7 @@ class ScannerService : MediaLibraryService() {
             player.addMediaItem(item)
         }
         callByMediaId[item.mediaId] = call
+        if (liveFeed) LiveCallLifecycleMetrics.enqueued()
         if (liveFeed && callId > 0L) rememberLiveCall(CallKey(profileId, callId))
         syncCurrentlyPlayingCall()
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
@@ -835,6 +867,7 @@ class ScannerService : MediaLibraryService() {
             val channel = PlaybackQueuePolicy.liveChannelForProfile(mediaId, profileId) ?: continue
             if (!ScannerRepository.isChannelSubscribed(profileId, channel.systemRef, channel.talkgroupRef)) {
                 playedLiveCallTracker.cancelIf(mediaId)
+                noteLiveItemRemoved(index)
                 player.removeMediaItem(index)
             }
         }
@@ -893,13 +926,17 @@ class ScannerService : MediaLibraryService() {
             incomingLiveFeed = liveFeed,
             mediaIdAt = { index -> player.getMediaItemAt(index).mediaId }
         )
-        if (removeIndex >= 0) player.removeMediaItem(removeIndex)
+        if (removeIndex >= 0) {
+            noteLiveItemRemoved(removeIndex)
+            player.removeMediaItem(removeIndex)
+        }
     }
 
     private fun skipInternal() {
         if (player.mediaItemCount <= 0) return
         val index = player.currentMediaItemIndex.takeIf { it in 0 until player.mediaItemCount } ?: 0
         playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
+        noteLiveItemRemoved(index)
         player.removeMediaItem(index)
         if (player.mediaItemCount > 0 && !player.playWhenReady) player.play()
     }
@@ -910,6 +947,7 @@ class ScannerService : MediaLibraryService() {
             currentIndex = player.currentMediaItemIndex
         )
         for (index in player.mediaItemCount - 1 downTo firstQueuedIndex) {
+            noteLiveItemRemoved(index)
             player.removeMediaItem(index)
         }
     }
@@ -917,6 +955,7 @@ class ScannerService : MediaLibraryService() {
     private fun stopAudioInternal() {
         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         playedLiveCallTracker.cancel()
+        for (index in 0 until player.mediaItemCount) noteLiveItemRemoved(index)
         player.stop()
         player.clearMediaItems()
         callByMediaId.clear()
@@ -928,6 +967,7 @@ class ScannerService : MediaLibraryService() {
             val mediaId = player.getMediaItemAt(index).mediaId
             if (PlaybackQueuePolicy.isLiveCallForProfile(mediaId, profileId)) {
                 playedLiveCallTracker.cancelIf(mediaId)
+                noteLiveItemRemoved(index)
                 player.removeMediaItem(index)
             }
         }
@@ -937,6 +977,7 @@ class ScannerService : MediaLibraryService() {
         for (index in player.mediaItemCount - 1 downTo 0) {
             if (player.getMediaItemAt(index).mediaId.startsWith("call:$profileId:")) {
                 playedLiveCallTracker.cancelIf(player.getMediaItemAt(index).mediaId)
+                noteLiveItemRemoved(index)
                 player.removeMediaItem(index)
             }
         }
@@ -1289,7 +1330,10 @@ class ScannerService : MediaLibraryService() {
             PendingAudioDispatchPolicy.dispatch(
                 tryStart = { context.startService(intent) },
                 tryForegroundStart = { ContextCompat.startForegroundService(context, intent) },
-                onUnrecoverableFailure = { pendingCalls.remove(token) }
+                onUnrecoverableFailure = {
+                    pendingCalls.remove(token)
+                    if (liveFeed) LiveCallLifecycleMetrics.dispatchFailed()
+                }
             )
         }
 

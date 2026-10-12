@@ -37,6 +37,7 @@ import dev.scanrelay.app.model.TranscriptRecord
 import dev.scanrelay.app.playback.PlaybackCachePolicy
 import dev.scanrelay.app.playback.PlaybackCachePruneSchedule
 import dev.scanrelay.app.playback.PlaybackQueueStore
+import dev.scanrelay.app.playback.LiveCallLifecycleMetrics
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -3114,6 +3115,7 @@ object ScannerRepository {
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
                 ScannerTransportMetrics.receivedCallFrame()
                 val callFlag = envelope.flag?.toString()
+                if (callFlag != ThinLineProtocol.PLAY_FLAG) LiveCallLifecycleMetrics.received()
                 if (callFlag != ThinLineProtocol.PLAY_FLAG) {
                     val id = payload.optLong("id").takeIf { it > 0L }
                     if (id != null) {
@@ -3587,6 +3589,13 @@ object ScannerRepository {
         publish()
         if (!replayRequested && !call.transcript.isNullOrBlank()) {
             processLocalTranscript(session, id, call.transcript, systemLabel, talkgroupLabel)
+        }
+        if (!replayRequested) {
+            when {
+                !shouldPlay -> LiveCallLifecycleMetrics.filtered()
+                path == null -> LiveCallLifecycleMetrics.missingAudio()
+                else -> LiveCallLifecycleMetrics.routed()
+            }
         }
         if (shouldPlay && path != null) {
             ScannerService.enqueue(context, call, liveFeed = !replayRequested, playImmediately = playImmediately)

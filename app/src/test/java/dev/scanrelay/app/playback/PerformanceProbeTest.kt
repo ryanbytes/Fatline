@@ -13,14 +13,16 @@ class PerformanceProbeTest {
         pct: Int? = 80, charge: Long? = 3_000_000L, plugged: Boolean = false,
         transport: ScannerTransportSnapshot? = null,
         gcCount: Long? = null, committed: Long? = null,
-        collections: PerformanceCollectionCounts? = null
+        collections: PerformanceCollectionCounts? = null,
+        lifecycle: LiveCallLifecycleSnapshot? = null
     ) = PerformanceReading(
         elapsedMs = elapsed, cpuMs = cpu, pssKb = pss,
         javaHeapKb = javaHeap, nativeHeapKb = native,
         rxBytes = rx, txBytes = tx,
         batteryPercent = pct, chargeMicroAh = charge, plugged = plugged,
         transport = transport, gcCount = gcCount,
-        javaHeapCommittedKb = committed, collections = collections
+        javaHeapCommittedKb = committed, collections = collections,
+        lifecycle = lifecycle
     )
 
     @Test
@@ -68,6 +70,31 @@ class PerformanceProbeTest {
         assertTrue(report.contains("WebSocket CFG frames received: 2"))
         assertTrue(report.contains("WebSocket failure/close callbacks: 2"))
         assertTrue(report.contains("do not establish whether any calls were missed"))
+    }
+
+    @Test
+    fun lifecycleSummariesOnlyExposeCounterDeltasNotIndividualCallData() {
+        val first = LiveCallLifecycleSnapshot(
+            received = 100, routed = 70, filtered = 30, enqueued = 60,
+            started = 45, completed = 43
+        )
+        val last = LiveCallLifecycleSnapshot(
+            received = 111, routed = 79, filtered = 32, missingAudio = 1,
+            dispatchFailures = 1, suppressed = 2, duplicates = 1,
+            enqueued = 68, started = 52, completed = 50, removed = 1, playerErrors = 1
+        )
+        val probe = PerformanceProbe(
+            "Live", reading(elapsed = 0, cpu = 0, lifecycle = first)
+        )
+        probe.sample(reading(elapsed = 60_000, cpu = 300, lifecycle = last))
+        val report = probe.report()
+        assertTrue(report.contains(
+            "Live lifecycle (received / routed / queued / started / completed): 11 / 9 / 8 / 7 / 7"
+        ))
+        assertTrue(report.contains(
+            "Live exclusions (filtered / no audio / suppressed / duplicates / dispatch failed / removed / player errors): 2 / 1 / 2 / 1 / 1 / 1 / 1"
+        ))
+        assertTrue(report.contains("not matched per-call delivery proof"))
     }
 
     @Test

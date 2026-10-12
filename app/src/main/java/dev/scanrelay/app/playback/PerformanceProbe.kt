@@ -54,7 +54,8 @@ internal data class PerformanceReading(
     val transport: ScannerTransportSnapshot? = null,
     val gcCount: Long? = null,
     val javaHeapCommittedKb: Long? = null,
-    val collections: PerformanceCollectionCounts? = null
+    val collections: PerformanceCollectionCounts? = null,
+    val lifecycle: LiveCallLifecycleSnapshot? = null
 )
 
 internal object PerformanceReader {
@@ -80,7 +81,8 @@ internal object PerformanceReader {
             batteryPercent = capacity,
             chargeMicroAh = charge,
             plugged = plugged,
-            transport = ScannerTransportMetrics.snapshot()
+            transport = ScannerTransportMetrics.snapshot(),
+            lifecycle = LiveCallLifecycleMetrics.snapshot()
         )
     }
 }
@@ -190,6 +192,29 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
                     appendLine("  ${Instant.ofEpochMilli(event.timestampMs)} ${event.detail}")
                 }
             }
+            val initialLifecycle = first.lifecycle
+            val finalLifecycle = last.lifecycle
+            if (initialLifecycle != null && finalLifecycle != null) {
+                fun count(before: Long, after: Long) = counterDelta(before, after)?.toString() ?: "unavailable"
+                appendLine("Live lifecycle (received / routed / queued / started / completed): " +
+                    listOf(
+                        count(initialLifecycle.received, finalLifecycle.received),
+                        count(initialLifecycle.routed, finalLifecycle.routed),
+                        count(initialLifecycle.enqueued, finalLifecycle.enqueued),
+                        count(initialLifecycle.started, finalLifecycle.started),
+                        count(initialLifecycle.completed, finalLifecycle.completed)
+                    ).joinToString(" / "))
+                appendLine("Live exclusions (filtered / no audio / suppressed / duplicates / dispatch failed / removed / player errors): " +
+                    listOf(
+                        count(initialLifecycle.filtered, finalLifecycle.filtered),
+                        count(initialLifecycle.missingAudio, finalLifecycle.missingAudio),
+                        count(initialLifecycle.suppressed, finalLifecycle.suppressed),
+                        count(initialLifecycle.duplicates, finalLifecycle.duplicates),
+                        count(initialLifecycle.dispatchFailures, finalLifecycle.dispatchFailures),
+                        count(initialLifecycle.removed, finalLifecycle.removed),
+                        count(initialLifecycle.playerErrors, finalLifecycle.playerErrors)
+                    ).joinToString(" / "))
+            }
             appendLine("Phone battery level: $batteryPercent")
             appendLine("Phone battery charge used: ${batteryDelta?.let { String.format(Locale.US, "%.2f mAh", it / 1000.0) } ?: "unavailable"}")
             appendLine("Charging observed: $everPlugged")
@@ -198,7 +223,8 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
             appendLine("Sampling is opt-in and happens only while the scanner service is running.")
             appendLine("GC-associated heap samples are not immediate post-GC retained-heap measurements.")
             appendLine("CAL/CFG and socket callback counts do not establish whether any calls were missed; network handoffs may not produce a failure/close callback.")
-            append("Live call IDs need not be consecutive. Verify possible omissions against the server archive.")
+            appendLine("Live call IDs need not be consecutive. Verify possible omissions against the server archive.")
+            append("Lifecycle counts are aggregate events, not matched per-call delivery proof; queue starts/completions may cross report boundaries.")
         }
     }
 }
