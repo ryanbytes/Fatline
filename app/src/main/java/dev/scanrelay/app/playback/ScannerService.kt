@@ -521,12 +521,10 @@ class ScannerService : MediaLibraryService() {
             lastPostedNotificationColor = initialColor
             lastPostedPlayingMediaId = currentPlayingMediaId()
         }
+        if (intent?.action == ACTION_RESUME_CONNECTIONS) recordPlaybackEvent("service_resume")
         when (intent?.action) {
             ACTION_CONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::connectProfile)
-            ACTION_RESUME_CONNECTIONS -> {
-                recordPlaybackEvent("service_resume")
-                restoreConnections()
-            }
+            ACTION_RESUME_CONNECTIONS -> restoreConnections()
             ACTION_DISCONNECT -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::disconnectProfile)
             ACTION_DISCONNECT_ALL -> disconnectAll()
             ACTION_ENQUEUE -> addMediaFromIntent(intent)
