@@ -1054,7 +1054,13 @@ require('internal object PendingAudioDispatchPolicy' in queue_policy
         and 'tryForegroundStart' in queue_policy
         and 'onUnrecoverableFailure()' in queue_policy
         and 'PendingAudioDispatchPolicy.dispatch(' in service
-        and 'onUnrecoverableFailure = { pendingCalls.remove(token) }' in service
+        and (
+            'onUnrecoverableFailure = { pendingCalls.remove(token) }' in service
+            or (
+                'onUnrecoverableFailure = {' in service
+                and 'pendingCalls.remove(token)\n                    if (liveFeed) LiveCallLifecycleMetrics.dispatchFailed()' in service
+            )
+        )
         and 'pendingAudioLaunchKeepsCallWhenNormalServiceStartWorks' in queue_tests
         and 'pendingAudioLaunchKeepsCallWhenForegroundFallbackWorks' in queue_tests
         and 'failedServiceAndFallbackCannotLeaveOrphanedPendingCall' in queue_tests,
