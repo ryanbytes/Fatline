@@ -379,6 +379,10 @@ class ScannerService : MediaLibraryService() {
         }
     }
 
+    // These labels are fixed; never log caller-provided strings or package names.
+    private var pendingPlaybackCommandSource: String? = null
+    private var lastReportedPlayWhenReady = false
+
     override fun onCreate() {
         super.onCreate()
         PlaybackDeliveryTrace.record("service_created")
@@ -390,6 +394,10 @@ class ScannerService : MediaLibraryService() {
         _outputVolumePercent.value = volumeStore.percent()
         _audioEnabled.value = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_AUDIO_ENABLED, true)
+        PlaybackDeliveryTrace.record(
+            "audio_state_restored",
+            "source=saved_preference resulting=${_audioEnabled.value}"
+        )
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
@@ -408,7 +416,13 @@ class ScannerService : MediaLibraryService() {
             )
             addListener(object : Player.Listener {
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
-                    recordPlaybackEvent("player_ready_changed")
+                    PlaybackDeliveryTrace.record(
+                        "player_ready_changed",
+                        "source=${pendingPlaybackCommandSource ?: "player_or_media_session"}" +
+                            " previous=$lastReportedPlayWhenReady resulting=$playWhenReady" +
+                            " reason=$reason audio_enabled=${_audioEnabled.value}"
+                    )
+                    lastReportedPlayWhenReady = playWhenReady
                     persistPlaybackQueue()
                 }
 
@@ -583,14 +597,16 @@ class ScannerService : MediaLibraryService() {
             }
             ACTION_FILTER_PROFILE_MEDIA -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::filterProfileMedia)
             ACTION_SET_AUDIO_ENABLED -> setAudioEnabledInternal(
-                intent.getBooleanExtra(EXTRA_AUDIO_ENABLED, true)
+                intent.getBooleanExtra(EXTRA_AUDIO_ENABLED, true),
+                source = if (intent.getStringExtra(EXTRA_AUDIO_SOURCE) == SOURCE_SCANNER_CONTROL)
+                    SOURCE_SCANNER_CONTROL else "unattributed_service_intent"
             )
             ACTION_SKIP -> {
                 skipInternal()
                 stopIfIdle()
             }
             ACTION_STOP_AUDIO -> {
-                stopAudioInternal()
+                stopAudioInternal("repository_stop_callback")
                 stopIfIdle()
             }
             ACTION_CLEAR_QUEUE -> {
@@ -707,7 +723,7 @@ class ScannerService : MediaLibraryService() {
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnect(profileId) }
         removeProfileMedia(profileId)
         if (active.isEmpty()) {
-            stopAudioInternal()
+            stopAudioInternal("last_profile_disconnected")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         } else updateMonitoringNotification(active.size)
@@ -718,7 +734,7 @@ class ScannerService : MediaLibraryService() {
         recentlyAcceptedLiveCalls.clear()
         persistActiveProfiles(emptySet())
         withRepositoryServiceCallbacksSuppressed { ScannerRepository.disconnectAll() }
-        stopAudioInternal()
+        stopAudioInternal("all_profiles_disconnected")
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -732,7 +748,7 @@ class ScannerService : MediaLibraryService() {
         pausedProfiles.addAll(validIds.filter(pauseStore::isPaused))
 
         if (validIds.isEmpty()) {
-            stopAudioInternal()
+            stopAudioInternal("restore_no_profiles")
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return
@@ -957,7 +973,7 @@ class ScannerService : MediaLibraryService() {
             audioPath = path
         )
         // An explicit replay selection is also an intentional request to hear audio.
-        if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)
+        if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true, "manual_replay")
         val mediaKind = if (liveFeed) "live" else "replay"
         val item = mediaItemFor(call, "call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:$token")
 
@@ -999,15 +1015,31 @@ class ScannerService : MediaLibraryService() {
             }
         }
     }
-    private fun setAudioEnabledInternal(enabled: Boolean) {
+    private fun setAudioEnabledInternal(enabled: Boolean, source: String) {
+        val previous = _audioEnabled.value
+        val previousReady = player.playWhenReady
+        PlaybackDeliveryTrace.record(
+            "audio_toggle_requested",
+            "source=$source previous=$previous requested=$enabled ready_before=$previousReady"
+        )
         _audioEnabled.value = enabled
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_AUDIO_ENABLED, enabled).apply()
-        if (enabled) {
-            if (player.mediaItemCount > 0) player.play()
-        } else {
-            player.pause()
+        pendingPlaybackCommandSource = source
+        try {
+            if (enabled) {
+                if (player.mediaItemCount > 0) player.play()
+            } else {
+                player.pause()
+            }
+        } finally {
+            pendingPlaybackCommandSource = null
         }
+        PlaybackDeliveryTrace.record(
+            "audio_toggle_applied",
+            "source=$source previous=$previous resulting=${_audioEnabled.value}" +
+                " ready_before=$previousReady ready_after=${player.playWhenReady}"
+        )
         syncCurrentlyPlayingCall()
         updatePlaybackNotification()
     }
@@ -1079,7 +1111,14 @@ class ScannerService : MediaLibraryService() {
         }
     }
 
-    private fun stopAudioInternal() {
+    private fun stopAudioInternal(source: String) {
+        val previousReady = player.playWhenReady
+        val previousMedia = player.mediaItemCount
+        PlaybackDeliveryTrace.record(
+            "playback_stop_requested",
+            "source=$source audio_enabled=${_audioEnabled.value}" +
+                " ready_before=$previousReady media_before=$previousMedia"
+        )
         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
         playedLiveCallTracker.cancel()
         for (index in 0 until player.mediaItemCount) noteLiveItemRemoved(index)
@@ -1087,6 +1126,11 @@ class ScannerService : MediaLibraryService() {
         player.clearMediaItems()
         callByMediaId.clear()
         _currentlyPlayingCall.value = null
+        PlaybackDeliveryTrace.record(
+            "playback_stop_applied",
+            "source=$source audio_enabled=${_audioEnabled.value}" +
+                " ready_after=${player.playWhenReady} media_after=${player.mediaItemCount}"
+        )
     }
 
     private fun removeLiveProfileMedia(profileId: String) {
@@ -1409,6 +1453,8 @@ class ScannerService : MediaLibraryService() {
         const val EXTRA_PLAY_IMMEDIATELY = "play_immediately"
         const val EXTRA_PAUSED = "paused"
         const val EXTRA_AUDIO_ENABLED = "audio_enabled"
+        private const val EXTRA_AUDIO_SOURCE = "audio_source"
+        private const val SOURCE_SCANNER_CONTROL = "scanner_control"
         const val EXTRA_AUDIO_PATH = "audio_path"
         const val EXTRA_TITLE = "title"
         const val EXTRA_SUBTITLE = "subtitle"
@@ -1555,6 +1601,7 @@ class ScannerService : MediaLibraryService() {
             val intent = Intent(context, ScannerService::class.java)
                 .setAction(ACTION_SET_AUDIO_ENABLED)
                 .putExtra(EXTRA_AUDIO_ENABLED, enabled)
+                .putExtra(EXTRA_AUDIO_SOURCE, SOURCE_SCANNER_CONTROL)
             runCatching { context.startService(intent) }
                 .onFailure { ContextCompat.startForegroundService(context, intent) }
         }
