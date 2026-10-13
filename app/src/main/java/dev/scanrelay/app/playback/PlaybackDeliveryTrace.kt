@@ -3,9 +3,9 @@ package dev.scanrelay.app.playback
 import java.time.Instant
 
 /**
- * Bounded, private diagnostic timeline. Only fixed event names and scalar player
- * state are recorded. Never include call IDs, channel names, server URLs or audio.
- * Time stamps are needed to align an Activity return with a stalled player.
+ * Bounded, private diagnostic timeline. Fixed event names, scalar player state,
+ * timestamps, and numeric call/system/talkgroup references support delivery
+ * correlation. Never include channel labels, server URLs, transcripts, or audio.
  */
 internal class PlaybackDeliveryJournal(private val limit: Int = 512) {
     private data class Entry(
