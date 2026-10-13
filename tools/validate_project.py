@@ -273,7 +273,7 @@ require('Text("Call actions")' in scanner_card and '"Avoid channel"' in scanner_
 require('contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"' in scanner_card
         and 'viewModel.setAudioEnabled(!audioEnabled)' in scanner_card, 'independent audio Play/Stop control missing')
 require('ACTION_SET_AUDIO_ENABLED' in service and 'KEY_AUDIO_ENABLED' in service and 'if (liveFeed && !_audioEnabled.value)' in service and 'player.pause()' in service, 'stopped audio must be persisted and suppress live output without disconnecting monitoring')
-require('if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)' in service, 'explicit replay must reactivate muted output')
+require('if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true, "manual_replay")' in service, 'explicit replay must reactivate muted output')
 require('val audioEnabled: StateFlow<Boolean>' in service and 'ScannerService.setAudioEnabled(getApplication(), enabled)' in viewmodel, 'audio output state and view-model bridge missing')
 require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
 
