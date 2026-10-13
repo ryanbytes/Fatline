@@ -132,10 +132,32 @@ class ScannerService : MediaLibraryService() {
             val audio = getSystemService(AudioManager::class.java)
             "${audio.getStreamVolume(AudioManager.STREAM_MUSIC)}/${audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}"
         }.getOrDefault("unavailable")
+        val mediaId = player.currentMediaItem?.mediaId
+        val call = liveCallForMediaId(mediaId)
         PlaybackDeliveryTrace.record(
             event, "state=${player.playbackState} playing=${player.isPlaying}" +
                 " when_ready=${player.playWhenReady} suppressed=${player.playbackSuppressionReason}" +
-                " media=${player.mediaItemCount} music_volume=$musicVolume"
+                " media=${player.mediaItemCount} player_volume=${player.volume}" +
+                " audio_enabled=${_audioEnabled.value} audio_session=${player.audioSessionId}" +
+                " music_volume=$musicVolume",
+            callId = call?.id,
+            systemRef = call?.systemRef,
+            talkgroupRef = call?.talkgroupRef
+        )
+    }
+
+    private fun liveCallForMediaId(mediaId: String?): RadioCall? {
+        if (mediaId == null || PlaybackQueuePolicy.mediaKind(mediaId) != "live") return null
+        return callByMediaId[mediaId]
+    }
+
+    private fun recordLiveCallEvent(event: String, mediaId: String?) {
+        val call = liveCallForMediaId(mediaId) ?: return
+        PlaybackDeliveryTrace.record(
+            event,
+            callId = call.id,
+            systemRef = call.systemRef,
+            talkgroupRef = call.talkgroupRef
         )
     }
 
@@ -143,6 +165,7 @@ class ScannerService : MediaLibraryService() {
         val awaiting = playedLiveCallTracker.awaitingProgress(mediaId)
         if (playedLiveCallTracker.observedProgress(mediaId, positionMs) && awaiting) {
             LiveCallLifecycleMetrics.progressVerified()
+            recordLiveCallEvent("live_call_progress", mediaId)
         }
     }
 
@@ -151,6 +174,7 @@ class ScannerService : MediaLibraryService() {
         if (index < player.currentMediaItemIndex || player.playbackState == Player.STATE_ENDED) return
         if (PlaybackQueuePolicy.mediaKind(player.getMediaItemAt(index).mediaId) == "live") {
             LiveCallLifecycleMetrics.removed()
+            recordLiveCallEvent("live_call_removed", player.getMediaItemAt(index).mediaId)
         }
     }
     // A short-lived check runs only until the current audio item has shown
@@ -383,6 +407,7 @@ class ScannerService : MediaLibraryService() {
             )
             addListener(object : Player.Listener {
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    recordPlaybackEvent("player_ready_changed")
                     persistPlaybackQueue()
                 }
 
@@ -398,6 +423,12 @@ class ScannerService : MediaLibraryService() {
                         )
                         playedLiveCallTracker.ended()?.let {
                             LiveCallLifecycleMetrics.completed()
+                            PlaybackDeliveryTrace.record(
+                                "live_call_completed",
+                                callId = it.id,
+                                systemRef = it.systemRef,
+                                talkgroupRef = it.talkgroupRef
+                            )
                             ScannerRepository.recordCompletedLiveCall(it)
                         }
                         playbackProgressHandler.removeCallbacks(playbackProgressCheck)
@@ -412,6 +443,7 @@ class ScannerService : MediaLibraryService() {
                         playedLiveCallTracker.started(
                             id, id?.let(callByMediaId::get), player.currentPosition
                         )
+                        recordLiveCallEvent("live_call_started", id)
                     }
                     checkPlaybackProgress()
                     syncCurrentlyPlayingCall()
@@ -429,6 +461,12 @@ class ScannerService : MediaLibraryService() {
                     )
                     completed?.let {
                         LiveCallLifecycleMetrics.completed()
+                        PlaybackDeliveryTrace.record(
+                            "live_call_completed",
+                            callId = it.id,
+                            systemRef = it.systemRef,
+                            talkgroupRef = it.talkgroupRef
+                        )
                         ScannerRepository.recordCompletedLiveCall(it)
                     }
                     checkPlaybackProgress()
@@ -452,8 +490,11 @@ class ScannerService : MediaLibraryService() {
 
                 override fun onPlayerError(error: PlaybackException) {
                     recordPlaybackEvent("player_error")
-                    if (PlaybackQueuePolicy.mediaKind(player.currentMediaItem?.mediaId.orEmpty()) == "live") {
-                        LiveCallLifecycleMetrics.playerError()
+                    player.currentMediaItem?.mediaId?.let { mediaId ->
+                        if (liveCallForMediaId(mediaId) != null) {
+                            LiveCallLifecycleMetrics.playerError()
+                            recordLiveCallEvent("live_call_player_error", mediaId)
+                        }
                     }
                 }
 
@@ -852,6 +893,15 @@ class ScannerService : MediaLibraryService() {
         }
     }
 
+    private fun recordCallIntentEvent(event: String, intent: Intent) {
+        PlaybackDeliveryTrace.record(
+            event,
+            callId = intent.getLongExtra(EXTRA_CALL_ID, 0L),
+            systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L),
+            talkgroupRef = intent.getLongExtra(EXTRA_TALKGROUP_REF, 0L)
+        )
+    }
+
     private fun addMediaFromIntent(intent: Intent) {
         val path = intent.getStringExtra(EXTRA_AUDIO_PATH) ?: return
         val token = intent.getStringExtra(EXTRA_CALL_TOKEN).orEmpty()
@@ -859,6 +909,7 @@ class ScannerService : MediaLibraryService() {
         val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
         if (liveFeed && !_audioEnabled.value) {
             LiveCallLifecycleMetrics.suppressed()
+            recordCallIntentEvent("live_call_suppressed", intent)
             // Keep live scanner and transcript monitoring connected, but never
             // accumulate an unheard backlog during intentional audio Stop.
             pendingCalls.remove(token)
@@ -869,7 +920,10 @@ class ScannerService : MediaLibraryService() {
                 paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)
             )) {
             pendingCalls.remove(token)
-            if (liveFeed) LiveCallLifecycleMetrics.suppressed()
+            if (liveFeed) {
+                LiveCallLifecycleMetrics.suppressed()
+                recordCallIntentEvent("live_call_suppressed", intent)
+            }
             return
         }
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
@@ -882,6 +936,7 @@ class ScannerService : MediaLibraryService() {
             )) {
             pendingCalls.remove(token)
             LiveCallLifecycleMetrics.duplicate()
+            recordCallIntentEvent("live_call_duplicate", intent)
             return
         }
         val systemRef = intent.getLongExtra(EXTRA_SYSTEM_REF, 0L)
@@ -917,7 +972,15 @@ class ScannerService : MediaLibraryService() {
             player.addMediaItem(item)
         }
         callByMediaId[item.mediaId] = call
-        if (liveFeed) LiveCallLifecycleMetrics.enqueued()
+        if (liveFeed) {
+            LiveCallLifecycleMetrics.enqueued()
+            PlaybackDeliveryTrace.record(
+                "live_call_enqueued",
+                callId = call.id,
+                systemRef = call.systemRef,
+                talkgroupRef = call.talkgroupRef
+            )
+        }
         if (liveFeed && callId > 0L) rememberLiveCall(CallKey(profileId, callId))
         syncCurrentlyPlayingCall()
         if (player.playbackState == Player.STATE_IDLE) player.prepare()
@@ -1185,14 +1248,22 @@ class ScannerService : MediaLibraryService() {
         lastPostedPlayingMediaId = playingMediaId
     }
 
+    private fun isAndroidAutoController(controller: MediaSession.ControllerInfo): Boolean =
+        controller.packageName == ANDROID_AUTO_PACKAGE
+
     private inner class LibraryCallback : MediaLibrarySession.Callback {
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?
-        ): ListenableFuture<LibraryResult<MediaItem>> = Futures.immediateFuture(
-            LibraryResult.ofItem(browsableItem(ROOT_ID, "FatLine", "Scanner servers"), params)
-        )
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            if (isAndroidAutoController(browser)) {
+                PlaybackDeliveryTrace.record("android_auto_library_root", "connected")
+            }
+            return Futures.immediateFuture(
+                LibraryResult.ofItem(browsableItem(ROOT_ID, "FatLine", "Scanner servers"), params)
+            )
+        }
 
         override fun onGetChildren(
             session: MediaLibrarySession,
@@ -1213,6 +1284,17 @@ class ScannerService : MediaLibraryService() {
                 }
                 else -> emptyList()
             }
+            if (isAndroidAutoController(browser)) {
+                val parentKind = when {
+                    parentId == ROOT_ID -> "profiles"
+                    parentId.startsWith("profile:") -> "channels"
+                    else -> "other"
+                }
+                PlaybackDeliveryTrace.record(
+                    "android_auto_library_children",
+                    "parent=$parentKind count=${all.size} page=$page"
+                )
+            }
             val safeSize = pageSize.coerceIn(1, 100)
             val from = (page.toLong().coerceAtLeast(0) * safeSize.toLong()).coerceAtMost(all.size.toLong()).toInt()
             val to = (from + safeSize).coerceAtMost(all.size)
@@ -1227,11 +1309,23 @@ class ScannerService : MediaLibraryService() {
             mediaItems.forEach { item ->
                 val parts = item.mediaId.split(':')
                 when (parts.firstOrNull()) {
-                    "profile" -> parts.getOrNull(1)?.let { connect(this@ScannerService, it) }
+                    "profile" -> {
+                        if (isAndroidAutoController(controller)) {
+                            PlaybackDeliveryTrace.record("android_auto_profile_selected")
+                        }
+                        parts.getOrNull(1)?.let { connect(this@ScannerService, it) }
+                    }
                     "channel" -> if (parts.size >= 4) {
                         val profileId = parts[1]
                         val system = parts[2].toLongOrNull()
                         val talkgroup = parts[3].toLongOrNull()
+                        if (isAndroidAutoController(controller) && system != null && talkgroup != null) {
+                            PlaybackDeliveryTrace.record(
+                                "android_auto_channel_selected",
+                                systemRef = system,
+                                talkgroupRef = talkgroup
+                            )
+                        }
                         if (system != null && talkgroup != null) ScannerRepository.setHold(profileId, ChannelKey(system, talkgroup))
                     }
                 }
@@ -1278,6 +1372,7 @@ class ScannerService : MediaLibraryService() {
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
         private const val KEY_AUDIO_ENABLED = "audio_enabled"
         private const val ROOT_ID = "fatline_root"
+        private const val ANDROID_AUTO_PACKAGE = "com.google.android.projection.gearhead"
         private const val NETWORK_LOSS_GRACE_MS = 650L
 
         @Volatile private var suppressRepositoryServiceCallbacks = false
