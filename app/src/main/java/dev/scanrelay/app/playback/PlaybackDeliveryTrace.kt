@@ -7,7 +7,7 @@ import java.time.Instant
  * state are recorded. Never include call IDs, channel names, server URLs or audio.
  * Time stamps are needed to align an Activity return with a stalled player.
  */
-internal class PlaybackDeliveryJournal(private val limit: Int = 96) {
+internal class PlaybackDeliveryJournal(private val limit: Int = 512) {
     private data class Entry(
         val sequence: Long,
         val timeMs: Long,
@@ -48,7 +48,7 @@ internal class PlaybackDeliveryJournal(private val limit: Int = 96) {
         val kept = entries.filter { it.sequence > afterSequence }
         val dropped = entries.firstOrNull()?.let {
             (it.sequence - afterSequence - 1L).coerceAtLeast(0L)
-        } ?: 0L
+        } ?: (nextSequence - afterSequence).coerceAtLeast(0L)
         appendLine("Playback timeline (bounded, private; events / overwritten): ${kept.size} / $dropped")
         for (event in kept) {
             append("  ").append(Instant.ofEpochMilli(event.timeMs))
