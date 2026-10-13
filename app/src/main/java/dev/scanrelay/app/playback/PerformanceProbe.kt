@@ -219,13 +219,6 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
                         count(initialLifecycle.removed, finalLifecycle.removed),
                         count(initialLifecycle.playerErrors, finalLifecycle.playerErrors)
                     ).joinToString(" / "))
-                appendLine("Live suppression reasons (audio stopped / profile paused): " +
-                    listOf(
-                        count(initialLifecycle.suppressedAudioStopped, finalLifecycle.suppressedAudioStopped),
-                        count(initialLifecycle.suppressedProfilePaused, finalLifecycle.suppressedProfilePaused)
-                    ).joinToString(" / "))
-                appendLine("Verified live playback with Android media volume zero: " +
-                    count(initialLifecycle.zeroMediaVolumeVerified, finalLifecycle.zeroMediaVolumeVerified))
             }
             appendLine("Phone battery level: $batteryPercent")
             appendLine("Phone battery charge used: ${batteryDelta?.let { String.format(Locale.US, "%.2f mAh", it / 1000.0) } ?: "unavailable"}")
@@ -236,7 +229,6 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
             appendLine("GC-associated heap samples are not immediate post-GC retained-heap measurements.")
             appendLine("CAL/CFG and socket callback counts do not establish whether any calls were missed; network handoffs may not produce a failure/close callback.")
             appendLine("Live call IDs need not be consecutive. Verify possible omissions against the server archive.")
-            appendLine("Suppression reasons partition intentional live suppression; media volume zero is checked once when a live call first shows playback progress.")
             append("Lifecycle counts are aggregate events, not matched per-call delivery proof; queue starts/completions may cross report boundaries.")
         }
     }
