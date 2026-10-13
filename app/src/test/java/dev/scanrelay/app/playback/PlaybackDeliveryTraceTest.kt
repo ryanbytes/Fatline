@@ -35,6 +35,40 @@ class PlaybackDeliveryTraceTest {
         assertTrue(report.contains("android_auto_channel_selected system=4 talkgroup=27"))
     }
 
+    @Test fun playbackCommandsPreserveSourceAndBeforeAfterState() {
+        val journal = PlaybackDeliveryJournal()
+        journal.record("audio_state_restored", "source=saved_preference resulting=false", timeMs = 1_000)
+        journal.record(
+            "audio_toggle_requested",
+            "source=scanner_control previous=false requested=true ready_before=false",
+            timeMs = 2_000
+        )
+        journal.record(
+            "player_ready_changed",
+            "source=scanner_control previous=false resulting=true reason=1 audio_enabled=true",
+            timeMs = 3_000
+        )
+        journal.record(
+            "audio_toggle_applied",
+            "source=scanner_control previous=false resulting=true ready_before=false ready_after=true",
+            timeMs = 4_000
+        )
+        journal.record(
+            "media_session_play_pause_requested",
+            "source=android_auto ready_before=true audio_enabled=true",
+            timeMs = 5_000
+        )
+        journal.record("playback_stop_requested", "source=repository_stop_callback", timeMs = 6_000)
+        journal.record("playback_stop_applied", "source=repository_stop_callback", timeMs = 7_000)
+        val report = journal.reportSince(0)
+        assertTrue(report.contains("audio_state_restored source=saved_preference resulting=false"))
+        assertTrue(report.contains("audio_toggle_requested source=scanner_control previous=false requested=true"))
+        assertTrue(report.contains("audio_toggle_applied source=scanner_control previous=false resulting=true"))
+        assertTrue(report.contains("media_session_play_pause_requested source=android_auto"))
+        assertTrue(report.contains("playback_stop_requested source=repository_stop_callback"))
+        assertTrue(report.contains("playback_stop_applied source=repository_stop_callback"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun arbitraryEventNamesCannotEnterPrivateUpload() {
         PlaybackDeliveryJournal().record("call_12345 confidential")
