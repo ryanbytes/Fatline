@@ -621,7 +621,9 @@ require('replayLastChoosesMostRecentlyCompletedLiveCall' in replay_tests
 require('                    CallRow(' not in recent_main and 'onDownload' not in recent_main, 'recent live call list must not use History actions')
 require('.clickable(' in recent_row and 'onClick = onPlay' in recent_row and 'OutlinedButton(' not in recent_row and 'Button(' not in recent_row, 'recent live rows must be tappable without buttons')
 
-require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(true)' in service, 'Android Auto server connect item missing')
+require('serverItem' in service and 'setIsBrowsable(true).setIsPlayable(false)' in service
+        and 'if (profileId !in activeProfileIds()) connectProfile(profileId)' in service,
+        'Android Auto scanner profiles must be browse-only and connect on folder open')
 
 local_monitor = (ROOT / 'app/src/main/java/dev/scanrelay/app/alerts/LocalTranscriptAlerts.kt').read_text()
 local_monitor_tests = (ROOT / 'app/src/test/java/dev/scanrelay/app/alerts/LocalTranscriptAlertPolicyTest.kt').read_text()
