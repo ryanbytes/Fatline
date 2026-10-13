@@ -1490,7 +1490,15 @@ class ScannerService : MediaLibraryService() {
                 tryForegroundStart = { ContextCompat.startForegroundService(context, intent) },
                 onUnrecoverableFailure = {
                     pendingCalls.remove(token)
-                    if (liveFeed) LiveCallLifecycleMetrics.dispatchFailed()
+                    if (liveFeed) {
+                        LiveCallLifecycleMetrics.dispatchFailed()
+                        PlaybackDeliveryTrace.record(
+                            "live_call_dispatch_failed",
+                            callId = call.id,
+                            systemRef = call.systemRef,
+                            talkgroupRef = call.talkgroupRef
+                        )
+                    }
                 }
             )
         }
