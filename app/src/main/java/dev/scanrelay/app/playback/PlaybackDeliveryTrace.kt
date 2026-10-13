@@ -74,7 +74,8 @@ internal class PlaybackDeliveryJournal(private val limit: Int = 512) {
             "live_call_dispatch_failed", "android_auto_library_root",
             "android_auto_library_children", "android_auto_channel_selected",
             "android_auto_profile_selected", "audio_state_restored", "audio_toggle_requested",
-            "audio_toggle_applied", "playback_stop_requested", "playback_stop_applied"
+            "audio_toggle_applied", "playback_stop_requested", "playback_stop_applied",
+            "media_session_play_pause_requested"
         )
     }
 }
