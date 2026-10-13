@@ -65,7 +65,7 @@ internal class PlaybackDeliveryJournal(private val limit: Int = 512) {
         private val EVENTS = setOf(
             "activity_visible", "activity_hidden", "service_created", "service_destroyed",
             "service_resume", "sticky_restart", "player_playing", "player_not_playing",
-            "player_buffering", "player_error", "stall_recovery",
+            "player_buffering", "player_error", "player_ready_changed", "stall_recovery",
             "live_call_received", "live_call_routed", "live_call_filtered",
             "live_call_missing_audio", "live_call_suppressed", "live_call_duplicate",
             "live_call_enqueued", "live_call_started", "live_call_progress",
