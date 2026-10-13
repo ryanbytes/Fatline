@@ -1280,6 +1280,10 @@ class ScannerService : MediaLibraryService() {
                 }
                 parentId.startsWith("profile:") -> {
                     val profileId = parentId.removePrefix("profile:")
+                    // Browsing a scanner is the signal to start it. Profile
+                    // rows are folders, so they must not be sent through the
+                    // playback path to connect.
+                    if (profileId !in activeProfileIds()) connectProfile(profileId)
                     AndroidAutoLibraryPolicy.favoriteChannels(profileId, ScannerRepository.state.value)
                         .map { favorite -> playableItem(favorite.mediaId, favorite.title, favorite.subtitle) }
                 }
@@ -1342,7 +1346,7 @@ class ScannerService : MediaLibraryService() {
 
     private fun serverItem(id: String, title: String, subtitle: String) = MediaItem.Builder()
         .setMediaId(id)
-        .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(subtitle).setIsBrowsable(true).setIsPlayable(true).build())
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(subtitle).setIsBrowsable(true).setIsPlayable(false).build())
         .build()
 
     private fun playableItem(id: String, title: String, subtitle: String) = MediaItem.Builder()
