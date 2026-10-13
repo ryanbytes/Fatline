@@ -14,9 +14,6 @@ internal data class LiveCallLifecycleSnapshot(
     val missingAudio: Long = 0,
     val dispatchFailures: Long = 0,
     val suppressed: Long = 0,
-    val suppressedAudioStopped: Long = 0,
-    val suppressedProfilePaused: Long = 0,
-    val zeroMediaVolumeVerified: Long = 0,
     val duplicates: Long = 0,
     val enqueued: Long = 0,
     val started: Long = 0,
@@ -35,9 +32,6 @@ internal open class LiveCallLifecycleCounters {
     private val missingAudioCount = AtomicLong()
     private val dispatchFailuresCount = AtomicLong()
     private val suppressedCount = AtomicLong()
-    private val suppressedAudioStoppedCount = AtomicLong()
-    private val suppressedProfilePausedCount = AtomicLong()
-    private val zeroMediaVolumeVerifiedCount = AtomicLong()
     private val duplicateCount = AtomicLong()
     private val queuedCount = AtomicLong()
     private val startedCount = AtomicLong()
@@ -53,15 +47,7 @@ internal open class LiveCallLifecycleCounters {
     fun filtered() { filteredCount.incrementAndGet() }
     fun missingAudio() { missingAudioCount.incrementAndGet() }
     fun dispatchFailed() { dispatchFailuresCount.incrementAndGet() }
-    fun suppressedAudioStopped() {
-        suppressedCount.incrementAndGet()
-        suppressedAudioStoppedCount.incrementAndGet()
-    }
-    fun suppressedProfilePaused() {
-        suppressedCount.incrementAndGet()
-        suppressedProfilePausedCount.incrementAndGet()
-    }
-    fun zeroMediaVolumeVerified() { zeroMediaVolumeVerifiedCount.incrementAndGet() }
+    fun suppressed() { suppressedCount.incrementAndGet() }
     fun duplicate() { duplicateCount.incrementAndGet() }
     fun enqueued() { queuedCount.incrementAndGet() }
     fun activityVisible(value: Boolean) { visible.set(value) }
@@ -81,9 +67,6 @@ internal open class LiveCallLifecycleCounters {
         missingAudio = missingAudioCount.get(),
         dispatchFailures = dispatchFailuresCount.get(),
         suppressed = suppressedCount.get(),
-        suppressedAudioStopped = suppressedAudioStoppedCount.get(),
-        suppressedProfilePaused = suppressedProfilePausedCount.get(),
-        zeroMediaVolumeVerified = zeroMediaVolumeVerifiedCount.get(),
         duplicates = duplicateCount.get(),
         enqueued = queuedCount.get(),
         started = startedCount.get(),
