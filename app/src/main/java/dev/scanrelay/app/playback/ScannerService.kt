@@ -1297,6 +1297,28 @@ class ScannerService : MediaLibraryService() {
         controller.packageName == ANDROID_AUTO_PACKAGE
 
     private inner class LibraryCallback : MediaLibrarySession.Callback {
+        // MediaSession play/pause can arrive from Android Auto or external
+        // controllers without changing the scanner's persisted audio flag.
+        override fun onPlayerCommandRequest(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            playerCommand: Int
+        ): Int {
+            if (playerCommand == Player.COMMAND_PLAY_PAUSE) {
+                val origin = if (isAndroidAutoController(controller)) {
+                    "android_auto"
+                } else {
+                    "other_media_controller"
+                }
+                PlaybackDeliveryTrace.record(
+                    "media_session_play_pause_requested",
+                    "source=$origin ready_before=${player.playWhenReady}" +
+                        " audio_enabled=${_audioEnabled.value}"
+                )
+            }
+            return super.onPlayerCommandRequest(session, controller, playerCommand)
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
