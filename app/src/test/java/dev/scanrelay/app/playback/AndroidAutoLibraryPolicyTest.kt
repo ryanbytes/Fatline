@@ -222,7 +222,8 @@ class AndroidAutoLibraryPolicyTest {
         }
         val old = ServerScannerState(profile = one, systems = systems)
         apply(mapOf("one" to old))
-        assertTrue(changes.isEmpty())
+        assertEquals(listOf("one" to 1), changes)
+        changes.clear()
         apply(mapOf("two" to ServerScannerState(profile = two, systems = systems)))
         assertEquals(listOf("one" to 0), changes)
         assertEquals(setOf("two"), cache.profileIds)
