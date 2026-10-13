@@ -80,5 +80,13 @@ internal class PlaybackDeliveryJournal(private val limit: Int = 512) {
 
 internal object PlaybackDeliveryTrace {
     val journal = PlaybackDeliveryJournal()
-    fun record(event: String, state: String = "") = journal.record(event, state)
+
+    fun record(
+        event: String,
+        state: String = "",
+        timeMs: Long = System.currentTimeMillis(),
+        callId: Long? = null,
+        systemRef: Long? = null,
+        talkgroupRef: Long? = null
+    ) = journal.record(event, state, timeMs, callId, systemRef, talkgroupRef)
 }
