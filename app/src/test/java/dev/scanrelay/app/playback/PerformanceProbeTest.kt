@@ -80,8 +80,7 @@ class PerformanceProbeTest {
         )
         val last = LiveCallLifecycleSnapshot(
             received = 111, routed = 79, filtered = 32, missingAudio = 1,
-            dispatchFailures = 1, suppressed = 2, suppressedAudioStopped = 1,
-            suppressedProfilePaused = 1, zeroMediaVolumeVerified = 4, duplicates = 1,
+            dispatchFailures = 1, suppressed = 2, duplicates = 1,
             enqueued = 68, started = 52, completed = 50, removed = 1, playerErrors = 1,
             verifiedWhileForeground = 12, verifiedWhileBackground = 6
         )
@@ -97,9 +96,6 @@ class PerformanceProbeTest {
             "Live exclusions (filtered / no audio / suppressed / duplicates / dispatch failed / removed / player errors): 2 / 1 / 2 / 1 / 1 / 1 / 1"
         ))
         assertTrue(report.contains("Verified playback progress while Activity (visible / hidden): 7 / 4"))
-        assertTrue(report.contains("Live suppression reasons (audio stopped / profile paused): 1 / 1"))
-        assertTrue(report.contains("Verified live playback with Android media volume zero: 4"))
-        assertTrue(report.contains("media volume zero is checked once"))
         assertTrue(report.contains("not matched per-call delivery proof"))
     }
 

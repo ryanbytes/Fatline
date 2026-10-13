@@ -142,14 +142,6 @@ class ScannerService : MediaLibraryService() {
     private fun observeLivePlaybackProgress(mediaId: String?, positionMs: Long) {
         val awaiting = playedLiveCallTracker.awaitingProgress(mediaId)
         if (playedLiveCallTracker.observedProgress(mediaId, positionMs) && awaiting) {
-            // Check once per verified live call, not on every polling tick.
-            // STREAM_MUSIC=0 means the Android media stream was muted even
-            // though Media3 reported playback progress.
-            val mediaVolume = runCatching {
-                getSystemService(AudioManager::class.java)
-                    ?.getStreamVolume(AudioManager.STREAM_MUSIC)
-            }.getOrNull()
-            if (mediaVolume == 0) LiveCallLifecycleMetrics.zeroMediaVolumeVerified()
             LiveCallLifecycleMetrics.progressVerified()
         }
     }
@@ -373,7 +365,6 @@ class ScannerService : MediaLibraryService() {
         _outputVolumePercent.value = volumeStore.percent()
         _audioEnabled.value = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_AUDIO_ENABLED, true)
-        PlaybackDeliveryTrace.record(if (_audioEnabled.value) "audio_enabled_restored" else "audio_stopped_restored")
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
@@ -867,7 +858,7 @@ class ScannerService : MediaLibraryService() {
         val profileId = intent.getStringExtra(EXTRA_PROFILE_ID).orEmpty()
         val liveFeed = intent.getBooleanExtra(EXTRA_LIVE_FEED, true)
         if (liveFeed && !_audioEnabled.value) {
-            LiveCallLifecycleMetrics.suppressedAudioStopped()
+            LiveCallLifecycleMetrics.suppressed()
             // Keep live scanner and transcript monitoring connected, but never
             // accumulate an unheard backlog during intentional audio Stop.
             pendingCalls.remove(token)
@@ -878,7 +869,7 @@ class ScannerService : MediaLibraryService() {
                 paused = profileId in pausedProfiles || pauseStore.isPaused(profileId)
             )) {
             pendingCalls.remove(token)
-            if (liveFeed) LiveCallLifecycleMetrics.suppressedProfilePaused()
+            if (liveFeed) LiveCallLifecycleMetrics.suppressed()
             return
         }
         val callId = intent.getLongExtra(EXTRA_CALL_ID, 0L)
@@ -945,9 +936,6 @@ class ScannerService : MediaLibraryService() {
         }
     }
     private fun setAudioEnabledInternal(enabled: Boolean) {
-        if (_audioEnabled.value != enabled) {
-            recordPlaybackEvent(if (enabled) "audio_enabled" else "audio_stopped")
-        }
         _audioEnabled.value = enabled
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_AUDIO_ENABLED, enabled).apply()
@@ -968,8 +956,6 @@ class ScannerService : MediaLibraryService() {
     }
 
     private fun setProfilePausedInternal(profileId: String, paused: Boolean) {
-        // No profile identifier leaves the device in the diagnostic trace.
-        recordPlaybackEvent(if (paused) "profile_paused" else "profile_resumed")
         if (paused) {
             pausedProfiles += profileId
             // Pause suppresses live scanning, not recordings the user explicitly
