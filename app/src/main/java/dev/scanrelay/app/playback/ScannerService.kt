@@ -138,7 +138,8 @@ class ScannerService : MediaLibraryService() {
             event, "state=${player.playbackState} playing=${player.isPlaying}" +
                 " when_ready=${player.playWhenReady} suppressed=${player.playbackSuppressionReason}" +
                 " media=${player.mediaItemCount} player_volume=${player.volume}" +
-                " audio_enabled=${_audioEnabled.value} audio_session=${player.audioSessionId}" +
+                " audio_enabled=${_audioEnabled.value} audio_focus=not_requested" +
+                " audio_session=${player.audioSessionId}" +
                 " music_volume=$musicVolume",
             callId = call?.id,
             systemRef = call?.systemRef,
