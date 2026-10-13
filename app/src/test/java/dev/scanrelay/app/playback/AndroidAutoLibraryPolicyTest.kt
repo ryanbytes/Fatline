@@ -92,7 +92,7 @@ class AndroidAutoLibraryPolicyTest {
         val cache = AndroidAutoFavoritesCache()
         val initial = cache.refresh(profile.id, ScannerState(servers = mapOf(profile.id to base)))
         assertTrue(initial.rebuilt)
-        assertFalse(initial.changed)
+        assertTrue(initial.changed)
         assertEquals(1, initial.favorites.size)
 
         // Neither status nor call/alert flow changes the systems/hidden-system
@@ -165,7 +165,8 @@ class AndroidAutoLibraryPolicyTest {
         cache.forEachChanged(ScannerState(servers = mapOf("one" to base))) { id, count ->
             notices += id to count
         }
-        assertTrue(notices.isEmpty()) // first snapshot only baselines the library
+        assertEquals(listOf("one" to 1), notices) // first available favorites populate the library
+        notices.clear()
         repeat(50) { iteration ->
             cache.forEachChanged(ScannerState(servers = mapOf(
                 "one" to base.copy(statusText = "Receiving $iteration", listenerCount = iteration)
@@ -189,7 +190,8 @@ class AndroidAutoLibraryPolicyTest {
             }
         }
         apply(base)
-        assertTrue(notices.isEmpty())
+        assertEquals(listOf("one" to 1), notices)
+        notices.clear()
         apply(base.copy(systems = listOf(SystemConfig(
             7, "Law", listOf(
                 TalkgroupConfig(7, 56, "Dispatch", favorite = true),
@@ -235,7 +237,7 @@ class AndroidAutoLibraryPolicyTest {
 
     @Test fun detectsOnlyMeaningfulFavoriteLibraryChanges() {
         val original = listOf(AndroidAutoFavorite("channel:one:7:56", "Dispatch", "Law"))
-        assertFalse(AndroidAutoLibraryPolicy.childrenChanged(null, original))
+        assertTrue(AndroidAutoLibraryPolicy.childrenChanged(null, original))
         assertFalse(AndroidAutoLibraryPolicy.childrenChanged(original, original.toList()))
         assertTrue(
             AndroidAutoLibraryPolicy.childrenChanged(
