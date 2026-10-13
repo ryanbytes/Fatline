@@ -19,6 +19,22 @@ class PlaybackDeliveryTraceTest {
         assertFalse(journal.reportSince(journal.sequence()).contains("player_buffering"))
     }
 
+    
+    @Test fun liveCallIdentifiersAndAndroidAutoRequestsAreCorrelatable() {
+        val journal = PlaybackDeliveryJournal(limit = 4)
+        journal.record(
+            "live_call_received",
+            callId = 9123L,
+            systemRef = 4L,
+            talkgroupRef = 27L,
+            timeMs = 1_000
+        )
+        journal.record("android_auto_channel_selected", systemRef = 4L, talkgroupRef = 27L, timeMs = 2_000)
+        val report = journal.reportSince(0)
+        assertTrue(report.contains("live_call_received call=9123 system=4 talkgroup=27"))
+        assertTrue(report.contains("android_auto_channel_selected system=4 talkgroup=27"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun arbitraryEventNamesCannotEnterPrivateUpload() {
         PlaybackDeliveryJournal().record("call_12345 confidential")
