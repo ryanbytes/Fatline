@@ -3495,6 +3495,12 @@ object ScannerRepository {
         val audioBytes = if (encrypted) {
             val data = audio?.optString("data").orEmpty()
             if (data.isBlank()) {
+                PlaybackDeliveryTrace.record(
+                    "live_call_missing_audio",
+                    callId = id,
+                    systemRef = systemRef,
+                    talkgroupRef = talkgroupRef
+                )
                 synchronized(session) { session.state = session.state.copy(error = "Encrypted audio payload is missing ciphertext") }
                 publish()
                 return
@@ -3521,6 +3527,12 @@ object ScannerRepository {
                             error = "Audio decrypt failed; refreshing key: ${error.message ?: "authentication failed"}"
                         )
                         bufferEncryptedCallLocked(session, payload)
+                        PlaybackDeliveryTrace.record(
+                            "live_call_encryption_pending",
+                            callId = id,
+                            systemRef = systemRef,
+                            talkgroupRef = talkgroupRef
+                        )
                         needsKeyExchange = true
                     }
                 }
