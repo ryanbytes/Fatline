@@ -38,6 +38,7 @@ import dev.scanrelay.app.playback.PlaybackCachePolicy
 import dev.scanrelay.app.playback.PlaybackCachePruneSchedule
 import dev.scanrelay.app.playback.PlaybackQueueStore
 import dev.scanrelay.app.playback.LiveCallLifecycleMetrics
+import dev.scanrelay.app.playback.PlaybackDeliveryTrace
 import dev.scanrelay.app.playback.ScannerService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -3115,7 +3116,15 @@ object ScannerRepository {
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
                 ScannerTransportMetrics.receivedCallFrame()
                 val callFlag = envelope.flag?.toString()
-                if (callFlag != ThinLineProtocol.PLAY_FLAG) LiveCallLifecycleMetrics.received()
+                if (callFlag != ThinLineProtocol.PLAY_FLAG) {
+                    LiveCallLifecycleMetrics.received()
+                    PlaybackDeliveryTrace.record(
+                        "live_call_received",
+                        callId = payload.optLong("id"),
+                        systemRef = payload.optLong("system"),
+                        talkgroupRef = payload.optLong("talkgroup")
+                    )
+                }
                 if (callFlag != ThinLineProtocol.PLAY_FLAG) {
                     val id = payload.optLong("id").takeIf { it > 0L }
                     if (id != null) {
@@ -3486,6 +3495,12 @@ object ScannerRepository {
         val audioBytes = if (encrypted) {
             val data = audio?.optString("data").orEmpty()
             if (data.isBlank()) {
+                PlaybackDeliveryTrace.record(
+                    "live_call_missing_audio",
+                    callId = id,
+                    systemRef = systemRef,
+                    talkgroupRef = talkgroupRef
+                )
                 synchronized(session) { session.state = session.state.copy(error = "Encrypted audio payload is missing ciphertext") }
                 publish()
                 return
@@ -3512,6 +3527,12 @@ object ScannerRepository {
                             error = "Audio decrypt failed; refreshing key: ${error.message ?: "authentication failed"}"
                         )
                         bufferEncryptedCallLocked(session, payload)
+                        PlaybackDeliveryTrace.record(
+                            "live_call_encryption_pending",
+                            callId = id,
+                            systemRef = systemRef,
+                            talkgroupRef = talkgroupRef
+                        )
                         needsKeyExchange = true
                     }
                 }
@@ -3592,9 +3613,33 @@ object ScannerRepository {
         }
         if (!replayRequested) {
             when {
-                !shouldPlay -> LiveCallLifecycleMetrics.filtered()
-                path == null -> LiveCallLifecycleMetrics.missingAudio()
-                else -> LiveCallLifecycleMetrics.routed()
+                !shouldPlay -> {
+                    LiveCallLifecycleMetrics.filtered()
+                    PlaybackDeliveryTrace.record(
+                        "live_call_filtered",
+                        callId = call.id,
+                        systemRef = call.systemRef,
+                        talkgroupRef = call.talkgroupRef
+                    )
+                }
+                path == null -> {
+                    LiveCallLifecycleMetrics.missingAudio()
+                    PlaybackDeliveryTrace.record(
+                        "live_call_missing_audio",
+                        callId = call.id,
+                        systemRef = call.systemRef,
+                        talkgroupRef = call.talkgroupRef
+                    )
+                }
+                else -> {
+                    LiveCallLifecycleMetrics.routed()
+                    PlaybackDeliveryTrace.record(
+                        "live_call_routed",
+                        callId = call.id,
+                        systemRef = call.systemRef,
+                        talkgroupRef = call.talkgroupRef
+                    )
+                }
             }
         }
         if (shouldPlay && path != null) {
