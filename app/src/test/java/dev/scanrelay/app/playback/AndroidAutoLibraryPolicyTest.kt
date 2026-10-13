@@ -225,7 +225,7 @@ class AndroidAutoLibraryPolicyTest {
         assertEquals(listOf("one" to 1), changes)
         changes.clear()
         apply(mapOf("two" to ServerScannerState(profile = two, systems = systems)))
-        assertEquals(listOf("one" to 0), changes)
+        assertEquals(listOf("two" to 1, "one" to 0), changes)
         assertEquals(setOf("two"), cache.profileIds)
         changes.clear()
         apply(emptyMap())
