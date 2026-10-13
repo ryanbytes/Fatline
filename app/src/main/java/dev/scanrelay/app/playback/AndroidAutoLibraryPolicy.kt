@@ -33,7 +33,7 @@ internal object AndroidAutoLibraryPolicy {
     fun childrenChanged(
         previous: List<AndroidAutoFavorite>?,
         current: List<AndroidAutoFavorite>
-    ): Boolean = previous == null ? current.isNotEmpty() : previous != current
+    ): Boolean = if (previous == null) current.isNotEmpty() else previous != current
 }
 
 /**
