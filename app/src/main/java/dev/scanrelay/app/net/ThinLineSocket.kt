@@ -19,8 +19,8 @@ class ThinLineSocket(
         fun onOpen()
         fun onSavedPinSubmitted() {}
         fun onEnvelope(envelope: ThinLineProtocol.Envelope)
-        fun onFailure(message: String, cause: Throwable? = null)
-        fun onClosed(reason: String)
+        fun onFailure(message: String, cause: Throwable? = null, httpStatus: Int? = null)
+        fun onClosed(reason: String, closeCode: Int)
     }
 
     private val client = OkHttpClient.Builder()
@@ -73,12 +73,12 @@ class ThinLineSocket(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                failOnce(response?.let { "WebSocket HTTP ${it.code}" } ?: t.message ?: "WebSocket failure", t)
+                failOnce(response?.let { "WebSocket HTTP ${it.code}" } ?: t.message ?: "WebSocket failure", t, response?.code)
                 shutdownClient()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                closeOnce(if (reason.isBlank()) "Closed ($code)" else reason)
+                closeOnce(if (reason.isBlank()) "Closed ($code)" else reason, code)
                 shutdownClient()
             }
         })
@@ -128,12 +128,12 @@ class ThinLineSocket(
         shutdownClient()
     }
 
-    private fun failOnce(message: String, cause: Throwable? = null) {
-        if (terminalDelivered.compareAndSet(false, true)) listener.onFailure(message, cause)
+    private fun failOnce(message: String, cause: Throwable? = null, httpStatus: Int? = null) {
+        if (terminalDelivered.compareAndSet(false, true)) listener.onFailure(message, cause, httpStatus)
     }
 
-    private fun closeOnce(reason: String) {
-        if (terminalDelivered.compareAndSet(false, true)) listener.onClosed(reason)
+    private fun closeOnce(reason: String, closeCode: Int) {
+        if (terminalDelivered.compareAndSet(false, true)) listener.onClosed(reason, closeCode)
     }
 
     private fun shutdownClient() {
