@@ -271,10 +271,18 @@ require(scanner_screen.count('ScannerClock()') >= 2
 require('private fun NowPlayingCard(' not in ui and 'NowPlayingCard(server' not in scanner_screen, 'large duplicate now-playing card must not return')
 require('Text("Call actions")' in scanner_card and '"Avoid channel"' in scanner_card and 'viewModel.setSystemHold(' in scanner_card, 'compact now-playing actions must preserve controls')
 require('contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"' in scanner_card
-        and 'viewModel.setAudioEnabled(!audioEnabled)' in scanner_card, 'independent audio Play/Stop control missing')
+        and 'showStopConfirmation = true' in scanner_card
+        and 'viewModel.setAudioEnabled(true)' in scanner_card
+        and 'viewModel.confirmStopAudio()' in scanner_card
+        and 'title = { Text("Stop scanner audio?") }' in scanner_card,
+        'scanner Stop must require confirmation while Play stays immediate')
 require('ACTION_SET_AUDIO_ENABLED' in service and 'KEY_AUDIO_ENABLED' in service and 'if (liveFeed && !_audioEnabled.value)' in service and 'player.pause()' in service, 'stopped audio must be persisted and suppress live output without disconnecting monitoring')
 require('if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)' in service, 'explicit replay must reactivate muted output')
 require('val audioEnabled: StateFlow<Boolean>' in service and 'ScannerService.setAudioEnabled(getApplication(), enabled)' in viewmodel, 'audio output state and view-model bridge missing')
+require('ScannerAudioStopPolicy.permit(enabled, confirmedStop, fromScannerCard)' in service
+        and 'EXTRA_AUDIO_STOP_CONFIRMED' in service
+        and 'fun confirmStopAudio(context: Context)' in service,
+        'service must reject unconfirmed scanner Stop requests, including older client actions')
 require('Slider(' in scanner_card and 'Scanner output · $pendingVolume%' in scanner_card, 'scanner volume slider must be visible in scanner card')
 
 hud_policy = (ROOT / 'app/src/main/java/dev/scanrelay/app/ui/ScannerHudPolicy.kt').read_text()
@@ -600,7 +608,8 @@ require('if (server.paused) {' in scanner_status_controls
         and 'R.drawable.ic_fatline_pause' not in scanner_status_controls
         and 'Pause scanning' not in scanner_status_controls,
         'main scanner card must not allow pausing; legacy paused users must still be able to resume')
-require('viewModel.setAudioEnabled(!audioEnabled)' in scanner_status_controls
+require('showStopConfirmation = true' in scanner_status_controls
+        and 'viewModel.setAudioEnabled(true)' in scanner_status_controls
         and 'viewModel.replayLast(server.profile.id)' in scanner_status_controls
         and 'onClick = viewModel::skip' in scanner_status_controls
         and 'viewModel.clearHold(server.profile.id)' in scanner_status_controls
