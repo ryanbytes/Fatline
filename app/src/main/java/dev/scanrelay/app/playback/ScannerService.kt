@@ -911,7 +911,7 @@ class ScannerService : MediaLibraryService() {
             audioPath = path
         )
         // An explicit replay selection is also an intentional request to hear audio.
-        if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true, AUDIO_ORIGIN_EXPLICIT_REPLAY)
+        if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)
         val mediaKind = if (liveFeed) "live" else "replay"
         val item = mediaItemFor(call, "call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:$token")
 
@@ -945,6 +945,9 @@ class ScannerService : MediaLibraryService() {
             }
         }
     }
+    private fun setAudioEnabledInternal(enabled: Boolean) =
+        setAudioEnabledInternal(enabled, AUDIO_ORIGIN_EXPLICIT_REPLAY)
+
     private fun setAudioEnabledInternal(enabled: Boolean, origin: String) {
         val previous = _audioEnabled.value
         _audioEnabled.value = enabled
