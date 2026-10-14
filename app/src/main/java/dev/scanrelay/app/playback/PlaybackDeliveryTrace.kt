@@ -43,7 +43,8 @@ internal class PlaybackDeliveryJournal(private val limit: Int = 96) {
             "activity_visible", "activity_hidden", "service_created", "service_destroyed",
             "service_resume", "sticky_restart", "player_playing", "player_not_playing",
             "player_buffering", "player_error", "stall_recovery",
-            "audio_enabled_loaded", "audio_enabled_changed", "player_ready_changed"
+            "audio_enabled_loaded", "audio_enabled_changed", "player_ready_changed",
+            "scanner_audio_button_click", "hardware_volume_key"
         )
     }
 }
