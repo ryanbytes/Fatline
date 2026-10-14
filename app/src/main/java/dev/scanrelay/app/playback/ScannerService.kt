@@ -365,6 +365,7 @@ class ScannerService : MediaLibraryService() {
         _outputVolumePercent.value = volumeStore.percent()
         _audioEnabled.value = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_AUDIO_ENABLED, true)
+        PlaybackDeliveryTrace.record("audio_enabled_loaded", "source=persisted_preference enabled=${_audioEnabled.value}")
         weatherMonitor = NwsSevereWeatherMonitor(this).also { it.start() }
         startNetworkTracking()
         createChannel()
@@ -383,6 +384,10 @@ class ScannerService : MediaLibraryService() {
             )
             addListener(object : Player.Listener {
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    PlaybackDeliveryTrace.record(
+                        "player_ready_changed",
+                        "when_ready=$playWhenReady reason=$reason audio_enabled=${_audioEnabled.value}"
+                    )
                     persistPlaybackQueue()
                 }
 
@@ -541,7 +546,12 @@ class ScannerService : MediaLibraryService() {
             }
             ACTION_FILTER_PROFILE_MEDIA -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::filterProfileMedia)
             ACTION_SET_AUDIO_ENABLED -> setAudioEnabledInternal(
-                intent.getBooleanExtra(EXTRA_AUDIO_ENABLED, true)
+                intent.getBooleanExtra(EXTRA_AUDIO_ENABLED, true),
+                origin = if (intent.getStringExtra(EXTRA_AUDIO_ORIGIN) == AUDIO_ORIGIN_SCANNER_CARD) {
+                    AUDIO_ORIGIN_SCANNER_CARD
+                } else {
+                    AUDIO_ORIGIN_SERVICE_INTENT
+                }
             )
             ACTION_SKIP -> {
                 skipInternal()
@@ -901,7 +911,7 @@ class ScannerService : MediaLibraryService() {
             audioPath = path
         )
         // An explicit replay selection is also an intentional request to hear audio.
-        if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true)
+        if (!liveFeed && !_audioEnabled.value) setAudioEnabledInternal(true, AUDIO_ORIGIN_EXPLICIT_REPLAY)
         val mediaKind = if (liveFeed) "live" else "replay"
         val item = mediaItemFor(call, "call:$profileId:$mediaKind:$callId:$systemRef:$talkgroupRef:$token")
 
@@ -935,8 +945,13 @@ class ScannerService : MediaLibraryService() {
             }
         }
     }
-    private fun setAudioEnabledInternal(enabled: Boolean) {
+    private fun setAudioEnabledInternal(enabled: Boolean, origin: String) {
+        val previous = _audioEnabled.value
         _audioEnabled.value = enabled
+        PlaybackDeliveryTrace.record(
+            "audio_enabled_changed",
+            "source=$origin before=$previous after=${_audioEnabled.value} changed=${previous != enabled}"
+        )
         getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_AUDIO_ENABLED, enabled).apply()
         if (enabled) {
@@ -1277,6 +1292,10 @@ class ScannerService : MediaLibraryService() {
         private const val PREFS = "fatline_session"
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
         private const val KEY_AUDIO_ENABLED = "audio_enabled"
+        private const val EXTRA_AUDIO_ORIGIN = "audio_origin"
+        private const val AUDIO_ORIGIN_SCANNER_CARD = "scanner_card"
+        private const val AUDIO_ORIGIN_SERVICE_INTENT = "service_intent"
+        private const val AUDIO_ORIGIN_EXPLICIT_REPLAY = "explicit_replay"
         private const val ROOT_ID = "fatline_root"
         private const val NETWORK_LOSS_GRACE_MS = 650L
 
@@ -1447,6 +1466,7 @@ class ScannerService : MediaLibraryService() {
             val intent = Intent(context, ScannerService::class.java)
                 .setAction(ACTION_SET_AUDIO_ENABLED)
                 .putExtra(EXTRA_AUDIO_ENABLED, enabled)
+                .putExtra(EXTRA_AUDIO_ORIGIN, AUDIO_ORIGIN_SCANNER_CARD)
             runCatching { context.startService(intent) }
                 .onFailure { ContextCompat.startForegroundService(context, intent) }
         }
