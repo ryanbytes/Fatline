@@ -748,6 +748,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     fun skip() = ScannerRepository.skip()
     fun clearPlaybackQueue() = ScannerService.clearQueue(getApplication())
     fun setAudioEnabled(enabled: Boolean) = ScannerService.setAudioEnabled(getApplication(), enabled)
+    fun confirmStopAudio() = ScannerService.confirmStopAudio(getApplication())
     fun setOutputVolume(percent: Int) = ScannerService.setOutputVolume(getApplication(), percent)
     companion object {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
