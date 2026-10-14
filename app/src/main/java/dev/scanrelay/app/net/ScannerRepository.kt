@@ -2754,6 +2754,10 @@ object ScannerRepository {
 
     fun networkUnavailable() {
         ScannerTransportMetrics.event("Default network unavailable; queued=${ScannerService.queuedCallCount.value}")
+        ScannerTransportMetrics.diagnostic(
+            ConnectionDiagnosticType.NETWORK_UNAVAILABLE, networkAvailable = false,
+            queued = ScannerService.queuedCallCount.value
+        )
         networkAvailable = false
         sessions.values.forEach { session ->
             val oldSocket = synchronized(session) {
@@ -2781,6 +2785,10 @@ object ScannerRepository {
 
     fun networkChanged(reason: String = "Network changed") {
         ScannerTransportMetrics.event("Default network: ${reason.take(70)}; queued=${ScannerService.queuedCallCount.value}")
+        ScannerTransportMetrics.diagnostic(
+            ConnectionDiagnosticType.NETWORK_CHANGED, networkAvailable = true,
+            queued = ScannerService.queuedCallCount.value
+        )
         networkAvailable = true
         sessions.values.forEach { restartSession(it, "$reason; reconnecting", resetBackoff = true) }
     }
@@ -2873,9 +2881,17 @@ object ScannerRepository {
                 if (isCurrent(session, generation)) handleEnvelope(session, envelope, generation)
             }
 
-            override fun onFailure(message: String, cause: Throwable?) {
+            override fun onFailure(message: String, cause: Throwable?, httpStatus: Int?) {
                 if (!isCurrent(session, generation)) return
                 ScannerTransportMetrics.terminated()
+                ScannerTransportMetrics.diagnostic(
+                    ConnectionDiagnosticType.SOCKET_FAILURE,
+                    networkAvailable = networkAvailable,
+                    reconnectAttempt = session.reconnectAttempt,
+                    queued = ScannerService.queuedCallCount.value,
+                    cause = cause,
+                    httpStatus = httpStatus
+                )
                 logConnectionEvent(session, "WebSocket failure; last live CAL=${session.lastLiveCallId ?: "none"}")
                 synchronized(session) {
                     if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
@@ -2896,9 +2912,16 @@ object ScannerRepository {
                 scheduleReconnect(session, generation)
             }
 
-            override fun onClosed(reason: String) {
+            override fun onClosed(reason: String, closeCode: Int) {
                 if (!isCurrent(session, generation)) return
                 ScannerTransportMetrics.terminated()
+                ScannerTransportMetrics.diagnostic(
+                    ConnectionDiagnosticType.SOCKET_CLOSED,
+                    networkAvailable = networkAvailable,
+                    reconnectAttempt = session.reconnectAttempt,
+                    queued = ScannerService.queuedCallCount.value,
+                    closeCode = closeCode
+                )
                 logConnectionEvent(session, "WebSocket closed; last live CAL=${session.lastLiveCallId ?: "none"}")
                 synchronized(session) {
                     if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
@@ -2928,6 +2951,13 @@ object ScannerRepository {
         runCatching { socket.connect() }.onFailure { error ->
             if (!isCurrent(session, generation)) return@onFailure
             logConnectionEvent(session, "WebSocket startup failure")
+            ScannerTransportMetrics.diagnostic(
+                ConnectionDiagnosticType.SOCKET_STARTUP_FAILURE,
+                networkAvailable = networkAvailable,
+                reconnectAttempt = session.reconnectAttempt,
+                queued = ScannerService.queuedCallCount.value,
+                cause = error
+            )
             synchronized(session) {
                 if (session.hasConnected) session.awaitingFirstLiveAfterReconnect = true
                 session.socket = null
@@ -3027,6 +3057,13 @@ object ScannerRepository {
             // The base retry delay remains capped at 30_000L.
             val retryDelay = ReconnectBackoff.delayMillis(session.reconnectAttempt, jitter)
             logConnectionEvent(session, "retry in ${retryDelay}ms (attempt ${session.reconnectAttempt})")
+            ScannerTransportMetrics.diagnostic(
+                ConnectionDiagnosticType.RETRY_SCHEDULED,
+                networkAvailable = networkAvailable,
+                reconnectAttempt = session.reconnectAttempt,
+                queued = ScannerService.queuedCallCount.value,
+                retryDelayMs = retryDelay
+            )
             val retrySeconds = ((retryDelay + 999L) / 1_000L).toInt()
             session.state = session.state.copy(
                 status = ConnectionStatus.CONNECTING,
@@ -3109,6 +3146,11 @@ object ScannerRepository {
                 }
                 handleConfig(session, envelope.payload as? JSONObject ?: return)
                 ScannerTransportMetrics.configured()
+                ScannerTransportMetrics.diagnostic(
+                    ConnectionDiagnosticType.CONFIG_ACCEPTED,
+                    networkAvailable = networkAvailable,
+                    queued = ScannerService.queuedCallCount.value
+                )
                 logConnectionEvent(session, "CFG accepted; livefeed requested")
                 startTranscriptMonitor(session)
             }
