@@ -545,14 +545,19 @@ class ScannerService : MediaLibraryService() {
                 setProfilePausedInternal(profileId, intent.getBooleanExtra(EXTRA_PAUSED, false))
             }
             ACTION_FILTER_PROFILE_MEDIA -> intent.getStringExtra(EXTRA_PROFILE_ID)?.let(::filterProfileMedia)
-            ACTION_SET_AUDIO_ENABLED -> setAudioEnabledInternal(
-                intent.getBooleanExtra(EXTRA_AUDIO_ENABLED, true),
-                origin = if (intent.getStringExtra(EXTRA_AUDIO_ORIGIN) == AUDIO_ORIGIN_SCANNER_CARD) {
-                    AUDIO_ORIGIN_SCANNER_CARD
+            ACTION_SET_AUDIO_ENABLED -> {
+                val enabled = intent.getBooleanExtra(EXTRA_AUDIO_ENABLED, true)
+                val fromScannerCard = intent.getStringExtra(EXTRA_AUDIO_ORIGIN) == AUDIO_ORIGIN_SCANNER_CARD
+                val origin = if (fromScannerCard) AUDIO_ORIGIN_SCANNER_CARD else AUDIO_ORIGIN_SERVICE_INTENT
+                val confirmedStop = intent.getBooleanExtra(EXTRA_AUDIO_STOP_CONFIRMED, false)
+                if (ScannerAudioStopPolicy.permit(enabled, confirmedStop, fromScannerCard)) {
+                    setAudioEnabledInternal(enabled, origin)
                 } else {
-                    AUDIO_ORIGIN_SERVICE_INTENT
+                    // A stray tap, older single-tap client, or misrouted command
+                    // must never persist a disabled scanner or drop live calls.
+                    PlaybackDeliveryTrace.record("audio_stop_rejected", "source=$origin")
                 }
-            )
+            }
             ACTION_SKIP -> {
                 skipInternal()
                 stopIfIdle()
@@ -1296,6 +1301,7 @@ class ScannerService : MediaLibraryService() {
         private const val KEY_ACTIVE_PROFILES = "active_profiles"
         private const val KEY_AUDIO_ENABLED = "audio_enabled"
         private const val EXTRA_AUDIO_ORIGIN = "audio_origin"
+        private const val EXTRA_AUDIO_STOP_CONFIRMED = "audio_stop_confirmed"
         private const val AUDIO_ORIGIN_SCANNER_CARD = "scanner_card"
         private const val AUDIO_ORIGIN_SERVICE_INTENT = "service_intent"
         private const val AUDIO_ORIGIN_EXPLICIT_REPLAY = "explicit_replay"
@@ -1465,13 +1471,18 @@ class ScannerService : MediaLibraryService() {
                 .onFailure { ContextCompat.startForegroundService(context, intent) }
         }
 
-        fun setAudioEnabled(context: Context, enabled: Boolean) {
+        fun setAudioEnabled(context: Context, enabled: Boolean, confirmedStop: Boolean = false) {
             val intent = Intent(context, ScannerService::class.java)
                 .setAction(ACTION_SET_AUDIO_ENABLED)
                 .putExtra(EXTRA_AUDIO_ENABLED, enabled)
                 .putExtra(EXTRA_AUDIO_ORIGIN, AUDIO_ORIGIN_SCANNER_CARD)
+                .putExtra(EXTRA_AUDIO_STOP_CONFIRMED, confirmedStop)
             runCatching { context.startService(intent) }
                 .onFailure { ContextCompat.startForegroundService(context, intent) }
+        }
+
+        fun confirmStopAudio(context: Context) {
+            setAudioEnabled(context, enabled = false, confirmedStop = true)
         }
 
         fun clearQueue(context: Context) {
