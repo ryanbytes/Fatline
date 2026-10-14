@@ -19,6 +19,27 @@ class ScannerTransportEventJournalTest {
     }
 
     @Test
+    fun structuredDiagnosticDiscardsRawFailureTextAndServerIdentity() {
+        val raw = java.net.SocketTimeoutException("Authorization token abc123 at https://secret.example/")
+        val safe = ConnectionDiagnosticFormatter.format(
+            ConnectionDiagnosticType.SOCKET_FAILURE,
+            networkAvailable = true,
+            reconnectAttempt = 2,
+            queued = 3,
+            cause = raw,
+            httpStatus = 503
+        )
+        assertTrue(safe.contains("type=socket_failure network_available=true attempt=2 queued=3"))
+        assertTrue(safe.contains("error_family=timeout http_status=503"))
+        assertTrue(!safe.contains("abc123") && !safe.contains("secret.example"))
+        val closed = ConnectionDiagnosticFormatter.format(
+            ConnectionDiagnosticType.SOCKET_CLOSED, networkAvailable = false,
+            closeCode = 1006
+        )
+        assertTrue(closed.contains("close_code=1006"))
+    }
+
+    @Test
     fun returnsOnlyEventsInsideCaptureWindow() {
         val journal = ScannerTransportEventJournal(capacity = 4)
         val before = journal.record("before", 1000L)

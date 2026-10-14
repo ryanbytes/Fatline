@@ -191,6 +191,15 @@ internal class PerformanceProbe(val scenario: String, private val first: Perform
                 if (includeEventDetails) events.forEach { event ->
                     appendLine("  ${Instant.ofEpochMilli(event.timestampMs)} ${event.detail}")
                 }
+                // Automatic GitHub uploads intentionally omit the free-text journal.
+                // These events are built only from fixed labels and bounded scalar values.
+                val safeEvents = ScannerTransportMetrics.diagnosticsBetween(
+                    startTransport.diagnosticSequence, endTransport.diagnosticSequence
+                )
+                appendLine("Connection diagnostics (sanitized; at most 96 newest): ${safeEvents.size}")
+                safeEvents.forEach { event ->
+                    appendLine("  ${Instant.ofEpochMilli(event.timestampMs)} ${event.detail}")
+                }
             }
             val initialLifecycle = first.lifecycle
             val finalLifecycle = last.lifecycle
