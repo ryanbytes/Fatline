@@ -67,7 +67,7 @@ internal object ConnectionDiagnosticFormatter {
             " error_family=$errorFamily" +
             " http_status=${httpStatus?.takeIf { it in 100..599 } ?: "none"}" +
             " close_code=${closeCode?.takeIf { it in 1000..4999 } ?: "none"}" +
-            " retry_ms=${retryDelayMs?.takeIf { it in 0..60_000L } ?: "none"}"
+            " retry_ms=${retryDelayMs?.takeIf { it in 0L..60_000L } ?: "none"}"
     }
 }
 
