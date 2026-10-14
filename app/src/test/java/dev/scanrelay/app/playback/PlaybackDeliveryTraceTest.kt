@@ -19,6 +19,16 @@ class PlaybackDeliveryTraceTest {
         assertFalse(journal.reportSince(journal.sequence()).contains("player_buffering"))
     }
 
+    @Test fun whitelistedAudioTransitionEventsCarryStateWithoutDynamicIdentifiers() {
+        val journal = PlaybackDeliveryJournal()
+        journal.record("audio_enabled_loaded", "source=persisted_preference enabled=true", timeMs = 1000)
+        journal.record("audio_enabled_changed", "source=scanner_card before=true after=false changed=true", timeMs = 2000)
+        journal.record("player_ready_changed", "when_ready=false reason=1 audio_enabled=false", timeMs = 3000)
+        val report = journal.reportSince(0)
+        assertTrue(report.contains("audio_enabled_changed source=scanner_card before=true after=false"))
+        assertTrue(report.contains("player_ready_changed when_ready=false reason=1 audio_enabled=false"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun arbitraryEventNamesCannotEnterPrivateUpload() {
         PlaybackDeliveryJournal().record("call_12345 confidential")
