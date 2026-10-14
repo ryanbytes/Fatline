@@ -91,6 +91,7 @@ import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.ServerProfile
 import dev.scanrelay.app.model.ServerScannerState
 import dev.scanrelay.app.playback.QueuedCall
+import dev.scanrelay.app.playback.PlaybackDeliveryTrace
 import dev.scanrelay.app.playback.GitHubDiagnosticsCredentials
 import dev.scanrelay.app.playback.ScannerService
 import java.net.URLEncoder
@@ -658,7 +659,15 @@ private fun ScannerStatusCard(
                     modifier = Modifier.weight(1f).semantics {
                         contentDescription = if (audioEnabled) "Stop scanner audio" else "Play scanner audio"
                     },
-                    onClick = { viewModel.setAudioEnabled(!audioEnabled) }
+                    onClick = {
+                        // Record the actual Compose callback independently of the
+                        // service's origin label; it is not proof of a physical tap.
+                        PlaybackDeliveryTrace.record(
+                            "scanner_audio_button_click",
+                            "before=$audioEnabled requested=${!audioEnabled}"
+                        )
+                        viewModel.setAudioEnabled(!audioEnabled)
+                    }
                 ) {
                     Icon(
                         painter = painterResource(if (audioEnabled) R.drawable.ic_fatline_stop else R.drawable.ic_fatline_play),
