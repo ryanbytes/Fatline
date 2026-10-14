@@ -3,6 +3,7 @@ package dev.scanrelay.app
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,6 +24,22 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         LiveCallLifecycleMetrics.activityVisible(true)
         PlaybackDeliveryTrace.record("activity_visible")
+    }
+
+    // Observe volume keys only when this Activity receives them. Android still
+    // handles the keys normally; no volume or scanner state is changed here.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN ||
+                event.keyCode == KeyEvent.KEYCODE_VOLUME_UP)
+        ) {
+            val direction = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) "down" else "up"
+            PlaybackDeliveryTrace.record(
+                "hardware_volume_key",
+                "direction=$direction repeat=${event.repeatCount.coerceIn(0, 99)}"
+            )
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     override fun onStop() {

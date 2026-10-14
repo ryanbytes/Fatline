@@ -29,6 +29,17 @@ class PlaybackDeliveryTraceTest {
         assertTrue(report.contains("player_ready_changed when_ready=false reason=1 audio_enabled=false"))
     }
 
+    @Test fun buttonCallbacksAndHardwareKeysAreDistinctTimelineEvents() {
+        val journal = PlaybackDeliveryJournal()
+        journal.record("hardware_volume_key", "direction=down repeat=0", timeMs = 1_000)
+        journal.record("scanner_audio_button_click", "before=true requested=false", timeMs = 2_000)
+        journal.record("audio_enabled_changed", "source=scanner_card before=true after=false changed=true", timeMs = 3_000)
+        val text = journal.reportSince(0)
+        assertTrue(text.contains("hardware_volume_key direction=down repeat=0"))
+        assertTrue(text.contains("scanner_audio_button_click before=true requested=false"))
+        assertTrue(text.contains("audio_enabled_changed source=scanner_card"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun arbitraryEventNamesCannotEnterPrivateUpload() {
         PlaybackDeliveryJournal().record("call_12345 confidential")
