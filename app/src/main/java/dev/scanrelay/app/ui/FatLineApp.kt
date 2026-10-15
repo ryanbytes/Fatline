@@ -493,6 +493,7 @@ private fun ScannerStatusCard(
     var showStopConfirmation by remember { mutableStateOf(false) }
     val audioEnabled by ScannerService.audioEnabled.collectAsStateWithLifecycle()
     val outputVolumePercent by ScannerService.outputVolumePercent.collectAsStateWithLifecycle()
+    val outputRoute by ScannerService.outputRoute.collectAsStateWithLifecycle()
     var pendingVolume by remember { mutableStateOf(outputVolumePercent) }
     LaunchedEffect(outputVolumePercent) { pendingVolume = outputVolumePercent }
     val tagRgb = TagColors.playingCallColor(currentlyPlayingCall, server)
@@ -724,7 +725,10 @@ private fun ScannerStatusCard(
                     style = MaterialTheme.typography.bodySmall
                 )
             }
-            Text("Scanner output · $pendingVolume%", style = MaterialTheme.typography.bodySmall)
+            Text(
+                "Scanner output · $pendingVolume% · Route (expected): $outputRoute",
+                style = MaterialTheme.typography.bodySmall
+            )
             Slider(
                 value = pendingVolume / 100f,
                 onValueChange = { pendingVolume = (it * 100).toInt().coerceIn(0, 100) },
