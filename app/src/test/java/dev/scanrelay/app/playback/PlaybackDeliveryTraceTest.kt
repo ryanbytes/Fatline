@@ -40,6 +40,16 @@ class PlaybackDeliveryTraceTest {
         assertTrue(text.contains("audio_enabled_changed source=scanner_card"))
     }
 
+    @Test fun outputSinkEvidenceIsSeparateFromPlayerProgress() {
+        val journal = PlaybackDeliveryJournal()
+        journal.record("player_playing", "state=3 playing=true", timeMs = 1000)
+        journal.record("audio_track_initialized", "route=speaker stream_muted=false gain=100 track=true sink_advanced=false", timeMs = 2000)
+        journal.record("audio_sink_advancing", "route=speaker stream_muted=false gain=100 track=true sink_advanced=true", timeMs = 3000)
+        val text = journal.reportSince(0)
+        assertTrue(text.contains("audio_track_initialized route=speaker"))
+        assertTrue(text.contains("audio_sink_advancing route=speaker"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun arbitraryEventNamesCannotEnterPrivateUpload() {
         PlaybackDeliveryJournal().record("call_12345 confidential")
