@@ -13,6 +13,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.media.AudioManager
+import android.media.AudioDeviceInfo
+import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -25,6 +27,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -74,6 +78,10 @@ class ScannerService : MediaLibraryService() {
     private lateinit var playbackQueueStore: PlaybackQueueStore
     private var lastSavedPlaybackQueue: SavedPlaybackQueue? = null
     private lateinit var volumeStore: PlaybackVolumeStore
+    // Output-track state belongs to the active Media3 sink; never infer audible
+    // playback solely from the player's advancing media timeline.
+    private var audioTrackInitialized = false
+    private var audioSinkAdvancing = false
     private var restoringQueue = true
     private var releasingPlayer = false
     // Repeated ACTION_ENQUEUE calls must not restart foreground notification
@@ -132,12 +140,56 @@ class ScannerService : MediaLibraryService() {
             val audio = getSystemService(AudioManager::class.java)
             "${audio.getStreamVolume(AudioManager.STREAM_MUSIC)}/${audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)}"
         }.getOrDefault("unavailable")
+        val output = audioOutputSnapshot()
         PlaybackDeliveryTrace.record(
             event, "state=${player.playbackState} playing=${player.isPlaying}" +
                 " when_ready=${player.playWhenReady} suppressed=${player.playbackSuppressionReason}" +
-                " media=${player.mediaItemCount} music_volume=$musicVolume"
+                " media=${player.mediaItemCount} music_volume=$musicVolume $output"
         )
     }
+
+    /** Only broad device categories are stored, never Bluetooth names or hardware IDs.
+     * Route is the Android-predicted output, not verified speaker sound. */
+    private fun audioOutputSnapshot(): String = runCatching {
+        val audio = getSystemService(AudioManager::class.java)
+        val route = if (Build.VERSION.SDK_INT >= 33) {
+            val attrs = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+            AudioOutputRoutePolicy.combine(
+                audio.getAudioDevicesForAttributes(attrs).map { device ->
+                    when (device.type) {
+                        AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "speaker"
+                        AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "earpiece"
+                        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                        AudioDeviceInfo.TYPE_BLE_HEADSET,
+                        AudioDeviceInfo.TYPE_BLE_SPEAKER -> "bluetooth"
+                        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_LINE_ANALOG -> "wired"
+                        AudioDeviceInfo.TYPE_USB_DEVICE,
+                        AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                        AudioDeviceInfo.TYPE_USB_HEADSET -> "usb"
+                        AudioDeviceInfo.TYPE_HDMI,
+                        AudioDeviceInfo.TYPE_HDMI_ARC,
+                        AudioDeviceInfo.TYPE_HDMI_EARC -> "hdmi"
+                        AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> "remote"
+                        else -> "other"
+                    }
+                }
+            )
+        } else "unknown"
+        _outputRoute.value = route
+        AudioOutputRoutePolicy.snapshot(
+            route = route,
+            streamMuted = audio.isStreamMute(AudioManager.STREAM_MUSIC),
+            gainPercent = _outputVolumePercent.value,
+            audioTrackInitialized = audioTrackInitialized,
+            audioSinkAdvancing = audioSinkAdvancing
+        )
+    }.getOrElse { "route=unknown stream_muted=unknown gain=${_outputVolumePercent.value} track=$audioTrackInitialized sink_advanced=$audioSinkAdvancing" }
 
     private fun observeLivePlaybackProgress(mediaId: String?, positionMs: Long) {
         val awaiting = playedLiveCallTracker.awaitingProgress(mediaId)
@@ -382,6 +434,50 @@ class ScannerService : MediaLibraryService() {
                 // podcasts, and other apps without pausing or ducking their volume.
                 false
             )
+            addAnalyticsListener(object : AnalyticsListener {
+                override fun onAudioTrackInitialized(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioTrackConfig: AudioSink.AudioTrackConfig
+                ) {
+                    audioTrackInitialized = true
+                    audioSinkAdvancing = false
+                    PlaybackDeliveryTrace.record("audio_track_initialized", audioOutputSnapshot())
+                }
+
+                override fun onAudioPositionAdvancing(
+                    eventTime: AnalyticsListener.EventTime,
+                    playoutStartSystemTimeMs: Long
+                ) {
+                    audioSinkAdvancing = true
+                    PlaybackDeliveryTrace.record("audio_sink_advancing", audioOutputSnapshot())
+                }
+
+                override fun onAudioTrackReleased(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioTrackConfig: AudioSink.AudioTrackConfig
+                ) {
+                    audioTrackInitialized = false
+                    audioSinkAdvancing = false
+                    PlaybackDeliveryTrace.record("audio_track_released", audioOutputSnapshot())
+                }
+
+                override fun onAudioSinkError(
+                    eventTime: AnalyticsListener.EventTime,
+                    audioSinkError: Exception
+                ) {
+                    val family = AudioOutputRoutePolicy.errorFamily(audioSinkError.javaClass.simpleName)
+                    PlaybackDeliveryTrace.record("audio_sink_error", "family=$family " + audioOutputSnapshot())
+                }
+
+                override fun onAudioUnderrun(
+                    eventTime: AnalyticsListener.EventTime,
+                    bufferSize: Int,
+                    bufferSizeMs: Long,
+                    elapsedSinceLastFeedMs: Long
+                ) {
+                    PlaybackDeliveryTrace.record("audio_sink_underrun", audioOutputSnapshot())
+                }
+            })
             addListener(object : Player.Listener {
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                     PlaybackDeliveryTrace.record(
@@ -1283,6 +1379,8 @@ class ScannerService : MediaLibraryService() {
         val audioEnabled: StateFlow<Boolean> = _audioEnabled.asStateFlow()
         private val _outputVolumePercent = MutableStateFlow(PlaybackVolumePolicy.DEFAULT_PERCENT)
         val outputVolumePercent: StateFlow<Int> = _outputVolumePercent.asStateFlow()
+        private val _outputRoute = MutableStateFlow("unknown")
+        val outputRoute: StateFlow<String> = _outputRoute.asStateFlow()
         private val _queuedCallCount = MutableStateFlow(0)
         val queuedCallCount: StateFlow<Int> = _queuedCallCount.asStateFlow()
         private val _currentlyPlayingCall = MutableStateFlow<RadioCall?>(null)
