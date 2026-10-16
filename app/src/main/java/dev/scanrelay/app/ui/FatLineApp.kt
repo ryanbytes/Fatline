@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -1453,10 +1455,11 @@ private fun ArchiveMenuButton(
         ?: "All"
 
     Column {
-        OutlinedIconButton(
+        OutlinedButton(
             onClick = { expanded = true },
             enabled = enabled && choices.isNotEmpty(),
-            modifier = Modifier.semantics { contentDescription = "$title: $selectedLabel" }
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+            modifier = Modifier.height(40.dp).semantics { contentDescription = "$title: $selectedLabel" }
         ) {
             if (selectedKey.isNotBlank() && !(title == "Sort" && selectedKey == "-1")) {
                 BadgedBox(badge = { Badge() }) {
@@ -1465,6 +1468,8 @@ private fun ArchiveMenuButton(
             } else {
                 Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp))
             }
+            Spacer(Modifier.width(6.dp))
+            Text(title, style = MaterialTheme.typography.labelMedium)
         }
         DropdownMenu(
             expanded = expanded,
@@ -1760,8 +1765,7 @@ private fun HistoryScreen(
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            item {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 ArchiveMenuButton(
                                     title = "Group",
                                     icon = R.drawable.ic_fatline_group,
@@ -1774,8 +1778,6 @@ private fun HistoryScreen(
                                         archiveTalkgroupRefs = emptySet()
                                     }
                                 )
-                            }
-                            item {
                                 ArchiveMenuButton(
                                     title = "Tag",
                                     icon = R.drawable.ic_fatline_tag,
@@ -1788,8 +1790,6 @@ private fun HistoryScreen(
                                         archiveTalkgroupRefs = emptySet()
                                     }
                                 )
-                            }
-                            item {
                                 ArchiveMenuButton(
                                     title = "System",
                                     icon = R.drawable.ic_fatline_system,
@@ -1803,13 +1803,12 @@ private fun HistoryScreen(
                                         archiveTalkgroupRefs = emptySet()
                                     }
                                 )
-                            }
-                            item {
                                 Column {
-                                    OutlinedIconButton(
+                                    OutlinedButton(
                                         onClick = { archiveTalkgroupMenuExpanded = true },
                                         enabled = archiveSystemRef != null,
-                                        modifier = Modifier.semantics {
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(40.dp).semantics {
                                             contentDescription = if (archiveTalkgroupRefs.isEmpty()) {
                                                 "Talkgroups: All"
                                             } else {
@@ -1834,6 +1833,8 @@ private fun HistoryScreen(
                                                 Modifier.size(20.dp)
                                             )
                                         }
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("Talkgroups", style = MaterialTheme.typography.labelMedium)
                                     }
                                     DropdownMenu(
                                         expanded = archiveTalkgroupMenuExpanded,
@@ -1870,11 +1871,9 @@ private fun HistoryScreen(
                                         )
                                     }
                                 }
-                            }
                             if (favoriteArchiveChannels.isNotEmpty()) {
-                                item {
                                     ArchiveMenuButton(
-                                        title = "Favorite",
+                                        title = "Favorites",
                                     icon = R.drawable.ic_fatline_favorite,
                                         selectedKey = "",
                                         choices = listOf(ArchiveMenuChoice("", "Choose favorite")) +
@@ -1893,9 +1892,7 @@ private fun HistoryScreen(
                                             }
                                         }
                                     )
-                                }
                             }
-                            item {
                                 ArchiveMenuButton(
                                     title = "Sort",
                                     icon = R.drawable.ic_fatline_sort,
@@ -1908,7 +1905,6 @@ private fun HistoryScreen(
                                         archiveSort = key.toIntOrNull()?.let { if (it < 0) -1 else 1 } ?: -1
                                     }
                                 )
-                            }
                         }
                         OutlinedTextField(
                             value = archiveDate,
