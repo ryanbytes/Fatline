@@ -1,6 +1,7 @@
 package dev.scanrelay.app.ui
 
 import android.app.Activity
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
@@ -1514,6 +1515,7 @@ private fun HistoryScreen(
     modifier: Modifier
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
+    val context = LocalContext.current
     // HistoryScreen leaves composition when another tab is selected. This refreshes once
     // on every entry, and once after a disconnected scanner becomes connected.
     LaunchedEffect(server?.profile?.id, server?.status == ConnectionStatus.CONNECTED) {
@@ -1911,7 +1913,24 @@ private fun HistoryScreen(
                         OutlinedTextField(
                             value = archiveDate,
                             onValueChange = { archiveDate = it },
-                            label = { Text("From date (YYYY-MM-DD)") },
+                            label = { Text("From date (YYYY-MM-DD, optional)") },
+                            trailingIcon = {
+                                TextButton(onClick = {
+                                    val initialDate = runCatching { LocalDate.parse(archiveDate.trim()) }
+                                        .getOrNull() ?: LocalDate.now()
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, day ->
+                                            archiveDate = LocalDate.of(year, month + 1, day).toString()
+                                        },
+                                        initialDate.year,
+                                        initialDate.monthValue - 1,
+                                        initialDate.dayOfMonth
+                                    ).show()
+                                }) { Text("Pick") }
+                            },
+                            isError = archiveDate.isNotBlank() &&
+                                runCatching { LocalDate.parse(archiveDate.trim()) }.isFailure,
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -1919,20 +1938,20 @@ private fun HistoryScreen(
                             value = archiveTime,
                             onValueChange = { archiveTime = it },
                             label = { Text("From time (HH:MM, optional)") },
+                            isError = archiveTime.isNotBlank() && archiveDateIso == null,
                             singleLine = true,
                             enabled = archiveDate.isNotBlank(),
                             modifier = Modifier.fillMaxWidth()
                         )
                         if (!archiveDateValid) {
                             Text(
-                                "Enter a valid date and optional 24-hour time.",
-                                style = MaterialTheme.typography.bodySmall
+                                "Invalid date or time. Use Pick, or clear both fields to search all dates.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            HistoryIconAction(
-                                icon = R.drawable.ic_fatline_search,
-                                label = "Search server archive",
+                            Button(
                                 onClick = {
                                     viewModel.requestHistoryFiltered(
                                         profileId = server.profile.id,
@@ -1945,21 +1964,30 @@ private fun HistoryScreen(
                                         sort = archiveSort
                                     )
                                 },
-                                enabled = server.status == ConnectionStatus.CONNECTED && archiveDateValid,
-                                primary = true
-                            )
-                            HistoryIconAction(
-                                icon = R.drawable.ic_fatline_clear,
-                                label = "Clear archive filter fields",
-                                onClick = {
-                                    archiveSystemRef = null
-                                    archiveTalkgroupRefs = emptySet()
-                                    archiveGroup = null
-                                    archiveTag = null
-                                    archiveDate = ""
-                                    archiveTime = ""
-                                    archiveSort = -1
-                                }
+                                enabled = server.status == ConnectionStatus.CONNECTED && archiveDateValid
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_fatline_search),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Search archive")
+                            }
+                            OutlinedButton(onClick = {
+                                archiveSystemRef = null
+                                archiveTalkgroupRefs = emptySet()
+                                archiveGroup = null
+                                archiveTag = null
+                                archiveDate = ""
+                                archiveTime = ""
+                                archiveSort = -1
+                            }) { Text("Clear") }
+                        }
+                        if (server.status != ConnectionStatus.CONNECTED) {
+                            Text(
+                                "Connect to the scanner to search the server archive.",
+                                style = MaterialTheme.typography.bodySmall
                             )
                         }
                         Text(
@@ -1978,7 +2006,7 @@ private fun HistoryScreen(
                     OutlinedTextField(
                         value = historyQuery,
                         onValueChange = { historyQuery = it },
-                        label = { Text("Search loaded history") },
+                        label = { Text("Filter loaded calls (not the full archive)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -4042,7 +4070,11 @@ private fun SettingsScreen(
     }
 }
 
-private fun archiveDateTimeIso(dateText: String, timeText: String): String? {
+internal fun archiveDateTimeIso(
+    dateText: String,
+    timeText: String,
+    zoneId: ZoneId = ZoneId.systemDefault()
+): String? {
     val date = dateText.trim()
     val time = timeText.trim()
     if (date.isBlank()) return null
@@ -4050,7 +4082,7 @@ private fun archiveDateTimeIso(dateText: String, timeText: String): String? {
         val localDate = LocalDate.parse(date)
         val localTime = if (time.isBlank()) LocalTime.MIDNIGHT else LocalTime.parse(time)
         localDate.atTime(localTime)
-            .atZone(ZoneId.systemDefault())
+            .atZone(zoneId)
             .toInstant()
             .toString()
     }.getOrNull()
