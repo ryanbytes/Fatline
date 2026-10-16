@@ -2,6 +2,7 @@ package dev.scanrelay.app.ui
 
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ServerDateTimeTest {
@@ -51,4 +52,21 @@ class ServerDateTimeTest {
             formatServerDateTime("not-a-time", time12hFormat = true, zoneId = utc)
         )
     }
+    @Test
+    fun blankArchiveDateDoesNotRestrictSearch() {
+        assertNull(archiveDateTimeIso("", "", utc))
+    }
+
+    @Test
+    fun archiveDateUsesLocalMidnightUnlessTimeSupplied() {
+        assertEquals("2026-10-16T00:00:00Z", archiveDateTimeIso("2026-10-16", "", utc))
+        assertEquals("2026-10-16T07:25:00Z", archiveDateTimeIso("2026-10-16", "07:25", utc))
+    }
+
+    @Test
+    fun malformedArchiveDateAndTimeAreRejected() {
+        assertNull(archiveDateTimeIso("200-01-01", "00:00", utc))
+        assertNull(archiveDateTimeIso("2026-10-16", "25:99", utc))
+    }
+
 }
