@@ -743,7 +743,8 @@ require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in
 require('LaunchedEffect(server?.profile?.id, server?.status == ConnectionStatus.CONNECTED)' in ui and 'viewModel.refreshHistory(server.profile.id)' in ui, 'opening History must refresh the archive')
 require('fun refreshHistory(profileId: String)' in repo and 'preserveFilters = true' in repo and 'historyOffset = 0' in repo, 'History entry refresh must restart from first page without losing filters')
 require('fun refreshHistory(profileId: String) = ScannerRepository.refreshHistory(profileId)' in viewmodel, 'History entry view-model bridge missing')
-require('Search loaded history' in ui and 'historyQuery' in ui, 'loaded-history search control missing')
+require('Filter loaded calls (not the full archive)' in ui and 'historyQuery' in ui,
+        'loaded-history filter control missing')
 require('historySystemRef' in models and 'historyTalkgroupRef' in models, 'active archive server-filter state missing')
 require('historyTalkgroupRefs' in models and '"talkgroups", JSONArray(selectedTalkgroups)' in protocol and
         'talkgroupRefs = activeTalkgroupRefs' in repo and 'archiveTalkgroupRefs.toList()' in ui,
@@ -786,6 +787,8 @@ require('talkgroupRef: Long? = null' in viewmodel and 'ScannerRepository.request
 require('call.sourceDisplay?.lowercase()?.contains(normalizedHistoryQuery)' in ui, 'history search must include unit/talker display')
 require('call.transcript?.lowercase()?.contains(normalizedHistoryQuery)' in ui, 'history search must include transcripts')
 history_screen = ui.split('private fun HistoryScreen(', 1)[1].split('private fun TranscriptsScreen(', 1)[0]
+require('Text("Search archive")' in history_screen and 'DatePickerDialog(' in history_screen,
+        'server archive search must have a labeled button and date picker')
 archive_menus = ui.split('private fun ArchiveMenuButton(', 1)[1].split('private fun HistoryIconAction(', 1)[0]
 history_actions = ui.split('private fun HistoryIconAction(', 1)[1].split('private fun HistoryScreen(', 1)[0]
 history_call_row = ui.split('private fun CallRow(', 1)[1].split('private fun AlertCard(', 1)[0]
@@ -810,7 +813,7 @@ require('LazyRow(' not in history_screen.split('archiveFilterLabel?.let { label 
         and 'requestHistory(server.profile.id, false)' in history_screen
         and 'requestHistoryFiltered(' in history_screen
         and 'onClick = { historyQuery = "" }' in history_screen,
-        'archive toolbar, search and pagination must stay functional as compact icon actions')
+        'archive toolbar and pagination icons must work alongside the labeled search button')
 require('OutlinedButton(' not in history_call_row
         and all('R.drawable.ic_fatline_' + name in history_call_row
                 for name in ('continue', 'replay', 'download'))
