@@ -792,12 +792,17 @@ require('Text("Search archive")' in history_screen and 'DatePickerDialog(' in hi
 archive_menus = ui.split('private fun ArchiveMenuButton(', 1)[1].split('private fun HistoryIconAction(', 1)[0]
 history_actions = ui.split('private fun HistoryIconAction(', 1)[1].split('private fun HistoryScreen(', 1)[0]
 history_call_row = ui.split('private fun CallRow(', 1)[1].split('private fun AlertCard(', 1)[0]
-require('OutlinedIconButton(' in archive_menus and 'OutlinedButton(' not in archive_menus
+require('OutlinedButton(' in archive_menus
+        and 'Text(title, style = MaterialTheme.typography.labelMedium)' in archive_menus
         and 'contentDescription = "$title: $selectedLabel"' in archive_menus
         and 'BadgedBox(' in archive_menus
+        and 'FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)' in history_screen
+        and 'Text("Talkgroups", style = MaterialTheme.typography.labelMedium)' in history_screen
+        and all('title = "' + name + '"' in history_screen
+                for name in ('Group', 'Tag', 'System', 'Favorites', 'Sort'))
         and all('icon = R.drawable.ic_fatline_' + name in history_screen
                 for name in ('group', 'tag', 'system', 'favorite', 'sort', 'talkgroup')),
-        'History filter selectors must be compact icon-only buttons with visible selection badges')
+        'History search filters must have visible labels, wrap on narrow screens, and preserve selection badges')
 require('"Talkgroups: All"' in history_screen
         and 'talkgroups selected' in history_screen
         and 'archiveTalkgroupMenuExpanded = true' in history_screen
