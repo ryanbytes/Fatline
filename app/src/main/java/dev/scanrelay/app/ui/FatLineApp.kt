@@ -493,7 +493,6 @@ private fun ScannerStatusCard(
     viewModel: ScannerViewModel
 ) {
     var queueExpanded by remember { mutableStateOf(false) }
-    var showStopConfirmation by remember { mutableStateOf(false) }
     val audioEnabled by ScannerService.audioEnabled.collectAsStateWithLifecycle()
     val outputVolumePercent by ScannerService.outputVolumePercent.collectAsStateWithLifecycle()
     val outputRoute by ScannerService.outputRoute.collectAsStateWithLifecycle()
@@ -672,7 +671,7 @@ private fun ScannerStatusCard(
                             "before=$audioEnabled requested=${!audioEnabled}"
                         )
                         if (audioEnabled) {
-                            showStopConfirmation = true
+                            viewModel.confirmStopAudio()
                         } else {
                             viewModel.setAudioEnabled(true)
                         }
@@ -741,25 +740,6 @@ private fun ScannerStatusCard(
         }
     }
 
-    // A volume-overlay tap or an unintended button activation cannot silently
-    // disable scanner audio and discard incoming live calls. Confirm Stop
-    // explicitly; Play and the independent volume slider remain one-step.
-    if (showStopConfirmation && audioEnabled) {
-        AlertDialog(
-            onDismissRequest = { showStopConfirmation = false },
-            title = { Text("Stop scanner audio?") },
-            text = { Text("Audio will be muted and incoming live calls will not be played. Scanner connection and transcript alerts will continue.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showStopConfirmation = false
-                    viewModel.confirmStopAudio()
-                }) { Text("Stop audio") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showStopConfirmation = false }) { Text("Cancel") }
-            }
-        )
-    }
 }
 
 @Composable
