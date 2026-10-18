@@ -256,7 +256,10 @@ class ScannerService : MediaLibraryService() {
                 val sample = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
                     .copy(collections = sampledCollections())
                 current.sample(sample)
-                withContext(Dispatchers.IO) { ServiceLifetimeDiagnostics.heartbeat(context) }
+                withContext(Dispatchers.IO) {
+                    ServiceLifetimeDiagnostics.heartbeat(context)
+                    ScannerRepository.reassertQuietLivefeedsIfNeeded()
+                }
                 if (sample.elapsedMs - startedMs >= AUTOMATIC_REPORT_INTERVAL_MS) {
                     // Omit free-text connection messages from outbound diagnostics.
                     val report = current.report(includeEventDetails = false) +
