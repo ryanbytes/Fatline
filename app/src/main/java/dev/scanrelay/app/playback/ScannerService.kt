@@ -256,6 +256,7 @@ class ScannerService : MediaLibraryService() {
                 val sample = withContext(Dispatchers.Default) { PerformanceReader.read(context) }
                     .copy(collections = sampledCollections())
                 current.sample(sample)
+                withContext(Dispatchers.IO) { ServiceLifetimeDiagnostics.heartbeat(context) }
                 if (sample.elapsedMs - startedMs >= AUTOMATIC_REPORT_INTERVAL_MS) {
                     // Omit free-text connection messages from outbound diagnostics.
                     val report = current.report(includeEventDetails = false) +
@@ -408,6 +409,7 @@ class ScannerService : MediaLibraryService() {
 
     override fun onCreate() {
         super.onCreate()
+        ServiceLifetimeDiagnostics.serviceCreated(this)
         PlaybackDeliveryTrace.record("service_created")
         ScannerRepository.initialize(this)
         pauseStore = ScannerPauseStore(this)
@@ -682,7 +684,13 @@ class ScannerService : MediaLibraryService() {
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        ServiceLifetimeDiagnostics.taskRemoved(this)
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        ServiceLifetimeDiagnostics.serviceDestroyed(this)
         recordPlaybackEvent("service_destroyed")
         playbackWatchdogHandler.removeCallbacks(playbackWatchdog)
         automaticPerformanceJob?.cancel()
