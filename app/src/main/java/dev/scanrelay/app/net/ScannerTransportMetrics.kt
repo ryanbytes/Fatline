@@ -35,7 +35,8 @@ internal class ScannerTransportEventJournal(private val capacity: Int = 96) {
  * endpoint names/URLs, call identifiers, stack traces or exception messages. */
 internal enum class ConnectionDiagnosticType {
     NETWORK_UNAVAILABLE, NETWORK_CHANGED, SOCKET_FAILURE, SOCKET_CLOSED,
-    SOCKET_STARTUP_FAILURE, RETRY_SCHEDULED, CONFIG_ACCEPTED
+    SOCKET_STARTUP_FAILURE, RETRY_SCHEDULED, CONFIG_ACCEPTED,
+    LIVEFEED_REASSERTED, LIVEFEED_SEND_FAILED
 }
 
 internal object ConnectionDiagnosticFormatter {
