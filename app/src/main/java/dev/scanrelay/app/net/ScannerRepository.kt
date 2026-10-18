@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.widget.Toast
 import dev.scanrelay.app.alerts.AlertNotifier
@@ -361,6 +362,9 @@ object ScannerRepository {
         @Volatile var hasConnected = false
         // IDs are metadata only: gaps between them cannot prove missed calls.
         @Volatile var lastLiveCallId: Long? = null
+        @Volatile var lastLiveCallAtElapsedMs = 0L
+        @Volatile var lastLivefeedRequestAtElapsedMs = 0L
+        @Volatile var lastQuietResubscribeAtElapsedMs = 0L
         @Volatile var awaitingFirstLiveAfterReconnect = false
         @Volatile var disconnectNotified = false
         @Volatile var disconnectNotificationJob: Job? = null
@@ -3157,7 +3161,10 @@ object ScannerRepository {
             ThinLineProtocol.CALL -> (envelope.payload as? JSONObject)?.let { payload ->
                 ScannerTransportMetrics.receivedCallFrame()
                 val callFlag = envelope.flag?.toString()
-                if (callFlag != ThinLineProtocol.PLAY_FLAG) LiveCallLifecycleMetrics.received()
+                if (callFlag != ThinLineProtocol.PLAY_FLAG) {
+                    LiveCallLifecycleMetrics.received()
+                    session.lastLiveCallAtElapsedMs = SystemClock.elapsedRealtime()
+                }
                 if (callFlag != ThinLineProtocol.PLAY_FLAG) {
                     val id = payload.optLong("id").takeIf { it > 0L }
                     if (id != null) {
@@ -3439,9 +3446,66 @@ object ScannerRepository {
         }
     }
 
-    private fun sendEffectiveLivefeedLocked(session: Session) {
-        if (session.state.paused || session.state.status != ConnectionStatus.CONNECTED) return
-        session.socket?.sendLivefeed(effectiveLivefeedSystems(session.state))
+    private fun sendEffectiveLivefeedLocked(session: Session): Boolean {
+        if (session.state.paused || session.state.status != ConnectionStatus.CONNECTED) return false
+        session.lastLivefeedRequestAtElapsedMs = SystemClock.elapsedRealtime()
+        val sent = session.socket?.sendLivefeed(effectiveLivefeedSystems(session.state)) == true
+        if (!sent) {
+            ScannerTransportMetrics.diagnostic(
+                ConnectionDiagnosticType.LIVEFEED_SEND_FAILED,
+                networkAvailable = networkAvailable,
+                queued = ScannerService.queuedCallCount.value
+            )
+        }
+        return sent
+    }
+
+    /**
+     * One cheap check per automatic scanner sample. If a connected feed has
+     * received no live calls for four minutes, re-send its existing LFM map.
+     * Do not close healthy quiet sockets or poll a third-party endpoint.
+     */
+    fun reassertQuietLivefeedsIfNeeded(nowMs: Long = SystemClock.elapsedRealtime()) {
+        sessions.values.forEach { session ->
+            var attempted = false
+            val success = synchronized(session) {
+                if (!isCurrent(session)) return@synchronized false
+                val state = session.state
+                val lastActivity = maxOf(
+                    session.lastLivefeedRequestAtElapsedMs, session.lastLiveCallAtElapsedMs
+                )
+                // Avoid traversing all channels on each minute's ordinary check.
+                if (lastActivity <= 0L || nowMs - lastActivity < QuietLivefeedRecoveryPolicy.MIN_QUIET_MS) {
+                    return@synchronized false
+                }
+                val hasEnabled = effectiveLivefeedSystems(state).any { system ->
+                    system.talkgroups.any { it.enabled }
+                }
+                if (!QuietLivefeedRecoveryPolicy.shouldReassert(
+                    nowElapsedMs = nowMs,
+                    lastLiveCallElapsedMs = session.lastLiveCallAtElapsedMs,
+                    lastSubscriptionElapsedMs = session.lastLivefeedRequestAtElapsedMs,
+                    lastReassertElapsedMs = session.lastQuietResubscribeAtElapsedMs,
+                    connected = state.status == ConnectionStatus.CONNECTED && networkAvailable,
+                    paused = state.paused,
+                    hasEnabledChannels = hasEnabled
+                )) return@synchronized false
+                attempted = true
+                session.lastQuietResubscribeAtElapsedMs = nowMs
+                sendEffectiveLivefeedLocked(session)
+            }
+            if (!attempted) return@forEach
+            if (success) {
+                ScannerTransportMetrics.diagnostic(
+                    ConnectionDiagnosticType.LIVEFEED_REASSERTED,
+                    networkAvailable = networkAvailable,
+                    queued = ScannerService.queuedCallCount.value
+                )
+            } else if (isCurrent(session)) {
+                // A failed send proves the socket cannot accept this request.
+                restartSession(session, "Livefeed request failed; reconnecting", resetBackoff = false)
+            }
+        }
     }
 
     internal fun effectiveLivefeedSystems(state: ServerScannerState): List<SystemConfig> =
