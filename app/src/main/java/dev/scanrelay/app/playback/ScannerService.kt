@@ -689,6 +689,23 @@ class ScannerService : MediaLibraryService() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         ServiceLifetimeDiagnostics.taskRemoved(this)
+        val activeCount = activeProfileIds().size
+        // Media3 stops a MediaLibraryService dismissed from Recents when no audio
+        // is playing. A scanner is normally idle between calls, but its existing
+        // foreground service must keep receiving the live feed and transcripts.
+        // Do not apply Media3's media-player stop policy while monitoring.
+        if (activeCount > 0 && foregroundStarted) {
+            PlaybackDeliveryTrace.record(
+                "task_removed_monitoring_continued",
+                "active_profiles=$activeCount foreground=true"
+            )
+            return
+        }
+        // Without an active foreground scanner, retain Media3's normal cleanup.
+        PlaybackDeliveryTrace.record(
+            "task_removed_default_stop",
+            "active_profiles=$activeCount foreground=$foregroundStarted"
+        )
         super.onTaskRemoved(rootIntent)
     }
 
