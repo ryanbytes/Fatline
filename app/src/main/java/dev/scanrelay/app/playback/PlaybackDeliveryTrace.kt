@@ -41,6 +41,7 @@ internal class PlaybackDeliveryJournal(private val limit: Int = 96) {
     companion object {
         private val EVENTS = setOf(
             "activity_visible", "activity_hidden", "service_created", "service_destroyed",
+            "task_removed_monitoring_continued", "task_removed_default_stop",
             "service_resume", "sticky_restart", "player_playing", "player_not_playing",
             "player_buffering", "player_error", "stall_recovery",
             "audio_enabled_loaded", "audio_enabled_changed", "player_ready_changed",
