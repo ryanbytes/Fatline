@@ -50,6 +50,15 @@ class PlaybackDeliveryTraceTest {
         assertTrue(text.contains("audio_sink_advancing route=speaker"))
     }
 
+    @Test fun taskRemovalReportsWhetherForegroundMonitoringWasPreserved() {
+        val journal = PlaybackDeliveryJournal()
+        journal.record("task_removed_monitoring_continued", "active_profiles=1 foreground=true", timeMs = 1_000)
+        journal.record("task_removed_default_stop", "active_profiles=0 foreground=false", timeMs = 2_000)
+        val report = journal.reportSince(0)
+        assertTrue(report.contains("task_removed_monitoring_continued active_profiles=1 foreground=true"))
+        assertTrue(report.contains("task_removed_default_stop active_profiles=0 foreground=false"))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun arbitraryEventNamesCannotEnterPrivateUpload() {
         PlaybackDeliveryJournal().record("call_12345 confidential")
