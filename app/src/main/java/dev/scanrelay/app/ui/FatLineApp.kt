@@ -2051,6 +2051,14 @@ private fun HistoryScreen(
     }
 }
 
+private data class TranscriptPageFilters(
+    val systemId: Long? = null,
+    val talkgroupId: Long? = null,
+    val dateFrom: Long? = null,
+    val dateTo: Long? = null,
+    val search: String = ""
+)
+
 @Composable
 private fun TranscriptsScreen(
     scanner: ScannerState,
@@ -2067,18 +2075,28 @@ private fun TranscriptsScreen(
     var talkgroupId by remember(selectedProfileId) { mutableStateOf<Long?>(null) }
     var dateFrom by remember(selectedProfileId) { mutableStateOf("") }
     var dateTo by remember(selectedProfileId) { mutableStateOf("") }
+    // Editing the search form must not silently change the query for older
+    // pages already on screen. Only Search commits a new paging filter.
+    var activeFilters by remember(selectedProfileId) { mutableStateOf(TranscriptPageFilters()) }
 
     fun loadPage(offset: Int) {
         val current = server ?: return
-        viewModel.refreshTranscripts(
-            profileId = current.profile.id,
-            offset = offset,
-            append = offset > 0,
+        val filters = if (offset == 0) TranscriptPageFilters(
             systemId = systemId,
             talkgroupId = talkgroupId,
             dateFrom = transcriptDateBoundary(dateFrom, endOfDay = false),
             dateTo = transcriptDateBoundary(dateTo, endOfDay = true),
             search = search
+        ).also { activeFilters = it } else activeFilters
+        viewModel.refreshTranscripts(
+            profileId = current.profile.id,
+            offset = offset,
+            append = offset > 0,
+            systemId = filters.systemId,
+            talkgroupId = filters.talkgroupId,
+            dateFrom = filters.dateFrom,
+            dateTo = filters.dateTo,
+            search = filters.search
         )
     }
 
@@ -2233,6 +2251,7 @@ private fun TranscriptsScreen(
                             talkgroupId = null
                             dateFrom = ""
                             dateTo = ""
+                            activeFilters = TranscriptPageFilters()
                             viewModel.refreshTranscripts(server.profile.id, offset = 0)
                         },
                         enabled = !server.transcriptsLoading
