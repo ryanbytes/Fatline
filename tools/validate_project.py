@@ -739,7 +739,7 @@ require('holdSystemRef' in models and 'setSystemHold' in repo and 'viewModel.set
 require('setHold' in repo and 'avoided' in repo and 'skip' in repo, 'talkgroup hold/avoid/skip support missing')
 require('effectiveLivefeedSystems' in repo and 'sendEffectiveLivefeedLocked' in repo, 'hold/avoid must filter the server LFM subscription')
 require('talkgroup.key !in state.avoided' in repo, 'avoided channels must be excluded from the server subscription')
-require('requestHistory(server.profile.id, false)' in ui and 'historyHasMore' in ui, 'history pagination control missing')
+require('InfiniteScrollPolicy.shouldLoad(' in ui and 'viewModel.requestHistory(current.profile.id, reset = false)' in ui and 'historyHasMore' in ui and 'historyLoading' in ui, 'history infinite-scroll pagination missing')
 require('LaunchedEffect(server?.profile?.id, server?.status == ConnectionStatus.CONNECTED)' in ui and 'viewModel.refreshHistory(server.profile.id)' in ui, 'opening History must refresh the archive')
 require('fun refreshHistory(profileId: String)' in repo and 'preserveFilters = true' in repo and 'historyOffset = 0' in repo, 'History entry refresh must restart from first page without losing filters')
 require('fun refreshHistory(profileId: String) = ScannerRepository.refreshHistory(profileId)' in viewmodel, 'History entry view-model bridge missing')
@@ -814,8 +814,9 @@ require('FilledIconButton(' in history_actions and 'OutlinedIconButton(' in hist
         'History action controls must use icons only with accessible descriptions')
 require('LazyRow(' not in history_screen.split('archiveFilterLabel?.let { label ->', 1)[0]
         and all('R.drawable.ic_fatline_' + name in history_screen
-                for name in ('refresh', 'talkgroup', 'system', 'more_calls', 'search', 'clear'))
-        and 'requestHistory(server.profile.id, false)' in history_screen
+                for name in ('refresh', 'talkgroup', 'system', 'search', 'clear'))
+        and 'InfiniteScrollPolicy.shouldLoad(' in history_screen
+        and 'viewModel.requestHistory(current.profile.id, reset = false)' in history_screen
         and 'requestHistoryFiltered(' in history_screen
         and 'onClick = { historyQuery = "" }' in history_screen,
         'archive toolbar and pagination icons must work alongside the labeled search button')
