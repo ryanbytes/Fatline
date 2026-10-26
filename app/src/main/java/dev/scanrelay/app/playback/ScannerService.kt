@@ -94,7 +94,8 @@ class ScannerService : MediaLibraryService() {
     private fun recordAudioMix(configs: List<AudioPlaybackConfiguration>) {
         if (!::player.isInitialized || releasingPlayer) return
         val mix = AudioMixDiagnostics.summarize(
-            configs.filter { it.isActive }.map { it.audioAttributes.usage }
+            // Android exposes active configurations here; isActive is not a public API.
+            configs.map { it.audioAttributes.usage }
         )
         if (mix == lastAudioMix) return
         lastAudioMix = mix
