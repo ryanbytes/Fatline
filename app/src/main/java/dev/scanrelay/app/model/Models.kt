@@ -225,6 +225,7 @@ data class ServerScannerState(
     val scanListSyncing: Boolean = false,
     val scanListError: String? = null,
     val history: List<RadioCall> = emptyList(),
+    val historyLoading: Boolean = false,
     val recentCalls: List<RadioCall> = emptyList(),
     val lastCall: RadioCall? = null,
     val alerts: List<ScannerAlert> = emptyList(),

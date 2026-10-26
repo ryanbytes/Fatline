@@ -341,6 +341,8 @@ object ScannerRepository {
         @Volatile var relayUrl: String? = null
         @Volatile var clientToken: String? = null
         var historyOffset = 0
+        var historyRequestedAtElapsedMs = 0L
+        var transcriptRequestGeneration = 0L
         val pendingEncrypted = ArrayDeque<JSONObject>()
         val pendingReplay = mutableSetOf<Long>()
         val pendingImmediateReplay = mutableSetOf<Long>()
@@ -1421,7 +1423,7 @@ object ScannerRepository {
     }
 
     internal fun clearedHistoryForRefresh(state: ServerScannerState): ServerScannerState =
-        state.copy(history = emptyList(), historyHasMore = false)
+        state.copy(history = emptyList(), historyHasMore = false, historyLoading = false)
 
     fun requestHistory(
         profileId: String,
@@ -1437,6 +1439,10 @@ object ScannerRepository {
     ) {
         val session = sessions[profileId] ?: return
         synchronized(session) {
+            // Suppress overlapping page fetches, but retry after a lost response.
+            if (!reset && session.state.historyLoading &&
+                SystemClock.elapsedRealtime() - session.historyRequestedAtElapsedMs < 30_000L
+            ) return
             // Entering History must not wipe existing results while disconnected or negotiating.
             if (preserveFilters && (session.state.status != ConnectionStatus.CONNECTED || session.socket == null)) return
             if (reset) {
@@ -1448,6 +1454,7 @@ object ScannerRepository {
                         .filter { it > 0 }.distinct()
                     session.state = session.state.copy(
                     history = emptyList(),
+                    historyLoading = false,
                     historyHasMore = false,
                     historySystemRef = systemRef?.takeIf { it > 0 },
                     historyTalkgroupRef = selectedTalkgroupRefs.singleOrNull(),
@@ -1466,6 +1473,9 @@ object ScannerRepository {
             val activeGroup = session.state.historyGroup
             val activeTag = session.state.historyTag
             val activeSort = session.state.historySort
+            if (session.socket == null || session.state.status != ConnectionStatus.CONNECTED) return
+            session.historyRequestedAtElapsedMs = SystemClock.elapsedRealtime()
+            session.state = session.state.copy(historyLoading = true)
             session.socket?.requestHistory(
                 limit = 200,
                 offset = session.historyOffset,
@@ -1703,7 +1713,8 @@ object ScannerRepository {
         talkgroupId: Long? = null,
         dateFrom: Long? = null,
         dateTo: Long? = null,
-        search: String? = null
+        search: String? = null,
+        append: Boolean = false
     ) {
         val session = sessions[profileId] ?: return
         val pin = session.profile.pin.trim()
@@ -1718,11 +1729,21 @@ object ScannerRepository {
             return
         }
 
+        val pageLimit = limit.coerceIn(1, 100)
+        val pageOffset = offset.coerceAtLeast(0)
+        val generation: Long
         synchronized(session) {
+            if (append && (session.state.transcriptsLoading ||
+                !session.state.transcriptsHasMore ||
+                pageOffset != session.state.transcriptsOffset + pageLimit)
+            ) return
+            generation = ++session.transcriptRequestGeneration
             session.state = session.state.copy(
+                transcripts = if (append) session.state.transcripts else emptyList(),
                 transcriptsLoading = true,
                 transcriptsError = null,
-                transcriptsOffset = offset.coerceAtLeast(0)
+                transcriptsHasMore = if (append) session.state.transcriptsHasMore else false,
+                transcriptsOffset = if (append) session.state.transcriptsOffset else 0
             )
         }
         publish()
@@ -1730,8 +1751,6 @@ object ScannerRepository {
         scope.launch {
             try {
                 val origin = httpOrigin(session.profile.baseUrl)
-                val pageLimit = limit.coerceIn(1, 100)
-                val pageOffset = offset.coerceAtLeast(0)
                 val params = mutableListOf(
                     "limit=${pageLimit}",
                     "offset=${pageOffset}",
@@ -1754,26 +1773,31 @@ object ScannerRepository {
                 )
                 if (!isCurrent(session)) return@launch
                 synchronized(session) {
+                    if (generation != session.transcriptRequestGeneration) return@synchronized
+                    val merged = if (append) {
+                        (session.state.transcripts + transcripts).distinctBy { it.callId }
+                    } else transcripts
                     session.state = session.state.copy(
-                        transcripts = transcripts,
+                        transcripts = merged,
                         transcriptsLoading = false,
                         transcriptsError = null,
                         transcriptsOffset = pageOffset,
                         transcriptsHasMore = transcripts.size >= pageLimit
                     )
                 }
-                publish()
+                if (generation == session.transcriptRequestGeneration) publish()
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 if (!isCurrent(session)) return@launch
                 synchronized(session) {
+                    if (generation != session.transcriptRequestGeneration) return@synchronized
                     session.state = session.state.copy(
                         transcriptsLoading = false,
                         transcriptsError = error.message?.takeIf { it.isNotBlank() }
                             ?: "Transcript refresh failed"
                     )
                 }
-                publish()
+                if (generation == session.transcriptRequestGeneration) publish()
             }
         }
     }
@@ -3540,6 +3564,7 @@ object ScannerRepository {
             session.historyOffset += calls.size
             session.state = session.state.copy(
                 history = merged,
+                historyLoading = false,
                 historyHasMore = payload.optBoolean("hasMore", false)
             )
         }

@@ -701,7 +701,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         talkgroupId: Long? = null,
         dateFrom: Long? = null,
         dateTo: Long? = null,
-        search: String? = null
+        search: String? = null,
+        append: Boolean = false
     ) = ScannerRepository.refreshTranscripts(
         profileId = profileId,
         offset = offset,
@@ -710,7 +711,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         talkgroupId = talkgroupId,
         dateFrom = dateFrom,
         dateTo = dateTo,
-        search = search
+        search = search,
+        append = append
     )
     fun refreshSystemAlerts(profileId: String) = ScannerRepository.refreshSystemAlerts(profileId)
     fun dismissSystemAlert(profileId: String, alertId: Long) =
