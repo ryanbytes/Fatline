@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -57,6 +58,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -97,6 +99,7 @@ import dev.scanrelay.app.playback.QueuedCall
 import dev.scanrelay.app.playback.PlaybackDeliveryTrace
 import dev.scanrelay.app.playback.GitHubDiagnosticsCredentials
 import dev.scanrelay.app.playback.ScannerService
+import kotlinx.coroutines.flow.collect
 import java.net.URLEncoder
 import java.time.Instant
 import java.time.LocalDate
@@ -1501,6 +1504,7 @@ private fun HistoryScreen(
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
     val context = LocalContext.current
+    val historyListState = remember(selectedProfileId) { LazyListState() }
     // HistoryScreen leaves composition when another tab is selected. This refreshes once
     // on every entry, and once after a disconnected scanner becomes connected.
     LaunchedEffect(server?.profile?.id, server?.status == ConnectionStatus.CONNECTED) {
@@ -1633,7 +1637,32 @@ private fun HistoryScreen(
         if (parts.isEmpty()) null else "Server filter: " + parts.joinToString(" · ")
     }
 
-    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LaunchedEffect(
+        historyListState, selectedProfileId, server?.history?.size,
+        server?.historyHasMore, server?.historyLoading, server?.status,
+        normalizedHistoryQuery
+    ) {
+        val current = server ?: return@LaunchedEffect
+        snapshotFlow {
+            val info = historyListState.layoutInfo
+            info.visibleItemsInfo.lastOrNull()?.index to info.totalItemsCount
+        }.collect { (last, total) ->
+            if (normalizedHistoryQuery.isBlank() &&
+                InfiniteScrollPolicy.shouldLoad(
+                    lastVisibleIndex = last, totalItems = total,
+                    loadedRows = current.history.size,
+                    hasMore = current.historyHasMore,
+                    loading = current.historyLoading,
+                    connected = current.status == ConnectionStatus.CONNECTED
+                )
+            ) viewModel.requestHistory(current.profile.id, reset = false)
+        }
+    }
+
+    LazyColumn(
+        modifier = modifier, state = historyListState,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         item {
             Column(Modifier.padding(top = 16.dp)) {
                 Text(
@@ -1709,14 +1738,6 @@ private fun HistoryScreen(
                                     null
                                 )
                             },
-                            enabled = server.status == ConnectionStatus.CONNECTED
-                        )
-                    }
-                    if (server.historyHasMore) {
-                        HistoryIconAction(
-                            icon = R.drawable.ic_fatline_more_calls,
-                            label = "Load more archive calls",
-                            onClick = { viewModel.requestHistory(server.profile.id, false) },
                             enabled = server.status == ConnectionStatus.CONNECTED
                         )
                     }
@@ -1967,7 +1988,7 @@ private fun HistoryScreen(
                             )
                         }
                         Text(
-                            "Server results load 200 calls at a time. Use the load-more icon to continue.",
+                            "Older archive calls load automatically as you scroll.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -2021,6 +2042,9 @@ private fun HistoryScreen(
                     )
                 }
             }
+            if (server.historyLoading) {
+                item { Text("Loading older calls…", modifier = Modifier.padding(16.dp)) }
+            }
         }
 
         item { Spacer(Modifier.height(16.dp)) }
@@ -2037,6 +2061,7 @@ private fun TranscriptsScreen(
     modifier: Modifier
 ) {
     val server = selectedProfileId?.let { scanner.servers[it] }
+    val transcriptListState = remember(selectedProfileId) { LazyListState() }
     var search by remember(selectedProfileId) { mutableStateOf("") }
     var systemId by remember(selectedProfileId) { mutableStateOf<Long?>(null) }
     var talkgroupId by remember(selectedProfileId) { mutableStateOf<Long?>(null) }
@@ -2048,6 +2073,7 @@ private fun TranscriptsScreen(
         viewModel.refreshTranscripts(
             profileId = current.profile.id,
             offset = offset,
+            append = offset > 0,
             systemId = systemId,
             talkgroupId = talkgroupId,
             dateFrom = transcriptDateBoundary(dateFrom, endOfDay = false),
@@ -2072,7 +2098,30 @@ private fun TranscriptsScreen(
             .filter { it.talkgroupId != null }
     }
 
-    LazyColumn(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LaunchedEffect(
+        transcriptListState, selectedProfileId, server?.transcripts?.size,
+        server?.transcriptsOffset, server?.transcriptsHasMore, server?.transcriptsLoading
+    ) {
+        val current = server ?: return@LaunchedEffect
+        snapshotFlow {
+            val info = transcriptListState.layoutInfo
+            info.visibleItemsInfo.lastOrNull()?.index to info.totalItemsCount
+        }.collect { (last, total) ->
+            if (InfiniteScrollPolicy.shouldLoad(
+                    lastVisibleIndex = last, totalItems = total,
+                    loadedRows = current.transcripts.size,
+                    hasMore = current.transcriptsHasMore,
+                    loading = current.transcriptsLoading,
+                    connected = current.profile.pin.isNotBlank()
+                )
+            ) loadPage(current.transcriptsOffset + 50)
+        }
+    }
+
+    LazyColumn(
+        modifier = modifier, state = transcriptListState,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         item {
             Column(Modifier.padding(top = 16.dp)) {
                 Text(
@@ -2229,20 +2278,10 @@ private fun TranscriptsScreen(
                 }
             }
 
-            item {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { loadPage((server.transcriptsOffset - 50).coerceAtLeast(0)) },
-                        enabled = server.transcriptsOffset > 0 && !server.transcriptsLoading
-                    ) { Text("Previous") }
-                    OutlinedButton(
-                        onClick = { loadPage(server.transcriptsOffset + 50) },
-                        enabled = server.transcriptsHasMore && !server.transcriptsLoading
-                    ) { Text("Next") }
-                }
+            if (server.transcriptsLoading) {
+                item { Text("Loading transcripts…", modifier = Modifier.padding(16.dp)) }
+            } else if (server.transcripts.isNotEmpty() && !server.transcriptsHasMore) {
+                item { Text("End of transcripts", modifier = Modifier.padding(16.dp)) }
             }
         }
 
