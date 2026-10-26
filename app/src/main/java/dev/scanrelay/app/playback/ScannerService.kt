@@ -14,6 +14,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.media.AudioManager
 import android.media.AudioDeviceInfo
+import android.media.AudioPlaybackConfiguration
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -82,6 +83,27 @@ class ScannerService : MediaLibraryService() {
     // playback solely from the player's advancing media timeline.
     private var audioTrackInitialized = false
     private var audioSinkAdvancing = false
+    // Store only aggregate counts, not other applications' identities or audio.
+    private var lastAudioMix: AudioMixCounts? = null
+    private var audioPlaybackCallbackRegistered = false
+    private val audioPlaybackCallback = object : AudioManager.AudioPlaybackCallback() {
+        override fun onPlaybackConfigChanged(configs: List<AudioPlaybackConfiguration>) {
+            recordAudioMix(configs)
+        }
+    }
+    private fun recordAudioMix(configs: List<AudioPlaybackConfiguration>) {
+        if (!::player.isInitialized || releasingPlayer) return
+        val mix = AudioMixDiagnostics.summarize(
+            configs.filter { it.isActive }.map { it.audioAttributes.usage }
+        )
+        if (mix == lastAudioMix) return
+        lastAudioMix = mix
+        PlaybackDeliveryTrace.record(
+            "audio_mix_changed",
+            "${mix.report()} fatline_playing=${player.isPlaying} audio_enabled=${_audioEnabled.value} " +
+                audioOutputSnapshot()
+        )
+    }
     private var restoringQueue = true
     private var releasingPlayer = false
     // Repeated ACTION_ENQUEUE calls must not restart foreground notification
@@ -144,7 +166,8 @@ class ScannerService : MediaLibraryService() {
         PlaybackDeliveryTrace.record(
             event, "state=${player.playbackState} playing=${player.isPlaying}" +
                 " when_ready=${player.playWhenReady} suppressed=${player.playbackSuppressionReason}" +
-                " media=${player.mediaItemCount} music_volume=$musicVolume $output"
+                " media=${player.mediaItemCount} music_volume=$musicVolume $output" +
+                " mix=${lastAudioMix?.report() ?: "unavailable"}"
         )
     }
 
@@ -579,6 +602,13 @@ class ScannerService : MediaLibraryService() {
                 )
             )
             .build()
+        // Observe concurrent media without stealing focus or ducking SimpMusic/Brave.
+        runCatching {
+            val manager = getSystemService(AudioManager::class.java)
+            manager.registerAudioPlaybackCallback(audioPlaybackCallback, Handler(Looper.getMainLooper()))
+            audioPlaybackCallbackRegistered = true
+            recordAudioMix(manager.activePlaybackConfigurations)
+        }.onFailure { PlaybackDeliveryTrace.record("audio_mix_unavailable") }
         restoreSavedPlaybackQueue()
         playbackWatchdogHandler.postDelayed(playbackWatchdog, 5_000L)
         serviceScope.launch {
@@ -688,30 +718,57 @@ class ScannerService : MediaLibraryService() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        ServiceLifetimeDiagnostics.taskRemoved(this)
         val activeCount = activeProfileIds().size
-        // Media3 stops a MediaLibraryService dismissed from Recents when no audio
-        // is playing. A scanner is normally idle between calls, but its existing
-        // foreground service must keep receiving the live feed and transcripts.
-        // Do not apply Media3's media-player stop policy while monitoring.
-        if (activeCount > 0 && foregroundStarted) {
+        val connectedCount = ScannerRepository.state.value.servers.size
+        ServiceLifetimeDiagnostics.taskRemoved(
+            this, activeCount, connectedCount, foregroundStarted, _audioEnabled.value
+        )
+        // A scanner must keep monitoring after its task is swiped away, even
+        // when no audio item is currently playing or audio is disabled.
+        if (ScannerMonitoringPolicy.keepOnTaskRemoved(activeCount, connectedCount)) {
+            if (!foregroundStarted) {
+                runCatching {
+                    val display = currentPlaybackNotification()
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification(display.title, display.subtitle, currentPlayingTagColor())
+                    )
+                    foregroundStarted = true
+                    lastPostedNotification = null
+                    lastPostedNotificationColor = null
+                    lastPostedPlayingMediaId = null
+                    updatePlaybackNotification()
+                }.onFailure {
+                    PlaybackDeliveryTrace.record("foreground_restore_failed")
+                    Log.w("FatLineService", "Cannot reassert foreground monitoring on task removal")
+                }
+            }
             PlaybackDeliveryTrace.record(
                 "task_removed_monitoring_continued",
-                "active_profiles=$activeCount foreground=true"
+                "active_profiles=$activeCount connected=$connectedCount foreground=$foregroundStarted"
             )
             return
         }
-        // Without an active foreground scanner, retain Media3's normal cleanup.
         PlaybackDeliveryTrace.record(
             "task_removed_default_stop",
-            "active_profiles=$activeCount foreground=$foregroundStarted"
+            "active_profiles=$activeCount connected=$connectedCount foreground=$foregroundStarted"
         )
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
-        ServiceLifetimeDiagnostics.serviceDestroyed(this)
+        ServiceLifetimeDiagnostics.serviceDestroyed(
+            this, activeProfileIds().size, ScannerRepository.state.value.servers.size,
+            foregroundStarted
+        )
         recordPlaybackEvent("service_destroyed")
+        if (audioPlaybackCallbackRegistered) {
+            runCatching {
+                getSystemService(AudioManager::class.java)
+                    .unregisterAudioPlaybackCallback(audioPlaybackCallback)
+            }
+            audioPlaybackCallbackRegistered = false
+        }
         playbackWatchdogHandler.removeCallbacks(playbackWatchdog)
         automaticPerformanceJob?.cancel()
         automaticPerformanceJob = null

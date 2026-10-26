@@ -47,7 +47,8 @@ internal class PlaybackDeliveryJournal(private val limit: Int = 96) {
             "audio_enabled_loaded", "audio_enabled_changed", "player_ready_changed",
             "scanner_audio_button_click", "hardware_volume_key", "audio_stop_rejected",
             "audio_track_initialized", "audio_track_released", "audio_sink_advancing",
-            "audio_sink_error", "audio_sink_underrun"
+            "audio_sink_error", "audio_sink_underrun",
+            "audio_mix_changed", "audio_mix_unavailable", "foreground_restore_failed"
         )
     }
 }

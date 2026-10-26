@@ -93,19 +93,34 @@ internal object ServiceLifetimeDiagnostics {
         prefs(context).edit().putLong(KEY_HEARTBEAT, System.currentTimeMillis()).commit()
     }
 
-    fun taskRemoved(context: Context) {
-        prefs(context).edit().putLong(KEY_TASK_REMOVED, System.currentTimeMillis()).commit()
-        append(context, "Service lifetime: Android called onTaskRemoved at " +
-            Instant.ofEpochMilli(System.currentTimeMillis()) + "\n")
+    fun taskRemoved(
+        context: Context, activeProfiles: Int, connectedProfiles: Int,
+        foreground: Boolean, audioEnabled: Boolean
+    ) {
+        val now = System.currentTimeMillis()
+        prefs(context).edit().putLong(KEY_TASK_REMOVED, now).commit()
+        append(
+            context, "Service lifetime: Android called onTaskRemoved at " +
+                Instant.ofEpochMilli(now) +
+                " active_profiles=$activeProfiles connected=$connectedProfiles" +
+                " foreground=$foreground audio_enabled=$audioEnabled\n"
+        )
     }
 
-    fun serviceDestroyed(context: Context) {
+    fun serviceDestroyed(
+        context: Context, activeProfiles: Int, connectedProfiles: Int,
+        foreground: Boolean
+    ) {
         val now = System.currentTimeMillis()
         prefs(context).edit()
             .putBoolean(KEY_ACTIVE, false)
             .putLong(KEY_STOPPED, now)
             .commit()
-        append(context, "Service lifetime: onDestroy at " + Instant.ofEpochMilli(now) + "\n")
+        append(
+            context, "Service lifetime: onDestroy at " + Instant.ofEpochMilli(now) +
+                " active_profiles=$activeProfiles connected=$connectedProfiles" +
+                " foreground=$foreground\n"
+        )
     }
 
     private fun exitReason(exit: ApplicationExitInfo): String = when (exit.reason) {
