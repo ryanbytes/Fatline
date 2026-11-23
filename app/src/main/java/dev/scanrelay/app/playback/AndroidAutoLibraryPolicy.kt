@@ -1,5 +1,6 @@
 package dev.scanrelay.app.playback
 
+import dev.scanrelay.app.model.ChannelKey
 import dev.scanrelay.app.model.ScannerState
 import dev.scanrelay.app.model.SystemConfig
 
@@ -9,7 +10,33 @@ internal data class AndroidAutoFavorite(
     val subtitle: String
 )
 
+internal data class AndroidAutoTarget(val profileId: String, val channel: ChannelKey? = null)
+
 internal object AndroidAutoLibraryPolicy {
+    /**
+     * Browser media IDs are actions, not audio file IDs. Validate them before
+     * connecting a scanner or changing its hold. Do not accept partial IDs.
+     */
+    fun selectedTarget(mediaId: String): AndroidAutoTarget? {
+        val parts = mediaId.split(':')
+        return when {
+            parts.size == 2 && parts[0] == "profile" && parts[1].isNotBlank() ->
+                AndroidAutoTarget(parts[1])
+            parts.size == 4 && parts[0] == "channel" && parts[1].isNotBlank() -> {
+                val system = parts[2].toLongOrNull()
+                val talkgroup = parts[3].toLongOrNull()
+                if (system != null && talkgroup != null)
+                    AndroidAutoTarget(parts[1], ChannelKey(system, talkgroup))
+                else null
+            }
+            else -> null
+        }
+    }
+
+    fun hasMissingConnections(saved: Set<String>, connected: Set<String>): Boolean =
+        saved.any { it !in connected }
+
+
     fun favoriteChannels(profileId: String, state: ScannerState): List<AndroidAutoFavorite> {
         val server = state.servers[profileId] ?: return emptyList()
         // A single pass avoids building visible-system, favorite-talkgroup
@@ -33,7 +60,7 @@ internal object AndroidAutoLibraryPolicy {
     fun childrenChanged(
         previous: List<AndroidAutoFavorite>?,
         current: List<AndroidAutoFavorite>
-    ): Boolean = previous != null && previous != current
+    ): Boolean = if (previous == null) current.isNotEmpty() else previous != current
 }
 
 /**

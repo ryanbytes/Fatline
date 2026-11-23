@@ -928,6 +928,82 @@ class ScannerService : MediaLibraryService() {
         stopSelf()
     }
 
+
+    /**
+     * Android Auto can bind directly to the media service without launching our
+     * Activity. Restore *previously active* scanners when the car browses, but
+     * never start a previously disconnected profile merely because Auto opened.
+     */
+    private fun restorePreviouslyActiveForAuto() {
+        val saved = activeProfileIds()
+        if (saved.isNotEmpty() &&
+            AndroidAutoLibraryPolicy.hasMissingConnections(saved, ScannerRepository.state.value.servers.keys)
+        ) {
+            // A MediaLibraryService created only by binding can be destroyed the
+            // moment Android Auto unbinds. Request a started foreground service
+            // so the existing scanner sockets survive the silent intervals.
+            if (!startForegroundResumeForAuto()) restoreConnections()
+        }
+    }
+
+    private fun startForegroundResumeForAuto(): Boolean =
+        runCatching {
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, ScannerService::class.java).setAction(ACTION_RESUME_CONNECTIONS)
+            )
+            true
+        }.getOrElse {
+            // A system/background-start policy may deny an Android Auto bind
+            // that wasn't initiated by a car UI interaction. Keep the binding
+            // usable and record a sanitized failure without claiming recovery.
+            PlaybackDeliveryTrace.record("foreground_restore_failed")
+            false
+        }
+
+    /**
+     * Profile and channel browser entries mean "monitor live calls", not an
+     * audio file. A car selection explicitly authorizes connecting/resuming.
+     */
+    private fun selectAndroidAutoTarget(target: AndroidAutoTarget) {
+        val configured = ProfileStore(this).load().any { it.id == target.profileId }
+        if (!configured) return
+        // Car selection is a user-initiated playback action. Ensure this
+        // bound-only Media3 service becomes a started service, so Android
+        // can retain it between intermittent radio transmissions.
+        if (!foregroundStarted) startForegroundResumeForAuto()
+        if (target.profileId !in ScannerRepository.state.value.servers) {
+            connectProfile(target.profileId)
+        } else if (target.profileId !in activeProfileIds()) {
+            persistActiveProfiles(activeProfileIds().apply { add(target.profileId) })
+        }
+        if (pauseStore.isPaused(target.profileId)) {
+            pauseStore.setPaused(target.profileId, false)
+            pausedProfiles.remove(target.profileId)
+            ScannerRepository.setPaused(target.profileId, false)
+        }
+        target.channel?.let { ScannerRepository.setHold(target.profileId, it) }
+        if (!_audioEnabled.value) setAudioEnabledInternal(true, "android_auto_selection")
+        // A real audio recording may already be queued. Do not create a fake
+        // silent track while waiting for the next scanner transmission.
+        if (player.mediaItemCount > 0 && !player.playWhenReady) player.play()
+        updatePlaybackNotification()
+    }
+
+    private fun autoPlayableQueue(): MediaSession.MediaItemsWithStartPosition {
+        if (player.mediaItemCount == 0 || player.playbackState == Player.STATE_ENDED) {
+            return MediaSession.MediaItemsWithStartPosition(
+                emptyList(), C.INDEX_UNSET, C.TIME_UNSET
+            )
+        }
+        val items = (0 until player.mediaItemCount).map(player::getMediaItemAt)
+        val index = player.currentMediaItemIndex
+            .takeIf { it in items.indices } ?: 0
+        return MediaSession.MediaItemsWithStartPosition(
+            items, index, player.currentPosition.coerceAtLeast(0L)
+        )
+    }
+
     private fun refreshFavoriteLibraryChildren(state: ScannerState) {
         // The main-thread cache itself decides which favorite configuration
         // changed. Most live call/queue/status updates require no allocations.
@@ -1395,9 +1471,12 @@ class ScannerService : MediaLibraryService() {
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?
-        ): ListenableFuture<LibraryResult<MediaItem>> = Futures.immediateFuture(
-            LibraryResult.ofItem(browsableItem(ROOT_ID, "FatLine", "Scanner servers"), params)
-        )
+        ): ListenableFuture<LibraryResult<MediaItem>> {
+            restorePreviouslyActiveForAuto()
+            return Futures.immediateFuture(
+                LibraryResult.ofItem(browsableItem(ROOT_ID, "FatLine", "Scanner servers"), params)
+            )
+        }
 
         override fun onGetChildren(
             session: MediaLibrarySession,
@@ -1424,24 +1503,87 @@ class ScannerService : MediaLibraryService() {
             return Futures.immediateFuture(LibraryResult.ofItemList(all.subList(from, to), params))
         }
 
+        /**
+         * Legacy Android Auto uses playFromMediaId -> onSetMediaItems, not just
+         * onAddMediaItems. Preserve any currently playing call/queue instead of
+         * clearing it when the car selects a monitoring profile.
+         */
+        override fun onSetMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<MediaItem>,
+            startIndex: Int,
+            startPositionMs: Long
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            val targets = mediaItems.mapNotNull { AndroidAutoLibraryPolicy.selectedTarget(it.mediaId) }
+            if (targets.isNotEmpty()) {
+                targets.forEach(::selectAndroidAutoTarget)
+                return Futures.immediateFuture(autoPlayableQueue())
+            }
+            val items = mediaItems.mapNotNull { request ->
+                request.takeIf { it.localConfiguration != null }
+                    ?: (0 until player.mediaItemCount)
+                        .firstOrNull { player.getMediaItemAt(it).mediaId == request.mediaId }
+                        ?.let(player::getMediaItemAt)
+            }
+            val index = startIndex.takeIf { it in items.indices } ?: C.INDEX_UNSET
+            return Futures.immediateFuture(MediaSession.MediaItemsWithStartPosition(
+                items, index, if (index == C.INDEX_UNSET) C.TIME_UNSET else startPositionMs
+            ))
+        }
+
         override fun onAddMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>
         ): ListenableFuture<MutableList<MediaItem>> {
-            mediaItems.forEach { item ->
-                val parts = item.mediaId.split(':')
-                when (parts.firstOrNull()) {
-                    "profile" -> parts.getOrNull(1)?.let { connect(this@ScannerService, it) }
-                    "channel" -> if (parts.size >= 4) {
-                        val profileId = parts[1]
-                        val system = parts[2].toLongOrNull()
-                        val talkgroup = parts[3].toLongOrNull()
-                        if (system != null && talkgroup != null) ScannerRepository.setHold(profileId, ChannelKey(system, talkgroup))
-                    }
+            val resolved = mutableListOf<MediaItem>()
+            mediaItems.forEach { requested ->
+                val target = AndroidAutoLibraryPolicy.selectedTarget(requested.mediaId)
+                if (target != null) {
+                    selectAndroidAutoTarget(target)
+                    // Monitoring uses queued real calls. Never append fake media
+                    // with a nonexistent URI to ExoPlayer's live call queue.
+                } else {
+                    val playable = requested.takeIf { it.localConfiguration != null }
+                        ?: (0 until player.mediaItemCount)
+                            .firstOrNull { player.getMediaItemAt(it).mediaId == requested.mediaId }
+                            ?.let(player::getMediaItemAt)
+                    if (playable != null) resolved.add(playable)
                 }
             }
-            return Futures.immediateFuture(mutableListOf())
+            return Futures.immediateFuture(resolved)
+        }
+
+        override fun onPlaybackResumption(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            isForPlayback: Boolean
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            if (isForPlayback) {
+                restorePreviouslyActiveForAuto()
+                if (!_audioEnabled.value) setAudioEnabledInternal(true, "media_session_play")
+            }
+            return Futures.immediateFuture(autoPlayableQueue())
+        }
+
+        /**
+         * Car/headset media Pause must stop new radio calls as well as the
+         * current ExoPlayer item. Otherwise each incoming call resumes audio.
+         * Playback buttons are explicit control requests, not accidental taps
+         * on the scanner UI, so the scanner-card Stop confirmation is separate.
+         */
+        override fun onPlayerInteractionFinished(
+            session: MediaSession,
+            controllerInfo: MediaSession.ControllerInfo,
+            playerCommands: Player.Commands
+        ) {
+            if (playerCommands.contains(Player.COMMAND_PLAY_PAUSE)) {
+                val enabled = player.playWhenReady
+                if (_audioEnabled.value != enabled) {
+                    setAudioEnabledInternal(enabled, "media_session_transport")
+                }
+            }
         }
     }
 
