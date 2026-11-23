@@ -939,9 +939,27 @@ class ScannerService : MediaLibraryService() {
         if (saved.isNotEmpty() &&
             AndroidAutoLibraryPolicy.hasMissingConnections(saved, ScannerRepository.state.value.servers.keys)
         ) {
-            restoreConnections()
+            // A MediaLibraryService created only by binding can be destroyed the
+            // moment Android Auto unbinds. Request a started foreground service
+            // so the existing scanner sockets survive the silent intervals.
+            if (!startForegroundResumeForAuto()) restoreConnections()
         }
     }
+
+    private fun startForegroundResumeForAuto(): Boolean =
+        runCatching {
+            ContextCompat.startForegroundService(
+                this,
+                Intent(this, ScannerService::class.java).setAction(ACTION_RESUME_CONNECTIONS)
+            )
+            true
+        }.getOrElse {
+            // A system/background-start policy may deny an Android Auto bind
+            // that wasn't initiated by a car UI interaction. Keep the binding
+            // usable and record a sanitized failure without claiming recovery.
+            PlaybackDeliveryTrace.record("foreground_restore_failed")
+            false
+        }
 
     /**
      * Profile and channel browser entries mean "monitor live calls", not an
@@ -950,6 +968,10 @@ class ScannerService : MediaLibraryService() {
     private fun selectAndroidAutoTarget(target: AndroidAutoTarget) {
         val configured = ProfileStore(this).load().any { it.id == target.profileId }
         if (!configured) return
+        // Car selection is a user-initiated playback action. Ensure this
+        // bound-only Media3 service becomes a started service, so Android
+        // can retain it between intermittent radio transmissions.
+        if (!foregroundStarted) startForegroundResumeForAuto()
         if (target.profileId !in ScannerRepository.state.value.servers) {
             connectProfile(target.profileId)
         } else if (target.profileId !in activeProfileIds()) {
